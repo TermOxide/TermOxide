@@ -1,0 +1,11 @@
+* text=lf
+* eol=lf
+
+*.pdf binary
+
+# Images
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.svg  binary
+*.webp binary

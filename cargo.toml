@@ -1,0 +1,60 @@
+[package]
+name = "OxidUi"
+description = "Framework for TUI applications in Rust"
+version = "1.0.0-alpha"
+
+keywords = ["tui", "terminal", "user interface", "rust", "framework"]
+categories = ["development-tools", "rendering::engine"]
+
+repository = "https://github.com/OxidizeToolKit/OxidUI"
+
+readme = "README.md"
+license = "BSD-2-Clause"
+
+edition = "2024"
+default-run = "OxidUi"
+
+[package.metadata.bundle]
+name = "OxidUi"
+identifier = "com.oxidizetoolkit.oxidui"
+icon = ["assets/icon.png"]
+version = "1.0.0-alpha"
+copyright = "Copyright (c) 2026 OxidizeToolKit"
+category = "Developer Tool"
+long_description = "OxidUi is a framework for building terminal user interfaces (TUIs) in Rust. It provides a set of tools and components to create interactive and visually appealing TUIs, making it easier for developers to build command-line applications with rich user interfaces."
+
+[dependencies]
+# Path handling
+walkdir = "2.5"
+dirs = "6.0"
+
+# Watcher
+notify = "8.2"
+crossbeam-channel = "0.5"
+
+# utilities
+enum_cycling = "0.2.1"
+
+[features]
+default = []
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+# Clippy lints configuration
+[lints.clippy]
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
+
+complexity = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+
+unwrap_used = { level = "warn", priority = -1 }
+expect_used = { level = "warn", priority = -1 }
+panic = { level = "warn", priority = -1 }
+todo = { level = "warn", priority = -1 }
+unimplemented = { level = "warn", priority = -1 }
