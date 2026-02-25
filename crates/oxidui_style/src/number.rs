@@ -1,6 +1,7 @@
-use std::fmt::{Display, Formatter, Result};
+use std::fmt::{self, Display, Formatter, Result};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Mul, Neg, Sub};
+use std::str::FromStr;
 /// A CSS-like integer scalar value.
 ///
 /// Used for whole-number properties: `z-index`, `tab-index`,
@@ -19,30 +20,115 @@ use std::ops::{Add, Mul, Neg, Sub};
 /// let z     = Int::new(10);
 /// let order = Int::ZERO;
 /// ```
+
+/// A CSS-like integer scalar value.
+///
+/// Supports:
+/// - Binary literals: `0b1010`
+/// - Octal literals: `0o12`
+/// - Hex literals: `0xFF`
+/// - Decimal literals: `42`
+///
+/// Internally always stored as `i32`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Int(pub i32);
 
+#[derive(Debug)]
+pub enum IntParseError {
+    InvalidRadix,
+    ParseIntError(std::num::ParseIntError),
+}
+
+impl Display for IntParseError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidRadix => write!(f, "invalid radix (must be 2–36)"),
+            Self::ParseIntError(e) => write!(f, "parse int error: {:?}", e.kind()),
+        }
+    }
+}
 impl Int {
-    /// Zero — the most common integer value in style systems.
+    /// Zero constant.
     pub const ZERO: Self = Self(0);
-    /// One — useful for `order: 1`, `column-count: 1`, etc.
+
+    /// One constant.
     pub const ONE: Self = Self(1);
 
-    /// Construct from a raw `i32`.
+    /// Construct from raw `i32`.
     pub const fn new(v: i32) -> Self {
         Self(v)
     }
-    /// Extract the underlying `i32`.
+
+    /// Extract inner value.
     pub const fn get(self) -> i32 {
         self.0
     }
-    /// Returns `true` if the value is zero.
+
     pub const fn is_zero(self) -> bool {
         self.0 == 0
     }
-    /// Returns `true` if the value is negative.
+
     pub const fn is_negative(self) -> bool {
         self.0 < 0
+    }
+
+    /// Precise radix constructor (2–36).
+    pub fn from_str_radix(s: &str, radix: u32) -> std::result::Result<Self, IntParseError> {
+        if (radix < 2) || (radix > 36) {
+            return Err(IntParseError::InvalidRadix);
+        }
+        i32::from_str_radix(s, radix)
+            .map(Self)
+            .map_err(IntParseError::ParseIntError)
+    }
+
+    /// Format as binary with `0b` prefix.
+    pub fn to_bin(self) -> String {
+        format!("0b{:b}", self.0)
+    }
+
+    /// Format as octal with `0o` prefix.
+    pub fn to_oct(self) -> String {
+        format!("0o{:o}", self.0)
+    }
+
+    /// Format as lowercase hex with `0x` prefix.
+    pub fn to_hex(self) -> String {
+        format!("0x{:x}", self.0)
+    }
+
+    /// Format as uppercase hex with `0X` prefix.
+    pub fn to_hex_upper(self) -> String {
+        format!("0X{:X}", self.0)
+    }
+}
+
+impl FromStr for Int {
+    type Err = std::num::ParseIntError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let s = s.trim();
+
+        // Handle optional sign
+        let (negative, body) = if let Some(rest) = s.strip_prefix('-') {
+            (true, rest)
+        } else if let Some(rest) = s.strip_prefix('+') {
+            (false, rest)
+        } else {
+            (false, s)
+        };
+
+        let parsed = if let Some(rest) = body.strip_prefix("0b") {
+            i32::from_str_radix(rest, 2)?
+        } else if let Some(rest) = body.strip_prefix("0o") {
+            i32::from_str_radix(rest, 8)?
+        } else if let Some(rest) = body.strip_prefix("0x") {
+            i32::from_str_radix(rest, 16)?
+        } else {
+            body.parse::<i32>()?
+        };
+
+        Ok(Self(if negative { -parsed } else { parsed }))
     }
 }
 
@@ -51,6 +137,7 @@ impl From<i32> for Int {
         Self(v)
     }
 }
+
 impl From<Int> for i32 {
     fn from(v: Int) -> Self {
         v.0
@@ -69,12 +156,14 @@ impl Add for Int {
         Self(self.0 + rhs.0)
     }
 }
+
 impl Sub for Int {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self {
         Self(self.0 - rhs.0)
     }
 }
+
 impl Neg for Int {
     type Output = Self;
     fn neg(self) -> Self {
