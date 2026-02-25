@@ -19,6 +19,27 @@ jobs:
         with:
           fetch-depth: 0  # Fetch full history to ensure we can compare against any base ref
 
+      - name: Determine base ref
+        id: base
+        run: |
+          # Prefer workflow_dispatch input, fallback to GITHUB_BASE_REF (PR), else default to 'main'
+          BASE_REF="${{ github.event.inputs.base_ref }}"
+          if [ -z "$BASE_REF" ]; then
+            BASE_REF="${{ github.base_ref }}"
+          fi
+          if [ -z "$BASE_REF" ]; then
+            BASE_REF="main"
+          fi
+          echo "base_ref=$BASE_REF" >> "$GITHUB_OUTPUT"
+          echo "Using base ref: $BASE_REF"
+
+      - name: Fetch base branch
+        if: ${{ steps.base.outputs.base_ref != '' }}
+        run: |
+          # Fetch the base branch so it exists locally
+          git fetch --no-tags --prune --depth=1 origin "${{ steps.base.outputs.base_ref }}:${{ steps.base.outputs.base_ref }}"
+          git show-ref | grep -E "refs/(heads|remotes)/${{ steps.base.outputs.base_ref }}" || true
+
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -28,16 +49,10 @@ jobs:
 
       - name: Run changed-crates detector
         id: detect
+        shell: bash
         run: |
-          # Prefer workflow_dispatch input, fallback to GITHUB_BASE_REF
-          BASE_REF="${{ github.event.inputs.base_ref }}"
-          if [ -z "$BASE_REF" ]; then
-            BASE_REF="$GITHUB_BASE_REF"
-          fi
+          BASE_REF="${{ steps.base.outputs.base_ref }}"
 
-          echo "Using base ref: $BASE_REF"
-
-          # run your detector and print a space-separated list of crate names
           changed=$(cargo run --release -p ci-impact -- "$BASE_REF")
           echo "Detected changed crates: $changed"
           echo "raw_list=$changed" >> $GITHUB_OUTPUT
