@@ -10,6 +10,7 @@ use std::hash::Hash;
 ///
 /// The inner `Cow<'static, str>` means proc_macro-generated code like:
 /// ```rust
+/// use oxidui_style::str::Str;
 /// let font = Str::from_static("JetBrains Mono");
 /// ```
 /// involves **zero heap allocation** — the slice lives in the binary's
@@ -22,6 +23,7 @@ use std::hash::Hash;
 /// # Examples
 ///
 /// ```rust
+/// use oxidui_style::str::Str;
 /// let a: Str = "monospace".into();              // static borrow, no alloc
 /// let b = Str::from_string(format!("Font-{}", 42)); // heap-allocated
 /// ```

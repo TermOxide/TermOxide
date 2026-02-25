@@ -27,6 +27,7 @@
 /// # Examples
 ///
 /// ```rust
+/// use oxidui_style::unit::Unit;
 /// let w    = Unit::cells(40);    // exactly 40 columns
 /// let h    = Unit::percent(50);  // 50% of parent height
 /// let flex = Unit::fill(1);      // take 1 share of remaining space
