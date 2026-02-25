@@ -1,0 +1,80 @@
+name: "Rust Cache"
+description: "Setup Rust toolchain and cache cargo artifacts"
+
+inputs:
+  action:
+    description: "Cache action: 'push' (setup + build + save cache) or 'pull' (restore cache only)"
+    required: true
+  packages:
+    description: 'JSON array of crates.io packages to install (e.g. ''["cargo-workspaces"]'')'
+    required: false
+    default: "[]"
+  crates:
+    description: 'JSON array of local workspace crates to build (e.g. ''["cargo-extract"]'')'
+    required: false
+    default: "[]"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Compute cache key
+      id: cache-key
+      shell: bash
+      run: |
+        hash=$(echo '${{ inputs.packages }}${{ inputs.crates }}' | sha256sum | cut -d ' ' -f1)
+        echo "key=${{ runner.os }}-cargo-${hash}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore & save cargo cache
+      if: inputs.action == 'push'
+      id: cache-push
+      uses: actions/cache@v5
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.cargo/bin
+          ~/.rustup
+          target/
+        key: ${{ steps.cache-key.outputs.key }}
+
+    - name: Restore cargo cache
+      if: inputs.action == 'pull'
+      uses: actions/cache/restore@v5
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.cargo/bin
+          ~/.rustup
+          target/
+        key: ${{ steps.cache-key.outputs.key }}
+
+    - name: Setup Rust toolchain
+      if: inputs.action == 'push' && steps.cache-push.outputs.cache-hit != 'true'
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install cargo packages
+      if: inputs.action == 'push' && steps.cache-push.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        packages='${{ inputs.packages }}'
+        for pkg in $(echo "$packages" | jq -r '.[]'); do
+          echo "::group::Installing ${pkg}"
+          cargo install "$pkg"
+          echo "::endgroup::"
+        done
+
+    - name: Build local crates
+      if: inputs.action == 'push' && steps.cache-push.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        crates='${{ inputs.crates }}'
+        for crate in $(echo "$crates" | jq -r '.[]'); do
+          echo "::group::Building ${crate}"
+          cargo build --release -p "$crate"
+          echo "::endgroup::"
+        done
+
+    - name: Add cargo bin to PATH
+      shell: bash
+      run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
