@@ -24,7 +24,7 @@ category = "Developer Tool"
 long_description = "OxidUi is a framework for building terminal user interfaces (TUIs) in Rust. It provides a set of tools and components to create interactive and visually appealing TUIs, making it easier for developers to build command-line applications with rich user interfaces."
 
 [workspace]
-members = ["crates/oxidui_style", "crates/oxidui_macros"]
+members = ["crates/oxidui_style", "crates/oxidui_macros", "crates/ci-impact"]
 
 [dependencies]
 oxidui_macros = { path = "crates/oxidui_macros" }
