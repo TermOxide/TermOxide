@@ -53,7 +53,7 @@ jobs:
         run: |
           BASE_REF="${{ steps.base.outputs.base_ref }}"
 
-          changed=$(cargo run --release -p ci-impact -- "$BASE_REF")
+          changed=$(cargo run --release -p cargo-extract -- "$BASE_REF")
           echo "Detected changed crates: $changed"
           echo "raw_list=$changed" >> $GITHUB_OUTPUT
 
