@@ -3,6 +3,10 @@ name: build and test changed crates
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      base_ref:
+        description: 'Base branch/commit to compare changes against'
+        required: true
 
 jobs:
   detect-changed:
@@ -25,8 +29,16 @@ jobs:
       - name: Run changed-crates detector
         id: detect
         run: |
+          # Prefer workflow_dispatch input, fallback to GITHUB_BASE_REF
+          BASE_REF="${{ github.event.inputs.base_ref }}"
+          if [ -z "$BASE_REF" ]; then
+            BASE_REF="$GITHUB_BASE_REF"
+          fi
+
+          echo "Using base ref: $BASE_REF"
+
           # run your detector and print a space-separated list of crate names
-          changed=$(cargo run --release -p ci-impact -- "$GITHUB_BASE_REF")
+          changed=$(cargo run --release -p ci-impact -- "$BASE_REF")
           echo "Detected changed crates: $changed"
           echo "raw_list=$changed" >> $GITHUB_OUTPUT
 
