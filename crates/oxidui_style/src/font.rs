@@ -16,6 +16,7 @@
 /// # Examples
 ///
 /// ```rust
+/// use oxidui_style::{Style, font::FontStyle};
 /// let heading = FontStyle::BOLD | FontStyle::UNDERLINE;
 /// assert!(heading.has(FontStyle::BOLD));
 /// assert!(!heading.has(FontStyle::ITALIC));
