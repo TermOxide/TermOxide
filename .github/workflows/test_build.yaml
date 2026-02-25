@@ -1,0 +1,80 @@
+name: build and test changed crates
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  detect-changed:
+    name: Detect changed crates
+    runs-on: ubuntu-latest
+    outputs:
+      raw-list: ${{ steps.detect.outputs.raw_list }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Fetch full history to ensure we can compare against any base ref
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Install cargo-workspaces
+        run: cargo install cargo-workspaces
+
+      - name: Run changed-crates detector
+        id: detect
+        run: |
+          # run your detector and print a space-separated list of crate names
+          changed=$(cargo run --release -p ci-impact -- "$GITHUB_BASE_REF")
+          echo "Detected changed crates: $changed"
+          echo "raw_list=$changed" >> $GITHUB_OUTPUT
+
+  generate-matrix:
+    name: Generate crate matrix
+    needs: detect-changed
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.generate.outputs.matrix }}
+    steps:
+      - name: Convert raw list to JSON array
+        id: generate
+        run: |
+          raw_list="${{ needs.detect-changed.outputs.raw-list }}"
+
+          # If empty, produce an empty JSON array so fromJSON(...) works
+          if [ -z "$raw_list" ]; then
+            echo "matrix=[]" >> $GITHUB_OUTPUT
+            echo "Generated matrix: []"
+            exit 0
+          fi
+
+          # Convert space-separated list -> JSON array of strings: ["crate_a","crate_b"]
+          crates=$(jq -c -Rn --arg csv "$raw_list" '$csv | split(" ")')
+          echo "matrix=$crates" >> $GITHUB_OUTPUT
+          echo "Generated matrix: $crates"
+
+  crate-matrix:
+    name: Run actions per crate
+    needs: generate-matrix
+    runs-on: ubuntu-latest
+    # Skip entire job when generated matrix is empty
+    if: ${{ needs.generate-matrix.outputs.matrix != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # dynamic array of crate names from job 2
+        crate: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
+        # static list of checks/actions — GitHub will compute the Cartesian product
+        check: ["test", "build", "build --release"]
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Run action for crate
+        run: |
+          echo "Running '${{ matrix.check }}' for crate '${{ matrix.crate }}'"
+          cargo ${{ matrix.check }} -p "${{ matrix.crate }}"
