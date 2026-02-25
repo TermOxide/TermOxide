@@ -16,6 +16,7 @@ use std::hash::Hash;
 /// # Examples
 ///
 /// ```rust
+/// use oxidui_style::color::{Color, NamedColor};
 /// let red   = Color::Named(NamedColor::Red);
 /// let coral = Color::rgb(255, 127, 80);
 /// let grey  = Color::indexed(240);
@@ -60,6 +61,7 @@ impl Color {
     ///
     /// `const` so proc_macro output has zero runtime cost:
     /// ```rust
+    /// use oxidui_style::color::Color;
     /// const CORAL: Color = Color::rgb(255, 127, 80);
     /// ```
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
@@ -69,6 +71,7 @@ impl Color {
     /// Construct a 256-palette indexed color.
     ///
     /// ```rust
+    /// use oxidui_style::color::Color;
     /// const MID_GREY: Color = Color::indexed(244);
     /// ```
     pub const fn indexed(i: u8) -> Self {
@@ -82,6 +85,7 @@ impl Color {
     ///
     /// `const` so the proc_macro can emit:
     /// ```rust
+    /// use oxidui_style::color::Color;
     /// const C: Color = Color::from_hex_bytes(b"#ff5f00").unwrap();
     /// ```
     pub const fn from_hex_bytes(bytes: &[u8]) -> Option<Self> {
