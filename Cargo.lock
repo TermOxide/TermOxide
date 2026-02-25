@@ -62,6 +62,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cargo-extract"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cargo_metadata",
+ "guppy",
+]
+
+[[package]]
 name = "cargo-platform"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -115,15 +124,6 @@ name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
-
-[[package]]
-name = "ci-impact"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cargo_metadata",
- "guppy",
-]
 
 [[package]]
 name = "compact_str"
