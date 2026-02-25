@@ -17,6 +17,7 @@ use std::str::FromStr;
 /// # Examples
 ///
 /// ```rust
+/// use oxidui_style::number::Int;
 /// let z     = Int::new(10);
 /// let order = Int::ZERO;
 /// ```
@@ -191,6 +192,7 @@ impl Neg for Int {
 /// # Examples
 ///
 /// ```rust
+/// use oxidui_style::number::Float;
 /// let opacity = Float::new(0.85);
 /// let grow    = Float::ONE;
 /// let shrink  = Float::ZERO;
