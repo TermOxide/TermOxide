@@ -1,0 +1,9 @@
+[package]
+name = "ci-impact"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+guppy = "0.17"
+cargo_metadata = "0.23.1"
+anyhow = "1"
