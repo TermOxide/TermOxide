@@ -28,6 +28,7 @@ members = [
   "crates/oxidui_style",
   "crates/oxidui_macros",
   "crates/cargo-extract",
+  "crates/cargo-bump",
 ]
 
 [dependencies]
