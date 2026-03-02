@@ -28,11 +28,27 @@ jobs:
 
       - name: Bump versions (implement your logic here)
         shell: bash
+        env:
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
         run: |
-          echo "Crates to bump: ${{ inputs.matrix }}"
-          # TODO: call your bump tool here
-          # Example:
-          # cargo run -p your-bump-crate -- ${{ inputs.matrix }}
+          RELEASE_TYPE=""
+          RELEASE_LABELS=("04.release: major" "04.release: minor" "04.release: patch")
+          while read -r label; do
+            for release_label in "${RELEASE_LABELS[@]}"; do
+              if [[ "$label" == "$release_label" ]]; then
+                RELEASE_TYPE="${release_label#*: }"
+                break 2
+              fi
+            done
+          done <<< "$PR_LABELS"
+          if [[ -z "$RELEASE_TYPE" ]]; then
+            echo "No release label found, skipping version bump"
+            exit 0
+          fi
+
+          RELEASE_TYPE=$($RELEASE_TYPE | cut -d: -f1)
+          echo "Crates to bump: ${{ inputs.matrix }} with release type: $RELEASE_TYPE"
+          # cargo run -p cargo-bump -- $RELEASE_TYPE --matrix "${{ inputs.matrix }}"
 
       - name: Commit version changes if any
         shell: bash
