@@ -69,6 +69,8 @@ use unit::Unit;
 ///
 /// ```rust
 /// // Direct struct construction (idiomatic proc_macro output)
+/// use oxidui_style::{Style, color::{Color, NamedColor}, unit::Unit, font::FontStyle};
+///
 /// let s = Style {
 ///     width:      Some(Unit::percent(100)),
 ///     height:     Some(Unit::cells(3)),
@@ -86,6 +88,7 @@ use unit::Unit;
 /// # Merging
 ///
 /// ```rust
+/// use oxidui_style::{Style, color::{Color, NamedColor}};
 /// let mut base = Style { color: Some(Color::Named(NamedColor::White)), ..Style::new() };
 /// let over     = Style { color: Some(Color::Named(NamedColor::Red)),   ..Style::new() };
 /// base.merge(&over);
@@ -186,6 +189,7 @@ impl Style {
     ///
     /// `const` so it can be used in static contexts:
     /// ```rust
+    /// use oxidui_style::Style;
     /// const EMPTY: Style = Style::new();
     /// ```
     pub const fn new() -> Self {
@@ -228,6 +232,7 @@ impl Style {
     /// # Example
     ///
     /// ```rust
+    /// use oxidui_style::{Style, color::Color, color::NamedColor};
     /// let mut s = Style { color: Some(Color::Named(NamedColor::White)), ..Style::new() };
     /// s.merge(&Style { color: Some(Color::Named(NamedColor::Red)), ..Style::new() });
     /// // s.color == Some(Red)
