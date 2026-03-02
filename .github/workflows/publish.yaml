@@ -6,6 +6,10 @@ on:
       matrix:
         required: true
         type: string  # JSON array of crate names
+      dry_run:
+        required: false
+        type: boolean
+        default: true  # Set to false to actually publish, true for PR validation
 
 jobs:
   publish:
@@ -53,11 +57,17 @@ jobs:
               continue
             fi
 
-            echo "Publishing $crate@$version..."
-            cargo workspaces publish -p "$crate" --no-verify
+            if [ "${{ inputs.dry_run }}" = "false" ]; then
+              echo "Publishing $crate@$version..."
+              cargo workspaces publish -p "$crate" --no-verify
 
-            echo "Creating GitHub release for $crate@$version..."
-            gh release create "$crate@$version" \
-              --title "$crate@$version" \
-              --notes "Published via CI"
+              echo "Creating GitHub release for $crate@$version..."
+              gh release create "$crate@$version" \
+                --title "$crate@$version" \
+                --notes "Published via CI"
+            else
+              echo "Publish dry-run for $crate@$version (not actually publishing)"
+              cargo workspaces publish -p "$crate" --no-verify --dry-run
+            fi
+
           done < crates.txt
