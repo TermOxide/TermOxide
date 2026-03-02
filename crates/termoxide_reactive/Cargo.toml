@@ -8,6 +8,7 @@ license = "BSD-2-Clause"
 [dependencies]
 # Fine-grained reactive graph (Leptos ecosystem)
 reactive_graph = { version = "0.2", features = ["effects"] }
+any_spawner = { version = "0.3", features = ["tokio"] }
 
 # Async runtime for Resource<T>
 tokio = { version = "1", features = [
@@ -15,4 +16,5 @@ tokio = { version = "1", features = [
     "rt-multi-thread",
     "sync",
     "macros",
+    "time",
 ] }
