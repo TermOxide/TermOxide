@@ -30,6 +30,7 @@ checksum = "1384d3fe1eecb464229fcf6eebb72306591c56bf27b373561489458a7c73027d"
 dependencies = [
  "futures",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
@@ -855,6 +856,7 @@ dependencies = [
 name = "termoxide_reactive"
 version = "0.1.0"
 dependencies = [
+ "any_spawner",
  "reactive_graph",
  "tokio",
 ]
