@@ -46,6 +46,9 @@ jobs:
       needs.build.result == 'success' &&
       needs.bump.result == 'success' &&
       github.event.pull_request.head.repo.fork == false
+    permissions:
+      contents: write
+      packages: write
     uses: ./.github/workflows/publish.yaml
     with:
       matrix: ${{ needs.matrix.outputs.matrix }}
