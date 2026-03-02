@@ -11,7 +11,7 @@ on:
 jobs:
   matrix:
     name: Detect changed crates & generate matrix
-    uses: ./.github/workflows/matrix.yml
+    uses: ./.github/workflows/matrix.yaml
     with:
       base_ref: ${{ github.event.inputs.base_ref }}
 
@@ -25,7 +25,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    uses: ./.github/workflows/bump.yml
+    uses: ./.github/workflows/bump.yaml
     with:
       matrix: ${{ needs.matrix.outputs.matrix }}
 
@@ -34,7 +34,7 @@ jobs:
     needs: [matrix, bump]
     # Waits for bump but runs even if it failed
     if: ${{ always() && needs.matrix.outputs.matrix != '[]' }}
-    uses: ./.github/workflows/build.yml
+    uses: ./.github/workflows/build.yaml
     with:
       matrix: ${{ needs.matrix.outputs.matrix }}
 
@@ -46,6 +46,6 @@ jobs:
       needs.build.result == 'success' &&
       needs.bump.result == 'success' &&
       github.event.pull_request.head.repo.fork == false
-    uses: ./.github/workflows/publish.yml
+    uses: ./.github/workflows/publish.yaml
     with:
       matrix: ${{ needs.matrix.outputs.matrix }}
