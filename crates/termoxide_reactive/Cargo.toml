@@ -1,0 +1,18 @@
+[package]
+name = "termoxide_reactive"
+version = "0.1.0"
+edition = "2024"
+description = "Reactive primitives for TermOxide — Couche 1 : Cœur réactif"
+license = "BSD-2-Clause"
+
+[dependencies]
+# Fine-grained reactive graph (Leptos ecosystem)
+reactive_graph = { version = "0.2", features = ["effects"] }
+
+# Async runtime for Resource<T>
+tokio = { version = "1", features = [
+    "rt",
+    "rt-multi-thread",
+    "sync",
+    "macros",
+] }
