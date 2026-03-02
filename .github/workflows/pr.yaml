@@ -1,0 +1,51 @@
+name: PR validation (workspace)
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: "Base branch/commit to compare changes against"
+        required: false
+
+jobs:
+  matrix:
+    name: Detect changed crates & generate matrix
+    uses: ./.github/workflows/matrix.yml
+    with:
+      base_ref: ${{ github.event.inputs.base_ref }}
+
+  bump:
+    name: Bump versions (label-driven)
+    needs: matrix
+    if: >
+      github.event_name == 'pull_request' &&
+      needs.matrix.outputs.matrix != '[]' &&
+      github.event.pull_request.head.repo.fork == false
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: ./.github/workflows/bump.yml
+    with:
+      matrix: ${{ needs.matrix.outputs.matrix }}
+
+  build:
+    name: Build & test changed + reverse dependant crates
+    needs: [matrix, bump]
+    # Waits for bump but runs even if it failed
+    if: ${{ always() && needs.matrix.outputs.matrix != '[]' }}
+    uses: ./.github/workflows/build.yml
+    with:
+      matrix: ${{ needs.matrix.outputs.matrix }}
+
+  # Future (kept for later, PR dry-run publish recommended for OSS)
+  publish:
+    name: Publish (PR validation / dry-run)
+    needs: [build, bump]
+    if: >
+      needs.build.result == 'success' &&
+      needs.bump.result == 'success' &&
+      github.event.pull_request.head.repo.fork == false
+    uses: ./.github/workflows/publish.yml
+    with:
+      matrix: ${{ needs.matrix.outputs.matrix }}

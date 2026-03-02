@@ -1,0 +1,47 @@
+name: Bump workspace crate versions
+
+on:
+  workflow_call:
+    inputs:
+      matrix:
+        required: true
+        type: string
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Bump versions (implement your logic here)
+        shell: bash
+        run: |
+          echo "Crates to bump: ${{ inputs.matrix }}"
+          # TODO: call your bump tool here
+          # Example:
+          # cargo run -p your-bump-crate -- ${{ inputs.matrix }}
+
+      - name: Commit version changes if any
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No version changes to commit"
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "chore: bump workspace crate versions [skip ci]"
+          git push

@@ -1,0 +1,33 @@
+name: Workspace Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  matrix:
+    name: Detect changed crates & generate matrix
+    uses: ./.github/workflows/matrix.yml
+    with:
+      # Compare against last main commit
+      base_ref: main
+
+  build:
+    name: Build & test changed + reverse dependants
+    needs: matrix
+    if: ${{ needs.matrix.outputs.matrix != '[]' }}
+    uses: ./.github/workflows/build.yml
+    with:
+      matrix: ${{ needs.matrix.outputs.matrix }}
+
+  publish:
+    name: Publish workspace crates
+    needs: build
+    if: ${{ needs.matrix.outputs.matrix != '[]' }}
+    uses: ./.github/workflows/publish.yml
+    with:
+      matrix: ${{ needs.matrix.outputs.matrix }}
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
