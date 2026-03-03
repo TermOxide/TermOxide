@@ -47,12 +47,14 @@ jobs:
           git config user.email "github-actions@github.com"
 
       - name: Bump versions
+        id: bump
         shell: bash
         env:
           PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
         run: |
           RELEASE_TYPE=""
           RELEASE_LABELS=("04.release: major" "04.release: minor" "04.release: patch")
+          BUMPED_CRATES=()
 
           if [[ -z "$PR_LABELS" ]]; then
             echo "No PR labels found, skipping version bump"
@@ -76,11 +78,18 @@ jobs:
 
           echo "Release type: $RELEASE_TYPE"
           echo "Crates to bump: ${{ inputs.crates }}"
+
           while IFS= read -r crate; do
             echo "::group::Bumping crate: $crate"
-            cargo run -p cargo-bump -- "$RELEASE_TYPE" "$crate"
+            cargo run -p cargo-bump -- "$crate" "$RELEASE_TYPE"
             echo "::endgroup::"
+            BUMPED_CRATES+=("$crate")
           done < <(echo '${{ inputs.crates }}' | jq -r '.[]')
+
+          # Save bumped crates as multi-line output
+          if [ ${#BUMPED_CRATES[@]} -gt 0 ]; then
+            printf "%s\n" "${BUMPED_CRATES[@]}" > bumped_crates.txt
+          fi
 
       - name: Commit version changes if any
         shell: bash
@@ -91,5 +100,23 @@ jobs:
           fi
 
           git add -A
-          git commit -m "chore: bump workspace crate versions [skip ci]"
+
+          if [[ -f bumped_crates.txt ]]; then
+            echo "Creating commit message with crate list"
+
+            {
+              echo "chore: bump workspace crate versions [skip ci]"
+              echo ""
+              echo "### Bumped crates"
+              echo ""
+              while IFS= read -r crate; do
+                echo "- \`$crate\`"
+              done < bumped_crates.txt
+            } > commit_message.txt
+
+            git commit -F commit_message.txt
+          else
+            git commit -m "chore: bump workspace crate versions [skip ci]"
+          fi
+
           git push
