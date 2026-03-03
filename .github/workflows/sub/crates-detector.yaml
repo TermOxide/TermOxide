@@ -1,0 +1,75 @@
+name: Detect edited crates
+
+on:
+  workflow_call:
+    inputs:
+      base_ref:
+        description: "Base branch to compare against"
+        required: true
+        type: string
+    outputs:
+      crates:
+        description: "JSON array of edited crates"
+        value: ${{ jobs.run.outputs.crates }}
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: "Base branch to compare against"
+        required: true
+        type: string
+
+jobs:
+  setup-detector:
+    name: Setup Rust & Cache
+    runs-on: ubuntu-latest
+    outputs:
+      cache-hit: ${{ steps.rust-cache.outputs.cache-hit }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Rust & push cache
+        id: rust-cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: push
+          packages: '["cargo-workspaces"]'
+          crates: '["cargo-extract"]'
+
+  run-detector:
+    name: Detect Changed Crates
+    runs-on: ubuntu-latest
+    needs: setup-detector
+    outputs:
+      crates: ${{ steps.generate.outputs.crates }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Restore Rust cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: pull
+          packages: '["cargo-workspaces"]'
+          crates: '["cargo-extract"]'
+
+      - name: Fetch base branch
+        run: |
+          echo "Fetching base branch '${{ inputs.base_ref }}'"
+          git remote set-url origin https://github.com/${{ github.repository }}
+          git fetch origin "${{ inputs.base_ref }}" --depth=1 --no-tags --prune
+
+      - name: Run changed-crates detector
+        id: detect
+        run: |
+          changed=$(cargo run --release -p cargo-extract -- "${{ inputs.base_ref }}")
+          echo "raw_list=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Generate JSON crates output
+        id: generate
+        run: |
+          raw_list="${{ steps.detect.outputs.raw_list }}"
+          if [ -z "$raw_list" ]; then
+            echo "crates=[]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          crates=$(jq -c -Rn --arg csv "$raw_list" '$csv | split(" ")')
+          echo "crates=$crates" >> "$GITHUB_OUTPUT"
