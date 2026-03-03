@@ -1,0 +1,95 @@
+name: Bump workspace crate versions
+
+on:
+  workflow_call:
+    inputs:
+      crates:
+        required: true
+        default: "[]"
+        type: string
+        description: "JSON array of crate names to bump versions for (e.g. [\"crate1\", \"crate2\"])"
+
+jobs:
+  setup-bumper:
+    name: Setup Rust & Cache
+    runs-on: ubuntu-latest
+    outputs:
+      cache-hit: ${{ steps.rust-cache.outputs.cache-hit }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Rust & push cache
+        id: rust-cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: push
+          crates: '["cargo-bump"]'
+
+  run-bumper:
+    name: Bump versions
+    runs-on: ubuntu-latest
+    needs: setup-bumper
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Restore Rust cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: pull
+          crates: '["cargo-bump"]'
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Bump versions
+        shell: bash
+        env:
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          RELEASE_TYPE=""
+          RELEASE_LABELS=("04.release: major" "04.release: minor" "04.release: patch")
+
+          if [[ -z "$PR_LABELS" ]]; then
+            echo "No PR labels found, skipping version bump"
+            exit 0
+          fi
+
+          while IFS= read -r label; do
+            echo "Found label: $label"
+            for release_label in "${RELEASE_LABELS[@]}"; do
+              if [[ "$label" == "$release_label" ]]; then
+                RELEASE_TYPE="${release_label#*: }"
+                break 2
+              fi
+            done
+          done < <(echo "$PR_LABELS" | jq -r '.[]')
+
+          if [[ -z "$RELEASE_TYPE" ]]; then
+            echo "No release label found, skipping version bump"
+            exit 0
+          fi
+
+          echo "Release type: $RELEASE_TYPE"
+          echo "Crates to bump: ${{ inputs.crates }}"
+          while IFS= read -r crate; do
+            echo "::group::Bumping crate: $crate"
+            cargo run -p cargo-bump -- "$RELEASE_TYPE" "$crate"
+            echo "::endgroup::"
+          done < <(echo '${{ inputs.crates }}' | jq -r '.[]')
+
+      - name: Commit version changes if any
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No version changes to commit"
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "chore: bump workspace crate versions [skip ci]"
+          git push
