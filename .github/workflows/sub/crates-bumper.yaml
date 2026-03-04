@@ -57,7 +57,6 @@ jobs:
         shell: bash
         run: |
           RELEASE_TYPE=""
-          RELEASE_LABELS=("04.release: major" "04.release: minor" "04.release: patch")
           BUMPED_CRATES=()
 
           if [[ -z "${{ inputs.tags }}" ]]; then
@@ -67,12 +66,10 @@ jobs:
 
           while IFS= read -r label; do
             echo "Found label: $label"
-            for release_label in "${RELEASE_LABELS[@]}"; do
-              if [[ "$label" == "$release_label" ]]; then
-                RELEASE_TYPE="${release_label#*: }"
-                break 2
-              fi
-            done
+            if [[ "$label" =~ ^\d+\.release:\ (major|minor|patch)$ ]]; then
+              RELEASE_TYPE="${BASH_REMATCH[1]}"
+              break
+            fi
           done < <(echo "${{ inputs.tags }}" | jq -r '.[]')
 
           if [[ -z "$RELEASE_TYPE" ]]; then
@@ -98,12 +95,16 @@ jobs:
       - name: Commit version changes if any
         shell: bash
         run: |
-          if git diff --quiet; then
+          CHANGED_FILES=$(git diff --name-only)
+
+          if [[ -z "$CHANGED_FILES" ]]; then
             echo "No version changes to commit"
             exit 0
           fi
 
-          git add -A
+          while IFS= read -r file; do
+            git add "$file"
+          done <<< "$CHANGED_FILES"
 
           if [[ -f bumped_crates.txt ]]; then
             echo "Creating commit message with crate list"
