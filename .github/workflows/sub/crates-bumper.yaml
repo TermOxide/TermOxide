@@ -9,6 +9,12 @@ on:
         type: string
         description: "JSON array of crate names to bump versions for (e.g. [\"crate1\", \"crate2\"])"
 
+      tags:
+        required: true
+        default: "[]"
+        type: string
+        description: "JSON array of tags to add to the PR (e.g. [\"tag1\", \"tag2\"])"
+
 jobs:
   setup-bumper:
     name: Setup Rust & Cache
@@ -49,14 +55,12 @@ jobs:
       - name: Bump versions
         id: bump
         shell: bash
-        env:
-          PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
         run: |
           RELEASE_TYPE=""
           RELEASE_LABELS=("04.release: major" "04.release: minor" "04.release: patch")
           BUMPED_CRATES=()
 
-          if [[ -z "$PR_LABELS" ]]; then
+          if [[ -z "${{ inputs.tags }}" ]]; then
             echo "No PR labels found, skipping version bump"
             exit 0
           fi
@@ -69,7 +73,7 @@ jobs:
                 break 2
               fi
             done
-          done < <(echo "$PR_LABELS" | jq -r '.[]')
+          done < <(echo "${{ inputs.tags }}" | jq -r '.[]')
 
           if [[ -z "$RELEASE_TYPE" ]]; then
             echo "No release label found, skipping version bump"
