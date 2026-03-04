@@ -5,6 +5,7 @@ members = [
     "crates/oxidui_style",
     "crates/termoxide_macros",
     "crates/termoxide_reactive",
+    "crates/termoxide_layout",
     "crates/cargo-extract",
 ]
 
