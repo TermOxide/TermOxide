@@ -1,0 +1,8 @@
+[package]
+name = "termoxide_layout"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+taffy = "0.9.2"
+oxidui_style = { path = "../oxidui_style" }
