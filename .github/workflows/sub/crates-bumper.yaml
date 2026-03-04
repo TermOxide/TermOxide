@@ -55,11 +55,14 @@ jobs:
       - name: Bump versions
         id: bump
         shell: bash
+        env:
+          INPUT_TAGS: ${{ inputs.tags }}
+          INPUT_CRATES: ${{ inputs.crates }}
         run: |
           RELEASE_TYPE=""
           BUMPED_CRATES=()
 
-          if [[ -z "${{ inputs.tags }}" ]]; then
+          if [[ -z "$INPUT_TAGS" ]]; then
             echo "No PR labels found, skipping version bump"
             exit 0
           fi
@@ -70,7 +73,7 @@ jobs:
               RELEASE_TYPE="${BASH_REMATCH[1]}"
               break
             fi
-          done < <(echo "${{ inputs.tags }}" | jq -r '.[]')
+          done < <(echo "$INPUT_TAGS" | jq -r '.[]')
 
           if [[ -z "$RELEASE_TYPE" ]]; then
             echo "No release label found, skipping version bump"
@@ -78,14 +81,14 @@ jobs:
           fi
 
           echo "Release type: $RELEASE_TYPE"
-          echo "Crates to bump: ${{ inputs.crates }}"
+          echo "Crates to bump: $INPUT_CRATES"
 
           while IFS= read -r crate; do
             echo "::group::Bumping crate: $crate"
             cargo run -p cargo-bump -- "$crate" "$RELEASE_TYPE"
             echo "::endgroup::"
             BUMPED_CRATES+=("$crate")
-          done < <(echo '${{ inputs.crates }}' | jq -r '.[]')
+          done < <(echo "$INPUT_CRATES" | jq -r '.[]')
 
           # Save bumped crates as multi-line output
           if [ ${#BUMPED_CRATES[@]} -gt 0 ]; then
