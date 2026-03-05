@@ -11,6 +11,11 @@ on:
         required: true
         type: string
         description: "JSON array of cargo actions to run for the crate (e.g. [\"test\", \"build --release\"])"
+      ref:
+        required: false
+        type: string
+        default: ""
+        description: "Git ref to checkout (defaults to GitHub's default behavior if empty)"
 
 jobs:
   run-action:
@@ -21,7 +26,9 @@ jobs:
       matrix:
         action: ${{ fromJson(inputs.actions) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || '' }}
 
       - name: Restore Rust cache
         uses: ./.github/actions/rust-cache

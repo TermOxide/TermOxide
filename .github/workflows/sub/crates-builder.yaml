@@ -13,6 +13,11 @@ on:
         default: "[]"
         type: string
         description: "JSON array of cargo actions to run for each crate (e.g. [\"test\", \"build --release\"])"
+      ref:
+        required: false
+        type: string
+        default: ""
+        description: "Git ref to checkout (defaults to GitHub's default behavior if empty)"
 
 jobs:
   setup-builder:
@@ -22,6 +27,8 @@ jobs:
       cache-hit: ${{ steps.rust-cache.outputs.cache-hit }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || ''}}
 
       - name: Setup Rust & push cache
         id: rust-cache
@@ -40,3 +47,4 @@ jobs:
     with:
       crate: ${{ matrix.crate }}
       actions: ${{ inputs.actions }}
+      ref: ${{ inputs.ref }}
