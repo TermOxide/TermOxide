@@ -46,9 +46,9 @@ jobs:
           INPUT_TAGS: ${{ inputs.tags }}
         run: |
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            echo "tags=$PR_LABELS" >> "$GITHUB_OUTPUT"
+            echo "tags=$(echo "$PR_LABELS" | jq -c '.')" >> "$GITHUB_OUTPUT"
           else
-            echo "tags=${INPUT_TAGS:-[]}" >> "$GITHUB_OUTPUT"
+            echo "tags=$(echo "${INPUT_TAGS:-[]}" | jq -c '.')" >> "$GITHUB_OUTPUT"
           fi
 
       # For pull_request: use the head branch so we pick up bump commits.
