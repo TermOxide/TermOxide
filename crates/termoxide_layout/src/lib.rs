@@ -31,5 +31,5 @@ pub mod stylesheet;
 pub mod style_macro;
 
 pub use coord_mapper::{CoordMapper, MappedRect};
-pub use layout_engine::{LayoutEngine, LayoutError};
+pub use layout_engine::{LayoutEngine, LayoutError, LayoutNode, UiLayoutNode, UiStyleSource};
 pub use stylesheet::StyleSheet;

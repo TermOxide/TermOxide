@@ -6,6 +6,7 @@ use oxidui_style::Style;
 ///
 /// `StyleSheet` stores named `Style` entries so components can share
 /// and reuse style declarations by name (themes, component presets, …).
+#[derive(Debug, Clone)]
 pub struct StyleSheet {
     map: HashMap<String, Style>,
 }

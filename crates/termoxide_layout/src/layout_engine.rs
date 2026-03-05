@@ -7,10 +7,15 @@
 //!    [`taffy::Style`] values or from [`oxidui_style::Style`] values via
 //!    the built-in conversion helper.
 //!
-//! 2. **Resolve** the Flexbox layout for a given viewport size by calling
+//! 2. **Build recursively** using the [`LayoutNode`] or [`UiLayoutNode`]
+//!    enums, which describe an arbitrarily deep tree in a single value.
+//!    A container's `children` field is itself a `Vec<LayoutNode>`, so
+//!    sub-trees can be composed before being handed to the engine.
+//!
+//! 3. **Resolve** the Flexbox layout for a given viewport size by calling
 //!    [`LayoutEngine::compute`].
 //!
-//! 3. **Read back** the computed position and size of every node via
+//! 4. **Read back** the computed position and size of every node via
 //!    [`LayoutEngine::layout_of`], which returns a copy of
 //!    [`taffy::tree::Layout`] containing `f32` coordinates relative to each
 //!    node's parent.
@@ -50,6 +55,7 @@
 //! }
 //! ```
 
+use crate::stylesheet::StyleSheet;
 use oxidui_style::{
     Style,
     layout::{Align, Display as UiDisplay, FlexDirection as UiFlexDirection, Justify},
@@ -74,6 +80,168 @@ use taffy::{
 /// This is a re-export of [`taffy::TaffyError`] so callers do not need to add
 /// `taffy` as a direct dependency just to name the error type.
 pub type LayoutError = TaffyError;
+
+// ─────────────────────────────────────────────────────────────────────────── //
+//  Recursive node descriptions
+// ─────────────────────────────────────────────────────────────────────────── //
+
+/// A recursive description of a layout tree using raw `taffy::Style` values.
+///
+/// A `LayoutNode` is either a [`Leaf`][Self::Leaf] (no children) or a
+/// [`Container`][Self::Container] whose `children` field is itself a
+/// `Vec<LayoutNode>`.  This allows arbitrarily deep sub-trees to be
+/// expressed as a single value and passed to
+/// [`LayoutEngine::build_tree`].
+///
+/// # Example
+///
+/// ```no_run
+/// use termoxide_layout::layout_engine::{LayoutEngine, LayoutNode};
+/// use taffy::{Display, FlexDirection, geometry::Size, style::Dimension};
+///
+/// let tree = LayoutNode::Container {
+///     style: taffy::Style {
+///         display: Display::Flex,
+///         flex_direction: FlexDirection::Column,
+///         ..taffy::Style::DEFAULT
+///     },
+///     children: vec![
+///         LayoutNode::Leaf(taffy::Style {
+///             size: Size {
+///                 width:  Dimension::length(80.0),
+///                 height: Dimension::length(3.0),
+///             },
+///             ..taffy::Style::DEFAULT
+///         }),
+///         // Nested sub-tree:
+///         LayoutNode::Container {
+///             style: taffy::Style { display: Display::Flex, ..taffy::Style::DEFAULT },
+///             children: vec![
+///                 LayoutNode::Leaf(taffy::Style::DEFAULT),
+///                 LayoutNode::Leaf(taffy::Style::DEFAULT),
+///             ],
+///         },
+///     ],
+/// };
+///
+/// let mut engine = LayoutEngine::new();
+/// let root = engine.build_tree(tree).unwrap();
+/// engine.compute(root, 80.0, 24.0).unwrap();
+/// ```
+#[derive(Debug, Clone)]
+pub enum LayoutNode {
+    /// A leaf node with no children.
+    Leaf(taffy::Style),
+    /// A container node whose children are themselves [`LayoutNode`]s.
+    Container {
+        /// Style applied to this container.
+        style: taffy::Style,
+        /// Recursive children; may include further nested containers.
+        children: Vec<LayoutNode>,
+    },
+}
+
+/// How a [`UiLayoutNode`] obtains its [`oxidui_style::Style`].
+///
+/// Either supply a style value directly ([`Inline`][Self::Inline]) or name a
+/// style that is looked up inside an owned [`StyleSheet`]
+/// ([`Named`][Self::Named]).
+///
+/// # Convenience
+///
+/// `From<Style>` is implemented for `UiStyleSource`, so you can write
+/// `my_style.into()` or simply pass a `Style` where a `UiStyleSource` is
+/// expected.
+///
+/// ```no_run
+/// use termoxide_layout::layout_engine::{UiStyleSource};
+/// use termoxide_layout::stylesheet::StyleSheet;
+/// use oxidui_style::{Style, unit::Unit};
+///
+/// // Inline:
+/// let src1 = UiStyleSource::Inline(Style::new().with_width(Unit::cells(40)));
+/// // or via From<Style>:
+/// let src2: UiStyleSource = Style::new().with_width(Unit::cells(40)).into();
+///
+/// // Named (looks up "header" in the sheet at build time):
+/// let mut sheet = StyleSheet::new();
+/// sheet.register("header", Style::new().with_height(Unit::cells(3)));
+/// let src3 = UiStyleSource::Named { sheet, name: "header".into() };
+/// ```
+#[derive(Debug, Clone)]
+pub enum UiStyleSource {
+    /// Use this style directly.
+    Inline(Style),
+    /// Look up `name` in `sheet`; falls back to [`Style::default`] when not
+    /// found.
+    Named {
+        /// The stylesheet to query.
+        sheet: StyleSheet,
+        /// Name of the style entry.
+        name: String,
+    },
+}
+
+impl From<Style> for UiStyleSource {
+    fn from(s: Style) -> Self {
+        Self::Inline(s)
+    }
+}
+
+/// Resolve a [`UiStyleSource`] into a concrete [`Style`].
+fn resolve_ui_style(source: UiStyleSource) -> Style {
+    match source {
+        UiStyleSource::Inline(s) => s,
+        UiStyleSource::Named { sheet, name } => sheet.get(&name).cloned().unwrap_or_default(),
+    }
+}
+
+/// A recursive description of a layout tree using [`oxidui_style::Style`] values.
+///
+/// This is the [`oxidui_style::Style`]-based counterpart of [`LayoutNode`].
+/// Styles are converted via [`LayoutEngine::from_ui_style`] when the tree is
+/// built by [`LayoutEngine::build_ui_tree`].
+///
+/// Each variant accepts a [`UiStyleSource`], so the style can be either an
+/// inline value or a named lookup from a [`StyleSheet`].
+///
+/// # Example
+///
+/// ```no_run
+/// use termoxide_layout::layout_engine::{LayoutEngine, UiLayoutNode, UiStyleSource};
+/// use termoxide_layout::stylesheet::StyleSheet;
+/// use oxidui_style::{Style, layout::Display as UiDisplay, unit::Unit};
+///
+/// // Build a stylesheet and register a named style.
+/// let mut sheet = StyleSheet::new();
+/// sheet.register("sidebar", Style::new().with_width(Unit::cells(20)).with_height(Unit::cells(21)));
+///
+/// let tree = UiLayoutNode::Container {
+///     style: Style::new().with_display(UiDisplay::Flex).into(),
+///     children: vec![
+///         // Inline style:
+///         UiLayoutNode::Leaf(Style::new().with_width(Unit::cells(40)).into()),
+///         // Named style from a stylesheet:
+///         UiLayoutNode::Leaf(UiStyleSource::Named { sheet, name: "sidebar".into() }),
+///     ],
+/// };
+///
+/// let mut engine = LayoutEngine::new();
+/// let root = engine.build_ui_tree(tree).unwrap();
+/// engine.compute(root, 80.0, 24.0).unwrap();
+/// ```
+#[derive(Debug, Clone)]
+pub enum UiLayoutNode {
+    /// A leaf node with no children.
+    Leaf(UiStyleSource),
+    /// A container node whose children are themselves [`UiLayoutNode`]s.
+    Container {
+        /// Style source for this container.
+        style: UiStyleSource,
+        /// Recursive children; may include further nested containers.
+        children: Vec<UiLayoutNode>,
+    },
+}
 
 // ─────────────────────────────────────────────────────────────────────────── //
 //  LayoutEngine
@@ -187,6 +355,57 @@ impl LayoutEngine {
     ) -> Result<NodeId, LayoutError> {
         self.tree
             .new_with_children(Self::from_ui_style(style), children)
+    }
+
+    /// Build a subtree from a recursive [`LayoutNode`] description and return
+    /// the root [`NodeId`].
+    ///
+    /// Nodes are inserted depth-first (children before their parent) so taffy
+    /// can validate every child id at container creation time.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LayoutError`] if any node insertion fails.
+    pub fn build_tree(&mut self, node: LayoutNode) -> Result<NodeId, LayoutError> {
+        match node {
+            LayoutNode::Leaf(style) => self.new_leaf(style),
+            LayoutNode::Container { style, children } => {
+                let child_ids: Result<Vec<NodeId>, LayoutError> = children
+                    .into_iter()
+                    .map(|child| self.build_tree(child))
+                    .collect();
+                self.new_container(style, &child_ids?)
+            }
+        }
+    }
+
+    /// Build a subtree from a recursive [`UiLayoutNode`] description and
+    /// return the root [`NodeId`].
+    ///
+    /// This is the [`oxidui_style::Style`]-based counterpart of
+    /// [`build_tree`][Self::build_tree].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LayoutError`] if any node insertion fails.
+    pub fn build_ui_tree(&mut self, node: UiLayoutNode) -> Result<NodeId, LayoutError> {
+        match node {
+            UiLayoutNode::Leaf(source) => {
+                let style = resolve_ui_style(source);
+                self.insert_ui_leaf(&style)
+            }
+            UiLayoutNode::Container {
+                style: source,
+                children,
+            } => {
+                let style = resolve_ui_style(source);
+                let child_ids: Result<Vec<NodeId>, LayoutError> = children
+                    .into_iter()
+                    .map(|child| self.build_ui_tree(child))
+                    .collect();
+                self.insert_ui_container(&style, &child_ids?)
+            }
+        }
     }
 
     // ─────────────────────────────────────────────────────── //
@@ -553,6 +772,200 @@ mod tests {
         unit::Unit,
     };
     use taffy::Display;
+
+    /// Build a tree using [`LayoutNode`] with a nested sub-tree and verify
+    /// that every node reports the expected computed size.
+    ///
+    /// Layout:
+    /// ```text
+    /// root (flex-column, 80×24)
+    /// ├── header  (leaf, 80×3)
+    /// └── inner   (flex-row, 80×21)
+    ///     ├── sidebar  (leaf, 20×21)
+    ///     └── content  (leaf, 60×21)
+    /// ```
+    #[test]
+    fn recursive_build_tree() {
+        let tree = LayoutNode::Container {
+            style: taffy::Style {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
+                size: Size {
+                    width: Dimension::length(80.0),
+                    height: Dimension::length(24.0),
+                },
+                ..taffy::Style::DEFAULT
+            },
+            children: vec![
+                // header leaf
+                LayoutNode::Leaf(taffy::Style {
+                    size: Size {
+                        width: Dimension::length(80.0),
+                        height: Dimension::length(3.0),
+                    },
+                    ..taffy::Style::DEFAULT
+                }),
+                // nested inner sub-tree
+                LayoutNode::Container {
+                    style: taffy::Style {
+                        display: Display::Flex,
+                        flex_direction: FlexDirection::Row,
+                        size: Size {
+                            width: Dimension::length(80.0),
+                            height: Dimension::length(21.0),
+                        },
+                        ..taffy::Style::DEFAULT
+                    },
+                    children: vec![
+                        LayoutNode::Leaf(taffy::Style {
+                            size: Size {
+                                width: Dimension::length(20.0),
+                                height: Dimension::length(21.0),
+                            },
+                            ..taffy::Style::DEFAULT
+                        }),
+                        LayoutNode::Leaf(taffy::Style {
+                            size: Size {
+                                width: Dimension::length(60.0),
+                                height: Dimension::length(21.0),
+                            },
+                            ..taffy::Style::DEFAULT
+                        }),
+                    ],
+                },
+            ],
+        };
+
+        let mut engine = LayoutEngine::new();
+        let root = engine.build_tree(tree).unwrap();
+        engine.compute(root, 80.0, 24.0).unwrap();
+
+        let root_layout = engine.layout_of(root).expect("root layout");
+        assert_eq!(root_layout.size.width, 80.0);
+        assert_eq!(root_layout.size.height, 24.0);
+    }
+
+    /// Build a tree using [`UiLayoutNode`] with inline [`UiStyleSource`]s
+    /// and a nested sub-tree.
+    #[test]
+    fn recursive_build_ui_tree() {
+        let sidebar = UiLayoutNode::Leaf(
+            Style::new()
+                .with_width(Unit::cells(20))
+                .with_height(Unit::cells(21))
+                .into(),
+        );
+        let content = UiLayoutNode::Leaf(
+            Style::new()
+                .with_width(Unit::cells(60))
+                .with_height(Unit::cells(21))
+                .into(),
+        );
+
+        // Compose a sub-tree separately and embed it inside the root.
+        let inner = UiLayoutNode::Container {
+            style: Style::new()
+                .with_display(UiDisplay::Flex)
+                .with_flex_direction(UiFlexDirection::Row)
+                .with_width(Unit::cells(80))
+                .with_height(Unit::cells(21))
+                .into(),
+            children: vec![sidebar, content],
+        };
+
+        let root_tree = UiLayoutNode::Container {
+            style: Style::new()
+                .with_display(UiDisplay::Flex)
+                .with_flex_direction(UiFlexDirection::Column)
+                .with_width(Unit::cells(80))
+                .with_height(Unit::cells(24))
+                .into(),
+            children: vec![
+                UiLayoutNode::Leaf(
+                    Style::new()
+                        .with_width(Unit::cells(80))
+                        .with_height(Unit::cells(3))
+                        .into(),
+                ),
+                inner,
+            ],
+        };
+
+        let mut engine = LayoutEngine::new();
+        let root = engine.build_ui_tree(root_tree).unwrap();
+        engine.compute(root, 80.0, 24.0).unwrap();
+
+        let root_layout = engine.layout_of(root).expect("root layout");
+        assert_eq!(root_layout.size.width, 80.0);
+        assert_eq!(root_layout.size.height, 24.0);
+    }
+
+    /// Build a tree where node styles are looked up from a [`StyleSheet`]
+    /// via [`UiStyleSource::Named`].
+    #[test]
+    fn build_ui_tree_with_stylesheet() {
+        use crate::stylesheet::StyleSheet;
+
+        let mut sheet = StyleSheet::new();
+        sheet.register(
+            "header",
+            Style::new()
+                .with_width(Unit::cells(80))
+                .with_height(Unit::cells(3)),
+        );
+        sheet.register(
+            "body",
+            Style::new()
+                .with_display(UiDisplay::Flex)
+                .with_flex_direction(UiFlexDirection::Row)
+                .with_width(Unit::cells(80))
+                .with_height(Unit::cells(21)),
+        );
+
+        let tree = UiLayoutNode::Container {
+            style: Style::new()
+                .with_display(UiDisplay::Flex)
+                .with_flex_direction(UiFlexDirection::Column)
+                .with_width(Unit::cells(80))
+                .with_height(Unit::cells(24))
+                .into(),
+            children: vec![
+                // Named lookup: style comes from the stylesheet.
+                UiLayoutNode::Leaf(UiStyleSource::Named {
+                    sheet: sheet.clone(),
+                    name: "header".into(),
+                }),
+                UiLayoutNode::Container {
+                    style: UiStyleSource::Named {
+                        sheet,
+                        name: "body".into(),
+                    },
+                    children: vec![
+                        UiLayoutNode::Leaf(
+                            Style::new()
+                                .with_width(Unit::cells(20))
+                                .with_height(Unit::cells(21))
+                                .into(),
+                        ),
+                        UiLayoutNode::Leaf(
+                            Style::new()
+                                .with_width(Unit::cells(60))
+                                .with_height(Unit::cells(21))
+                                .into(),
+                        ),
+                    ],
+                },
+            ],
+        };
+
+        let mut engine = LayoutEngine::new();
+        let root = engine.build_ui_tree(tree).unwrap();
+        engine.compute(root, 80.0, 24.0).unwrap();
+
+        let root_layout = engine.layout_of(root).expect("root layout");
+        assert_eq!(root_layout.size.width, 80.0);
+        assert_eq!(root_layout.size.height, 24.0);
+    }
 
     /// Build a simple two-child flex column, resolve the layout and verify
     /// that each child occupies exactly its declared size.
