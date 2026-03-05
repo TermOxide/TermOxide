@@ -69,7 +69,7 @@ jobs:
   detect:
     name: Detect changed crates
     needs: resolve-inputs
-    uses: ./.github/workflows/sub/crates-detector.yaml
+    uses: ./.github/workflows/crates-detector.yaml
     with:
       base_ref: ${{ needs.resolve-inputs.outputs.base_ref }}
 
@@ -77,7 +77,7 @@ jobs:
     name: Bump versions
     needs: [resolve-inputs, detect]
     if: needs.detect.outputs.crates != '[]'
-    uses: ./.github/workflows/sub/crates-bumper.yaml
+    uses: ./.github/workflows/crates-bumper.yaml
     with:
       crates: ${{ needs.detect.outputs.crates }}
       tags: ${{ needs.resolve-inputs.outputs.tags }}
@@ -89,7 +89,7 @@ jobs:
       always() &&
       needs.detect.result == 'success' &&
       (needs.bump.result == 'success' || needs.bump.result == 'skipped')
-    uses: ./.github/workflows/sub/crates-builder.yaml
+    uses: ./.github/workflows/crates-builder.yaml
     with:
       crates: ${{ needs.detect.outputs.crates }}
       actions: '["test", "clippy", "build --release"]'

@@ -43,7 +43,7 @@ jobs:
       fail-fast: false
       matrix:
         crate: ${{ fromJson(inputs.crates) }}
-    uses: ./.github/workflows/sub/crates-builder-internal.yaml
+    uses: ./.github/workflows/crates-builder-internal.yaml
     with:
       crate: ${{ matrix.crate }}
       actions: ${{ inputs.actions }}
