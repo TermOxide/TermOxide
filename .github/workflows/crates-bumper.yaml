@@ -1,0 +1,130 @@
+name: Bump workspace crate versions
+
+on:
+  workflow_call:
+    inputs:
+      crates:
+        required: true
+        default: "[]"
+        type: string
+        description: "JSON array of crate names to bump versions for (e.g. [\"crate1\", \"crate2\"])"
+
+      tags:
+        required: true
+        default: "[]"
+        type: string
+        description: "JSON array of tags to add to the PR (e.g. [\"tag1\", \"tag2\"])"
+
+jobs:
+  setup-bumper:
+    name: Setup Rust & Cache
+    runs-on: ubuntu-latest
+    outputs:
+      cache-hit: ${{ steps.rust-cache.outputs.cache-hit }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Rust & push cache
+        id: rust-cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: push
+          crates: '["cargo-bump"]'
+
+  run-bumper:
+    name: Bump versions
+    runs-on: ubuntu-latest
+    needs: setup-bumper
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Restore Rust cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: pull
+          crates: '["cargo-bump"]'
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Bump versions
+        id: bump
+        shell: bash
+        env:
+          INPUT_TAGS: ${{ inputs.tags }}
+          INPUT_CRATES: ${{ inputs.crates }}
+        run: |
+          RELEASE_TYPE=""
+          BUMPED_CRATES=()
+
+          if [[ -z "$INPUT_TAGS" ]]; then
+            echo "No PR labels found, skipping version bump"
+            exit 0
+          fi
+
+          while IFS= read -r label; do
+            echo "Found label: $label"
+            if [[ "$label" =~ ^\d+\.release:\ (major|minor|patch)$ ]]; then
+              RELEASE_TYPE="${BASH_REMATCH[1]}"
+              break
+            fi
+          done < <(echo "$INPUT_TAGS" | jq -r '.[]')
+
+          if [[ -z "$RELEASE_TYPE" ]]; then
+            echo "No release label found, skipping version bump"
+            exit 0
+          fi
+
+          echo "Release type: $RELEASE_TYPE"
+          echo "Crates to bump: $INPUT_CRATES"
+
+          while IFS= read -r crate; do
+            echo "::group::Bumping crate: $crate"
+            cargo run -p cargo-bump -- "$crate" "$RELEASE_TYPE"
+            echo "::endgroup::"
+            BUMPED_CRATES+=("$crate")
+          done < <(echo "$INPUT_CRATES" | jq -r '.[]')
+
+          # Save bumped crates as multi-line output
+          if [ ${#BUMPED_CRATES[@]} -gt 0 ]; then
+            printf "%s\n" "${BUMPED_CRATES[@]}" > bumped_crates.txt
+          fi
+
+      - name: Commit version changes if any
+        shell: bash
+        run: |
+          CHANGED_FILES=$(git diff --name-only)
+
+          if [[ -z "$CHANGED_FILES" ]]; then
+            echo "No version changes to commit"
+            exit 0
+          fi
+
+          while IFS= read -r file; do
+            git add "$file"
+          done <<< "$CHANGED_FILES"
+
+          if [[ -f bumped_crates.txt ]]; then
+            echo "Creating commit message with crate list"
+
+            {
+              echo "chore: bump workspace crate versions [skip ci]"
+              echo ""
+              echo "### Bumped crates"
+              echo ""
+              while IFS= read -r crate; do
+                echo "- \`$crate\`"
+              done < bumped_crates.txt
+            } > commit_message.txt
+
+            git commit -F commit_message.txt
+          else
+            git commit -m "chore: bump workspace crate versions [skip ci]"
+          fi
+
+          git push

@@ -1,0 +1,108 @@
+name: pr validator
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: "Base branch/commit to compare changes against"
+        required: false
+      tags:
+        description: 'JSON array of tags (e.g. ["03.release: patch"])'
+        required: false
+        default: "[]"
+
+jobs:
+  resolve-inputs:
+    name: Resolve inputs
+    runs-on: ubuntu-latest
+    outputs:
+      base_ref: ${{ steps.base-ref.outputs.base_ref }}
+      tags: ${{ steps.tags.outputs.tags }}
+      ref: ${{ steps.ref.outputs.ref }}
+    steps:
+      - name: Determine base ref
+        id: base-ref
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          INPUT_BASE_REF: ${{ inputs.base_ref }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "base_ref=$PR_BASE_REF" >> "$GITHUB_OUTPUT"
+          elif [[ -n "$INPUT_BASE_REF" ]]; then
+            echo "base_ref=$INPUT_BASE_REF" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::base_ref input is required for workflow_dispatch"
+            exit 1
+          fi
+
+      - name: Determine tags
+        id: tags
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          INPUT_TAGS: ${{ inputs.tags }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "tags=$(echo "$PR_LABELS" | jq -c '.')" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=$(echo "${INPUT_TAGS:-[]}" | jq -c '.')" >> "$GITHUB_OUTPUT"
+          fi
+
+      # For pull_request: use the head branch so we pick up bump commits.
+      # For workflow_dispatch: use the ref that triggered the dispatch.
+      - name: Determine checkout ref
+        id: ref
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "ref=$PR_HEAD_REF" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=$DISPATCH_REF" >> "$GITHUB_OUTPUT"
+          fi
+
+  detect:
+    name: Detect changed crates
+    needs: resolve-inputs
+    uses: ./.github/workflows/crates-detector.yaml
+    with:
+      base_ref: ${{ needs.resolve-inputs.outputs.base_ref }}
+
+  log:
+    name: Log detected crates
+    needs: detect
+    if: needs.detect.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log detected crates
+        env:
+          CRATES: ${{ needs.detect.outputs.crates }}
+        run: |
+          echo "::notice::Detected crates: $CRATES"
+
+  bump:
+    name: Bump versions
+    needs: [resolve-inputs, detect]
+    if: needs.detect.outputs.crates != '[]'
+    uses: ./.github/workflows/crates-bumper.yaml
+    with:
+      crates: ${{ needs.detect.outputs.crates }}
+      tags: ${{ needs.resolve-inputs.outputs.tags }}
+
+  build:
+    name: Build crates
+    needs: [resolve-inputs, detect, bump]
+    if: |
+      always() &&
+      needs.detect.result == 'success' &&
+      (needs.bump.result == 'success' || needs.bump.result == 'skipped')
+    uses: ./.github/workflows/crates-builder.yaml
+    with:
+      crates: ${{ needs.detect.outputs.crates }}
+      actions: '["test", "clippy", "build --release"]'
+      ref: ${{ needs.resolve-inputs.outputs.ref }}

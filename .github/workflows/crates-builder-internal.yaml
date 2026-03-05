@@ -1,0 +1,39 @@
+name: Build crate actions
+
+on:
+  workflow_call:
+    inputs:
+      crate:
+        required: true
+        type: string
+        description: "Name of the crate to build (e.g. 'my-crate')"
+      actions:
+        required: true
+        type: string
+        description: "JSON array of cargo actions to run for the crate (e.g. [\"test\", \"build --release\"])"
+      ref:
+        required: false
+        type: string
+        default: ""
+        description: "Git ref to checkout (defaults to GitHub's default behavior if empty)"
+
+jobs:
+  run-action:
+    name: "cargo ${{ matrix.action }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        action: ${{ fromJson(inputs.actions) }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || '' }}
+
+      - name: Restore Rust cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: pull
+
+      - name: Run cargo ${{ matrix.action }}
+        run: cargo ${{ matrix.action }} -p ${{ inputs.crate }}

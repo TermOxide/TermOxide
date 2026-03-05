@@ -1,0 +1,50 @@
+name: Build workspace crates
+
+on:
+  workflow_call:
+    inputs:
+      crates:
+        required: true
+        default: "[]"
+        type: string
+        description: "JSON array of crate names to build (e.g. [\"crate1\", \"crate2\"])"
+      actions:
+        required: true
+        default: "[]"
+        type: string
+        description: "JSON array of cargo actions to run for each crate (e.g. [\"test\", \"build --release\"])"
+      ref:
+        required: false
+        type: string
+        default: ""
+        description: "Git ref to checkout (defaults to GitHub's default behavior if empty)"
+
+jobs:
+  setup-builder:
+    name: Setup Rust & Cache
+    runs-on: ubuntu-latest
+    outputs:
+      cache-hit: ${{ steps.rust-cache.outputs.cache-hit }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || ''}}
+
+      - name: Setup Rust & push cache
+        id: rust-cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: push
+
+  run-builder:
+    name: "${{ matrix.crate }}"
+    needs: setup-builder
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: ${{ fromJson(inputs.crates) }}
+    uses: ./.github/workflows/crates-builder-internal.yaml
+    with:
+      crate: ${{ matrix.crate }}
+      actions: ${{ inputs.actions }}
+      ref: ${{ inputs.ref }}
