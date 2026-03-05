@@ -73,6 +73,18 @@ jobs:
     with:
       base_ref: ${{ needs.resolve-inputs.outputs.base_ref }}
 
+  log:
+    name: Log detected crates
+    needs: detect
+    if: needs.detect.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log detected crates
+        env:
+          CRATES: ${{ needs.detect.outputs.crates }}
+        run: |
+          echo "::notice::Detected crates: $CRATES"
+
   bump:
     name: Bump versions
     needs: [resolve-inputs, detect]
