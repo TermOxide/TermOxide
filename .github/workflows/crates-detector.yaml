@@ -56,6 +56,7 @@ jobs:
           echo "Fetching base branch '${{ inputs.base_ref }}'"
           git remote set-url origin https://github.com/${{ github.repository }}
           git fetch origin "${{ inputs.base_ref }}" --depth=1 --no-tags --prune
+          git fetch origin "HEAD" --depth=1 --no-tags --prune
 
       - name: Run changed-crates detector
         id: detect
