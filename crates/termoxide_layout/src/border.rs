@@ -20,6 +20,8 @@ use super::color::Color;
 /// # Examples
 ///
 /// ```rust
+/// use termoxide_layout::border::Edges;
+/// use termoxide_layout::unit::Unit;
 /// let p = Edges::all(Unit::cells(1));
 /// let p = Edges::symmetric(Unit::cells(2), Unit::cells(4));
 /// let p = Edges::new(Unit::cells(1), Unit::ZERO, Unit::cells(1), Unit::ZERO);
@@ -71,6 +73,8 @@ impl<T: Copy> Edges<T> {
     /// Map each side through a function, producing `Edges<U>`.
     ///
     /// ```rust
+    /// use termoxide_layout::border::Edges;
+    /// use termoxide_layout::unit::Unit;
     /// let raw: Edges<i32> = Edges::all(4);
     /// let units = raw.map(Unit::cells);
     /// ```
@@ -121,6 +125,8 @@ impl<T: Copy + Default> Default for Edges<T> {
 /// # Examples
 ///
 /// ```rust
+/// use termoxide_layout::border::Border;
+/// use termoxide_layout::color::{Color, NamedColor};
 /// let b = Border::ROUNDED.with_color(Color::Named(NamedColor::Cyan));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
