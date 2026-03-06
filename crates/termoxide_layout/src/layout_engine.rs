@@ -22,7 +22,7 @@
 //!
 //! ## Example
 //!
-//! ```no_run
+//! ```rust
 //! use termoxide_layout::layout_engine::LayoutEngine;
 //! use taffy::{Style, Display, FlexDirection, geometry::Size, style::Dimension};
 //!
@@ -56,7 +56,7 @@
 //! ```
 
 use crate::stylesheet::StyleSheet;
-use oxidui_style::{
+use crate::{
     Style,
     layout::{Align, Display as UiDisplay, FlexDirection as UiFlexDirection, Justify},
     unit::Unit,
@@ -95,7 +95,7 @@ pub type LayoutError = TaffyError;
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```rust
 /// use termoxide_layout::layout_engine::{LayoutEngine, LayoutNode};
 /// use taffy::{Display, FlexDirection, geometry::Size, style::Dimension};
 ///
@@ -153,10 +153,10 @@ pub enum LayoutNode {
 /// `my_style.into()` or simply pass a `Style` where a `UiStyleSource` is
 /// expected.
 ///
-/// ```no_run
+/// ```rust
 /// use termoxide_layout::layout_engine::{UiStyleSource};
 /// use termoxide_layout::stylesheet::StyleSheet;
-/// use oxidui_style::{Style, unit::Unit};
+/// use termoxide_layout::{Style, unit::Unit};
 ///
 /// // Inline:
 /// let src1 = UiStyleSource::Inline(Style::new().with_width(Unit::cells(40)));
@@ -207,10 +207,10 @@ fn resolve_ui_style(source: UiStyleSource) -> Style {
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```rust
 /// use termoxide_layout::layout_engine::{LayoutEngine, UiLayoutNode, UiStyleSource};
 /// use termoxide_layout::stylesheet::StyleSheet;
-/// use oxidui_style::{Style, layout::Display as UiDisplay, unit::Unit};
+/// use termoxide_layout::{Style, layout::Display as UiDisplay, unit::Unit};
 ///
 /// // Build a stylesheet and register a named style.
 /// let mut sheet = StyleSheet::new();
@@ -453,7 +453,7 @@ impl LayoutEngine {
     ///
     /// # Example
     ///
-    /// ```no_run
+    /// ```rust
     /// # use termoxide_layout::layout_engine::LayoutEngine;
     /// # let mut engine = LayoutEngine::new();
     /// # let root = engine.new_leaf(taffy::Style::DEFAULT).unwrap();
@@ -766,7 +766,7 @@ fn unit_to_length_percentage_auto(u: Unit) -> LengthPercentageAuto {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oxidui_style::{
+    use crate::{
         Style,
         layout::{Display as UiDisplay, FlexDirection as UiFlexDirection},
         unit::Unit,

@@ -10,7 +10,7 @@ dependencies = [
  "dirs",
  "enum_cycling",
  "notify",
- "oxidui_style",
+ "termoxide_layout",
  "termoxide_macros",
  "termoxide_reactive",
  "walkdir",
@@ -705,13 +705,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c04f5d74368e4d0dfe06c45c8627c81bd7c317d52762d118fb9b3076f6420fd"
 
 [[package]]
-name = "oxidui_style"
-version = "0.1.0"
-dependencies = [
- "ratatui",
-]
-
-[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1096,7 +1089,7 @@ dependencies = [
 name = "termoxide_layout"
 version = "0.1.0"
 dependencies = [
- "oxidui_style",
+ "ratatui",
  "taffy",
 ]
 
