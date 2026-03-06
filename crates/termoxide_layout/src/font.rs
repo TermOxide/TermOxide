@@ -16,6 +16,8 @@
 /// # Examples
 ///
 /// ```rust
+/// use termoxide_layout::font::FontStyle;
+/// use termoxide_layout::Style;
 /// let heading = FontStyle::BOLD | FontStyle::UNDERLINE;
 /// assert!(heading.has(FontStyle::BOLD));
 /// assert!(!heading.has(FontStyle::ITALIC));

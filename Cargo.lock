@@ -11,7 +11,6 @@ dependencies = [
  "enum_cycling",
  "notify",
  "oxidui_macros",
- "oxidui_style",
  "walkdir",
 ]
 
@@ -382,13 +381,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "oxidui_style"
-version = "0.1.0"
-dependencies = [
- "ratatui",
-]
-
-[[package]]
 name = "parking_lot"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -643,7 +635,7 @@ dependencies = [
 name = "termoxide_layout"
 version = "0.1.0"
 dependencies = [
- "oxidui_style",
+ "ratatui",
  "taffy",
 ]
 
