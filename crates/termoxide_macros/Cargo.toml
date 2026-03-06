@@ -1,5 +1,5 @@
 [package]
-name = "oxidui_macros"
+name = "termoxide_macros"
 version = "1.0.0-alpha"
 edition = "2024"
 
