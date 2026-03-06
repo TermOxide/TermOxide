@@ -4,12 +4,11 @@ use std::hash::Hash;
 ///
 /// Terminal color support comes in three tiers:
 ///
-/// tier are in bit
-/// | Tier | Type               | Support                                    |
-/// |------|--------------------|--------------------------------------------|
-/// | 3/4  | [`NamedColor`]     | Universal — every terminal                 |
-/// | 8    | [`Color::Indexed`] | xterm-256color and above                   |
-/// | 24   | [`Color::Rgb`]     | Modern terminals (kitty, iTerm2, WinTerm…) |
+/// | Tier   | Type              | Support                                      |
+/// |--------|-------------------|----------------------------------------------|
+/// | 3/4-bit | [`NamedColor`]   | Universal — every terminal                   |
+/// | 8-bit  | [`Color::Indexed`] | xterm-256color and above                    |
+/// | 24-bit | [`Color::Rgb`]    | Modern terminals (kitty, iTerm2, WinTerm…)   |
 ///
 /// When converting to `ratatui::style::Color`, degrade gracefully:
 /// prefer `Rgb`, fall back to `Indexed`, fall back to `Named`.
@@ -17,10 +16,10 @@ use std::hash::Hash;
 /// # Examples
 ///
 /// ```rust
-/// use oxidui_style::color::{Color, NamedColor};
-/// let red = Color::Named(NamedColor::Red);
+/// use termoxide_layout::color::{Color, NamedColor};
+/// let red   = Color::Named(NamedColor::Red);
 /// let coral = Color::rgb(255, 127, 80);
-/// let grey = Color::indexed(240);
+/// let grey  = Color::indexed(240);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Color {
@@ -62,16 +61,22 @@ impl Color {
     ///
     /// `const` so proc_macro output has zero runtime cost:
     /// ```rust
+    /// use termoxide_layout::color::Color;
     /// const CORAL: Color = Color::rgb(255, 127, 80);
     /// ```
-    pub const fn rgb(r: u8, g: u8, b: u8) -> Self { Self::Rgb(r, g, b) }
+    pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
+        Self::Rgb(r, g, b)
+    }
 
     /// Construct a 256-palette indexed color.
     ///
     /// ```rust
+    /// use termoxide_layout::color::Color;
     /// const MID_GREY: Color = Color::indexed(244);
     /// ```
-    pub const fn indexed(i: u8) -> Self { Self::Indexed(i) }
+    pub const fn indexed(i: u8) -> Self {
+        Self::Indexed(i)
+    }
 
     /// Parse a `#RRGGBB` hex color at compile time.
     ///
@@ -80,6 +85,7 @@ impl Color {
     ///
     /// `const` so the proc_macro can emit:
     /// ```rust
+    /// use termoxide_layout::color::Color;
     /// const C: Color = Color::from_hex_bytes(b"#ff5f00").unwrap();
     /// ```
     pub const fn from_hex_bytes(bytes: &[u8]) -> Option<Self> {
@@ -92,7 +98,7 @@ impl Color {
                     (Some(r), Some(g), Some(b)) => Some(Self::Rgb(r, g, b)),
                     _ => None,
                 }
-            },
+            }
             _ => None,
         }
     }
@@ -177,7 +183,9 @@ pub enum NamedColor {
 
 impl NamedColor {
     /// The ANSI palette index (0–15) for this color.
-    pub const fn ansi_index(self) -> u8 { self as u8 }
+    pub const fn ansi_index(self) -> u8 {
+        self as u8
+    }
 
     #[cfg(feature = "ratatui")]
     pub fn to_ratatui(self) -> ratatui::style::Color {

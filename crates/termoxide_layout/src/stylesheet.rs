@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use oxidui_style::Style;
+use crate::Style;
 
 /// A small named registry for `oxidui_style::Style` values.
 ///

@@ -6,21 +6,22 @@ use super::color::Color;
 ///
 /// # Type parameter
 ///
-/// `T` is most commonly [`super::unit::Unit`] (padding, margin) but can be any
-/// `Copy` type — e.g. `Color` for per-side border colors.
+/// `T` is most commonly [`super::unit::Unit`] (padding, margin) but can be any `Copy`
+/// type — e.g. `Color` for per-side border colors.
 ///
 /// # CSS shorthand mapping
 ///
-/// | CSS shorthand              | `Edges` constructor                  |
-/// |----------------------------|--------------------------------------|
-/// | `padding: 8px`             | `Edges::all(Unit::cells(8))`         |
-/// | `padding: 4px 8px`         | `Edges::symmetric(Unit::cells(4),    |
-/// |                            |                   Unit::cells(8))`   |
-/// | `padding: 1px 2px 3px 4px` | `Edges::new(c(1), c(2), c(3), c(4))` |
+/// | CSS shorthand              | `Edges` constructor                              |
+/// |----------------------------|--------------------------------------------------|
+/// | `padding: 8px`             | `Edges::all(Unit::cells(8))`                     |
+/// | `padding: 4px 8px`         | `Edges::symmetric(Unit::cells(4), Unit::cells(8))`|
+/// | `padding: 1px 2px 3px 4px` | `Edges::new(c(1), c(2), c(3), c(4))`            |
 ///
 /// # Examples
 ///
 /// ```rust
+/// use termoxide_layout::border::Edges;
+/// use termoxide_layout::unit::Unit;
 /// let p = Edges::all(Unit::cells(1));
 /// let p = Edges::symmetric(Unit::cells(2), Unit::cells(4));
 /// let p = Edges::new(Unit::cells(1), Unit::ZERO, Unit::cells(1), Unit::ZERO);
@@ -49,8 +50,7 @@ impl<T: Copy> Edges<T> {
         }
     }
 
-    /// Vertical (top/bottom) and horizontal (left/right) — CSS `padding: 4px
-    /// 8px`.
+    /// Vertical (top/bottom) and horizontal (left/right) — CSS `padding: 4px 8px`.
     pub const fn symmetric(vertical: T, horizontal: T) -> Self {
         Self {
             top: vertical,
@@ -73,6 +73,8 @@ impl<T: Copy> Edges<T> {
     /// Map each side through a function, producing `Edges<U>`.
     ///
     /// ```rust
+    /// use termoxide_layout::border::Edges;
+    /// use termoxide_layout::unit::Unit;
     /// let raw: Edges<i32> = Edges::all(4);
     /// let units = raw.map(Unit::cells);
     /// ```
@@ -108,7 +110,9 @@ impl<T: Copy> Edges<T> {
 }
 
 impl<T: Copy + Default> Default for Edges<T> {
-    fn default() -> Self { Self::all(T::default()) }
+    fn default() -> Self {
+        Self::all(T::default())
+    }
 }
 
 /// A complete border declaration — line style and optional color.
@@ -121,10 +125,8 @@ impl<T: Copy + Default> Default for Edges<T> {
 /// # Examples
 ///
 /// ```rust
-/// use oxidui_style::{
-///     border::Border,
-///     color::{Color, NamedColor},
-/// };
+/// use termoxide_layout::border::Border;
+/// use termoxide_layout::color::{Color, NamedColor};
 /// let b = Border::ROUNDED.with_color(Color::Named(NamedColor::Cyan));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -139,9 +141,9 @@ pub struct Border {
 }
 
 impl Border {
-    /// No border.
-    pub const NONE: Self = Self {
-        style: BorderStyle::None,
+    /// Single thin lines, square corners. No color override.
+    pub const SOLID: Self = Self {
+        style: BorderStyle::Solid,
         color: None,
     };
     /// Thin lines, rounded corners (`╭ ╮ ╰ ╯`). No color override.
@@ -149,9 +151,9 @@ impl Border {
         style: BorderStyle::Rounded,
         color: None,
     };
-    /// Single thin lines, square corners. No color override.
-    pub const SOLID: Self = Self {
-        style: BorderStyle::Solid,
+    /// No border.
+    pub const NONE: Self = Self {
+        style: BorderStyle::None,
         color: None,
     };
 
@@ -186,8 +188,7 @@ pub enum BorderStyle {
     None,
     /// Single thin lines, square corners.
     Solid,
-    /// Single thin lines, rounded corners — popular in modern TUIs (btop,
-    /// lazygit).
+    /// Single thin lines, rounded corners — popular in modern TUIs (btop, lazygit).
     Rounded,
     /// Double lines — use for high-emphasis containers like modal dialogs.
     Double,

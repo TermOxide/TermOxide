@@ -27,13 +27,13 @@
 /// # Examples
 ///
 /// ```rust
-/// use oxidui_style::unit::Unit;
-/// let w = Unit::cells(40); // exactly 40 columns
-/// let h = Unit::percent(50); // 50% of parent height
-/// let flex = Unit::fill(1); // take 1 share of remaining space
-/// let auto = Unit::AUTO; // size to content
+/// use termoxide_layout::unit::Unit;
+/// let w    = Unit::cells(40);    // exactly 40 columns
+/// let h    = Unit::percent(50);  // 50% of parent height
+/// let flex = Unit::fill(1);      // take 1 share of remaining space
+/// let auto = Unit::AUTO;         // size to content
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Unit {
     /// Absolute size in terminal character cells.
     ///
@@ -65,7 +65,6 @@ pub enum Unit {
     /// never emit `Unset` directly; the parser produces `None` at the
     /// `Style` field level instead. Exists for `Edges<Unit>` where a
     /// `Unit` must be present but is logically absent.
-    #[default]
     Unset,
 }
 
@@ -73,25 +72,29 @@ impl Unit {
     // Common constants
     /// `Auto` — size to content.
     pub const AUTO: Self = Self::Auto;
-    /// `Fill(1)` — take all remaining space (flex: 1).
-    pub const FILL: Self = Self::Fill(1);
+    /// `Unset` — logically absent.
+    pub const UNSET: Self = Self::Unset;
     /// `100%` — fill the entire parent dimension.
     pub const FULL: Self = Self::Percent(100);
     /// `50%`  — half the parent dimension.
     pub const HALF: Self = Self::Percent(50);
-    /// `Unset` — logically absent.
-    pub const UNSET: Self = Self::Unset;
     /// `0` cells.
     pub const ZERO: Self = Self::Cells(0);
+    /// `Fill(1)` — take all remaining space (flex: 1).
+    pub const FILL: Self = Self::Fill(1);
 
     /// Absolute cell-count value.
-    pub const fn cells(n: i32) -> Self { Self::Cells(n) }
-
+    pub const fn cells(n: i32) -> Self {
+        Self::Cells(n)
+    }
     /// Percentage value (0–100).
-    pub const fn percent(n: u8) -> Self { Self::Percent(n) }
-
+    pub const fn percent(n: u8) -> Self {
+        Self::Percent(n)
+    }
     /// Proportional fill with the given weight.
-    pub const fn fill(w: u16) -> Self { Self::Fill(w) }
+    pub const fn fill(w: u16) -> Self {
+        Self::Fill(w)
+    }
 
     /// `true` if the value is concrete and calculable without layout context
     /// (i.e. `Cells` or `Percent`).
@@ -106,7 +109,9 @@ impl Unit {
     }
 
     /// `true` if the value is logically absent.
-    pub const fn is_unset(self) -> bool { matches!(self, Self::Unset) }
+    pub const fn is_unset(self) -> bool {
+        matches!(self, Self::Unset)
+    }
 
     /// Extract `Cells(n)` → `Some(n)`, anything else → `None`.
     pub const fn as_cells(self) -> Option<i32> {
@@ -122,5 +127,11 @@ impl Unit {
             Self::Percent(n) => Some(n),
             _ => None,
         }
+    }
+}
+
+impl Default for Unit {
+    fn default() -> Self {
+        Self::Unset
     }
 }
