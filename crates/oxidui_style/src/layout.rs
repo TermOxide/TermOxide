@@ -38,10 +38,12 @@ impl FlexDirection {
     pub const fn is_horizontal(self) -> bool {
         matches!(self, Self::Row | Self::RowReverse)
     }
+
     /// `true` for `Column` or `ColumnReverse`.
     pub const fn is_vertical(self) -> bool {
         matches!(self, Self::Column | Self::ColumnReverse)
     }
+
     /// `true` if the order is reversed.
     pub const fn is_reversed(self) -> bool {
         matches!(self, Self::RowReverse | Self::ColumnReverse)
@@ -106,7 +108,8 @@ pub enum TextAlign {
 /// What to do when content overflows the element's bounds. CSS `overflow`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Overflow {
-    /// Render outside bounds — content paints over siblings in z-order (default).
+    /// Render outside bounds — content paints over siblings in z-order
+    /// (default).
     ///
     /// Use carefully; most containers should use `Hidden`.
     #[default]

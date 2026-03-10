@@ -9,30 +9,33 @@
 //!   will live inside a [`Style`] struct implements `Copy` where possible.
 //!
 //! - **`const`-constructible**: Proc_macros emit code that runs at compile
-//!   time. Where possible, constructors are marked `const` so that static
-//!   style definitions have zero runtime cost.
+//!   time. Where possible, constructors are marked `const` so that static style
+//!   definitions have zero runtime cost.
 //!
-//! - **`Option<T>` for all style fields**: Distinguishing "not set" from
-//!   "set to the default value" is critical for cascade and inheritance.
-//!   A child that doesn't set `color` must not reset the parent's `color`
-//!   to the type default. Every field in [`Style`] is `Option<T>`.
+//! - **`Option<T>` for all style fields**: Distinguishing "not set" from "set
+//!   to the default value" is critical for cascade and inheritance. A child
+//!   that doesn't set `color` must not reset the parent's `color` to the type
+//!   default. Every field in [`Style`] is `Option<T>`.
 //!
-//! - **No heap allocation in the hot path**: [`str::Str`] uses `Cow<'static, str>`
-//!   so proc_macro-emitted string literals are zero-allocation borrows.
+//! - **No heap allocation in the hot path**: [`str::Str`] uses `Cow<'static,
+//!   str>` so proc_macro-emitted string literals are zero-allocation borrows.
 //!   Runtime strings fall back to owned allocation.
 //!
 //! ## Module layout
 //!
 //! ```text
 //! styles.rs
-//! ├── Color / NamedColor                              — foreground & background colors
-//! ├── Number                                          — integer scalar values (z-index, tab-index…) and floating-point scalars (opacity, flex-grow…)
-//! ├── Str                                             — CSS string values (font-family, content…)
-//! ├── Unit                                            — dimensional values (width, height, gap…)
-//! ├── Border / BorderStyle  / Edges<T>                — four-sided shorthand (padding, margin…) and border appearance
-//! ├── FontStyle                                       — text modifier bitset (bold | italic | …)
-//! ├── Layout                                          — layout mode enums / flex alignment enums / text and overflow enums
-//! └── Style                    — the aggregate style declaration struct
+//! ├── Color / NamedColor          — foreground & background colors
+//! ├── Number                      — integer scalars (z-index, tab-index…)
+//! │                                 and float scalars (opacity, flex-grow…)
+//! ├── Str                         — CSS string values (font-family, content…)
+//! ├── Unit                        — dimensional values (width, height, gap…)
+//! ├── Border / BorderStyle        — border appearance
+//! ├── Edges<T>                    — four-sided shorthand (padding, margin…)
+//! ├── FontStyle                   — text modifier bitset (bold | italic | …)
+//! ├── Layout                      — layout mode, flex alignment,
+//! │                                 text and overflow enums
+//! └── Style                       — aggregate style declaration struct
 //! ```
 pub mod border;
 pub mod color;
@@ -62,16 +65,23 @@ use unit::Unit;
 ///    priority order via [`Style::merge`]. Later `Some` values win; `None`
 ///    values are silently skipped.
 ///
-/// 3. **Proc_macro output** — `scss! { color: red; }` generates a `Style`
-///    with only `color` set to `Some`. Every other field is `None`.
+/// 3. **Proc_macro output** — `scss! { color: red; }` generates a `Style` with
+///    only `color` set to `Some`. Every other field is `None`.
 ///
 /// # Creating styles
 ///
 /// ```rust
 /// // Direct struct construction (idiomatic proc_macro output)
+/// use oxidui_style::{
+///     Style,
+///     color::{Color, NamedColor},
+///     font::FontStyle,
+///     unit::Unit,
+/// };
+///
 /// let s = Style {
-///     width:      Some(Unit::percent(100)),
-///     height:     Some(Unit::cells(3)),
+///     width: Some(Unit::percent(100)),
+///     height: Some(Unit::cells(3)),
 ///     background: Some(Color::Named(NamedColor::Blue)),
 ///     font_style: Some(FontStyle::BOLD),
 ///     ..Style::new()
@@ -86,8 +96,18 @@ use unit::Unit;
 /// # Merging
 ///
 /// ```rust
-/// let mut base = Style { color: Some(Color::Named(NamedColor::White)), ..Style::new() };
-/// let over     = Style { color: Some(Color::Named(NamedColor::Red)),   ..Style::new() };
+/// use oxidui_style::{
+///     Style,
+///     color::{Color, NamedColor},
+/// };
+/// let mut base = Style {
+///     color: Some(Color::Named(NamedColor::White)),
+///     ..Style::new()
+/// };
+/// let over = Style {
+///     color: Some(Color::Named(NamedColor::Red)),
+///     ..Style::new()
+/// };
 /// base.merge(&over);
 /// // base.color == Some(Red)
 /// ```
@@ -106,7 +126,8 @@ pub struct Style {
     pub min_height: Option<Unit>,
     /// Maximum width — element is never wider than this.
     ///
-    /// Useful for responsive sidebars that shouldn't exceed a fixed column count.
+    /// Useful for responsive sidebars that shouldn't exceed a fixed column
+    /// count.
     pub max_width: Option<Unit>,
     /// Maximum height.
     pub max_height: Option<Unit>,
@@ -228,8 +249,18 @@ impl Style {
     /// # Example
     ///
     /// ```rust
-    /// let mut s = Style { color: Some(Color::Named(NamedColor::White)), ..Style::new() };
-    /// s.merge(&Style { color: Some(Color::Named(NamedColor::Red)), ..Style::new() });
+    /// use oxidui_style::{
+    ///     Style,
+    ///     color::{Color, NamedColor},
+    /// };
+    /// let mut s = Style {
+    ///     color: Some(Color::Named(NamedColor::White)),
+    ///     ..Style::new()
+    /// };
+    /// s.merge(&Style {
+    ///     color: Some(Color::Named(NamedColor::Red)),
+    ///     ..Style::new()
+    /// });
     /// // s.color == Some(Red)
     /// ```
     pub fn merge(&mut self, other: &Style) {
@@ -284,30 +315,37 @@ impl Style {
         self.width = Some(v);
         self
     }
+
     pub fn with_height(mut self, v: Unit) -> Self {
         self.height = Some(v);
         self
     }
+
     pub fn with_min_width(mut self, v: Unit) -> Self {
         self.min_width = Some(v);
         self
     }
+
     pub fn with_min_height(mut self, v: Unit) -> Self {
         self.min_height = Some(v);
         self
     }
+
     pub fn with_max_width(mut self, v: Unit) -> Self {
         self.max_width = Some(v);
         self
     }
+
     pub fn with_max_height(mut self, v: Unit) -> Self {
         self.max_height = Some(v);
         self
     }
+
     pub fn with_padding(mut self, v: Edges<Unit>) -> Self {
         self.padding = Some(v);
         self
     }
+
     pub fn with_margin(mut self, v: Edges<Unit>) -> Self {
         self.margin = Some(v);
         self
@@ -317,6 +355,7 @@ impl Style {
     pub fn with_padding_all(self, v: Unit) -> Self {
         self.with_padding(Edges::all(v))
     }
+
     /// Convenience: uniform margin on all four sides.
     pub fn with_margin_all(self, v: Unit) -> Self {
         self.with_margin(Edges::all(v))
@@ -326,54 +365,67 @@ impl Style {
         self.display = Some(v);
         self
     }
+
     pub fn with_flex_direction(mut self, v: FlexDirection) -> Self {
         self.flex_direction = Some(v);
         self
     }
+
     pub fn with_flex_grow(mut self, v: Float) -> Self {
         self.flex_grow = Some(v);
         self
     }
+
     pub fn with_flex_shrink(mut self, v: Float) -> Self {
         self.flex_shrink = Some(v);
         self
     }
+
     pub fn with_align_items(mut self, v: Align) -> Self {
         self.align_items = Some(v);
         self
     }
+
     pub fn with_justify_content(mut self, v: Justify) -> Self {
         self.justify_content = Some(v);
         self
     }
+
     pub fn with_gap(mut self, v: Unit) -> Self {
         self.gap = Some(v);
         self
     }
+
     pub fn with_color(mut self, v: Color) -> Self {
         self.color = Some(v);
         self
     }
+
     pub fn with_background(mut self, v: Color) -> Self {
         self.background = Some(v);
         self
     }
+
     pub fn with_border(mut self, v: Border) -> Self {
         self.border = Some(v);
         self
     }
+
     pub fn with_opacity(mut self, v: Float) -> Self {
         self.opacity = Some(v);
         self
     }
+
     pub fn with_text_align(mut self, v: TextAlign) -> Self {
         self.text_align = Some(v);
         self
     }
+
     pub fn with_font_style(mut self, v: FontStyle) -> Self {
         self.font_style = Some(v);
         self
     }
+
     pub fn with_overflow(mut self, v: Overflow) -> Self {
         self.overflow = Some(v);
         self
@@ -384,9 +436,7 @@ impl Style {
     // -----------------------------------------------------------------------
 
     /// `true` if no fields are set (all `None`).
-    pub fn is_empty(&self) -> bool {
-        *self == Style::default()
-    }
+    pub fn is_empty(&self) -> bool { *self == Style::default() }
 
     /// `true` if any dimension or spacing field is set.
     pub fn has_layout(&self) -> bool {
@@ -414,15 +464,15 @@ impl Style {
 
 #[cfg(test)]
 mod tests {
-    use super::str::Str;
-    use super::*;
+    use std::borrow::Cow;
+
     use border::{Border, BorderStyle, Edges};
-    use color::Color;
-    use color::NamedColor;
+    use color::{Color, NamedColor};
     use font::FontStyle;
     use number::{Float, Int};
-    use std::borrow::Cow;
     use unit::Unit;
+
+    use super::{str::Str, *};
 
     // --- Color ---
 
@@ -432,22 +482,27 @@ mod tests {
             Color::from_hex_bytes(b"#ff5f00"),
             Some(Color::Rgb(255, 95, 0))
         );
-        assert_eq!(Color::from_hex_bytes(b"#000000"), Some(Color::Rgb(0, 0, 0)));
+        assert_eq!(
+            Color::from_hex_bytes(b"#000000"),
+            Some(Color::Rgb(0, 0, 0))
+        );
         assert_eq!(
             Color::from_hex_bytes(b"#FFFFFF"),
             Some(Color::Rgb(255, 255, 255))
         );
         assert_eq!(
             Color::from_hex_bytes(b"#aAbBcC"),
-            Some(Color::Rgb(0xaa, 0xbb, 0xcc))
+            Some(Color::Rgb(0xAA, 0xBB, 0xCC))
         );
     }
 
     #[test]
     fn color_hex_invalid() {
         assert_eq!(Color::from_hex_bytes(b"ff5f00"), None); // no #
-        assert_eq!(Color::from_hex_bytes(b"#ff5fgg"), None); // bad nibble
-        assert_eq!(Color::from_hex_bytes(b"#fff"), None); // shorthand not supported
+        // Bad nibble
+        assert_eq!(Color::from_hex_bytes(b"#ff5fgg"), None);
+        // Shorthand not supported
+        assert_eq!(Color::from_hex_bytes(b"#fff"), None);
         assert_eq!(Color::from_hex_bytes(b""), None);
     }
 
@@ -579,7 +634,8 @@ mod tests {
 
     #[test]
     fn font_style_remove() {
-        let s = (FontStyle::BOLD | FontStyle::ITALIC).without(FontStyle::ITALIC);
+        let s =
+            (FontStyle::BOLD | FontStyle::ITALIC).without(FontStyle::ITALIC);
         assert!(s.has(FontStyle::BOLD));
         assert!(!s.has(FontStyle::ITALIC));
     }
@@ -619,8 +675,10 @@ mod tests {
             color: Some(Color::Named(NamedColor::Red)),
             ..Style::new()
         });
-        assert_eq!(base.color, Some(Color::Named(NamedColor::Red))); // overridden
-        assert_eq!(base.background, Some(Color::Named(NamedColor::Black))); // untouched
+        // `color` is overwritten by `Some(Red)`:
+        assert_eq!(base.color, Some(Color::Named(NamedColor::Red)));
+        // Untouched fields remain unchanged:
+        assert_eq!(base.background, Some(Color::Named(NamedColor::Black)));
     }
 
     #[test]
@@ -643,7 +701,8 @@ mod tests {
             color: Some(Color::Named(NamedColor::Red)),
             ..Style::new()
         });
-        assert_eq!(base.color, Some(Color::Named(NamedColor::White))); // untouched
+        // Untouched `base`:
+        assert_eq!(base.color, Some(Color::Named(NamedColor::White)));
         assert_eq!(merged.color, Some(Color::Named(NamedColor::Red)));
     }
 
@@ -682,7 +741,5 @@ mod tests {
     // Ratatui integration
     #[test]
     #[cfg(feature = "ratatui")]
-    fn convert_to_ratatui() {
-        assert!(true)
-    }
+    fn convert_to_ratatui() { assert!(true) }
 }

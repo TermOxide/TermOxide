@@ -1,5 +1,4 @@
-use std::borrow::Cow;
-use std::hash::Hash;
+use std::{borrow::Cow, hash::Hash};
 
 /// A CSS-like string value.
 ///
@@ -22,7 +21,8 @@ use std::hash::Hash;
 /// # Examples
 ///
 /// ```rust
-/// let a: Str = "monospace".into();              // static borrow, no alloc
+/// use oxidui_style::str::Str;
+/// let a: Str = "monospace".into(); // static borrow, no alloc
 /// let b = Str::from_string(format!("Font-{}", 42)); // heap-allocated
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -32,40 +32,26 @@ impl Str {
     /// Construct from a `'static` str — zero allocation.
     ///
     /// Preferred for proc_macro output.
-    pub const fn from_static(s: &'static str) -> Self {
-        Self(Cow::Borrowed(s))
-    }
+    pub const fn from_static(s: &'static str) -> Self { Self(Cow::Borrowed(s)) }
 
     /// Construct from a runtime-owned `String` — heap-allocates.
-    pub fn from_string(s: String) -> Self {
-        Self(Cow::Owned(s))
-    }
+    pub fn from_string(s: String) -> Self { Self(Cow::Owned(s)) }
 
     /// Borrow the inner string slice.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
+    pub fn as_str(&self) -> &str { &self.0 }
 
     /// Returns `true` if the string is empty.
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
+    pub fn is_empty(&self) -> bool { self.0.is_empty() }
 }
 
 impl From<&'static str> for Str {
-    fn from(s: &'static str) -> Self {
-        Self::from_static(s)
-    }
+    fn from(s: &'static str) -> Self { Self::from_static(s) }
 }
 impl From<String> for Str {
-    fn from(s: String) -> Self {
-        Self::from_string(s)
-    }
+    fn from(s: String) -> Self { Self::from_string(s) }
 }
 impl AsRef<str> for Str {
-    fn as_ref(&self) -> &str {
-        self.as_str()
-    }
+    fn as_ref(&self) -> &str { self.as_str() }
 }
 
 impl std::fmt::Display for Str {
