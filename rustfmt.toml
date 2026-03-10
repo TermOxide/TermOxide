@@ -1,0 +1,55 @@
+# Global config
+edition = "2024"
+style_edition = "2024"
+unstable_features = true
+newline_style = "Unix"
+
+# Comment / Raw string formatting
+error_on_unformatted = true
+wrap_comments = true
+format_strings = true
+comment_width = 80
+normalize_comments = true
+format_code_in_doc_comments = true
+doc_comment_code_block_width = 80
+normalize_doc_attributes = true
+
+# code formatting config
+error_on_line_overflow = true
+max_width = 80
+
+# Function / Struct / Enum / Trait formatting
+brace_style = "SameLineWhere"
+empty_item_single_line = true
+fn_single_line = true
+fn_params_layout = "Tall"
+reorder_impl_items = true
+type_punctuation_density = "Wide"
+use_field_init_shorthand = true
+overflow_delimited_expr = true
+
+# Macro formatting
+merge_derives = false
+
+# Imports / Modules formatting
+imports_layout = "HorizontalVertical"
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+reorder_imports = true
+reorder_modules = true
+
+# Control flow
+control_brace_style = "AlwaysSameLine"
+match_arm_blocks = true
+match_arm_indent = true
+match_block_trailing_comma = true
+force_multiline_blocks = true
+
+# Other
+condense_wildcard_suffixes = true
+hex_literal_case = "Upper"
+tab_spaces = 4
+trailing_comma = "Vertical"
+trailing_semicolon = true
+use_try_shorthand = true
+float_literal_trailing_zero = "IfNoPostfix"
