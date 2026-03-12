@@ -16,6 +16,7 @@ use std::ops::{Add, Mul, Neg, Sub};
 /// # Examples
 ///
 /// ```rust
+/// use termoxide_layout::number::Int;
 /// let z     = Int::new(10);
 /// let order = Int::ZERO;
 /// ```
@@ -102,6 +103,7 @@ impl Neg for Int {
 /// # Examples
 ///
 /// ```rust
+/// use termoxide_layout::number::Float;
 /// let opacity = Float::new(0.85);
 /// let grow    = Float::ONE;
 /// let shrink  = Float::ZERO;

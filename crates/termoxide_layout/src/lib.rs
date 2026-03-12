@@ -68,6 +68,7 @@ use unit::Unit;
 /// # Creating styles
 ///
 /// ```rust
+/// use termoxide_layout::{Style, color::{Color, NamedColor}, font::FontStyle, unit::Unit};
 /// // Direct struct construction (idiomatic proc_macro output)
 /// let s = Style {
 ///     width:      Some(Unit::percent(100)),
@@ -86,6 +87,7 @@ use unit::Unit;
 /// # Merging
 ///
 /// ```rust
+/// use termoxide_layout::{Style, color::{Color, NamedColor}};
 /// let mut base = Style { color: Some(Color::Named(NamedColor::White)), ..Style::new() };
 /// let over     = Style { color: Some(Color::Named(NamedColor::Red)),   ..Style::new() };
 /// base.merge(&over);
@@ -186,6 +188,7 @@ impl Style {
     ///
     /// `const` so it can be used in static contexts:
     /// ```rust
+    /// use termoxide_layout::Style;
     /// const EMPTY: Style = Style::new();
     /// ```
     pub const fn new() -> Self {
@@ -228,6 +231,7 @@ impl Style {
     /// # Example
     ///
     /// ```rust
+    /// use termoxide_layout::{Style, color::{Color, NamedColor}};
     /// let mut s = Style { color: Some(Color::Named(NamedColor::White)), ..Style::new() };
     /// s.merge(&Style { color: Some(Color::Named(NamedColor::Red)), ..Style::new() });
     /// // s.color == Some(Red)
@@ -411,6 +415,25 @@ impl Style {
             || self.font_style.is_some()
     }
 }
+
+/// Flexbox layout engine wrapping `taffy::TaffyTree`.
+///
+/// See [`layout_engine::LayoutEngine`] for full documentation.
+pub mod layout_engine;
+
+/// Coordinate mapping utilities: `f32` → `(u16, u16)` terminal cell grid.
+///
+/// See [`coord_mapper::CoordMapper`] and [`coord_mapper::MappedRect`].
+pub mod coord_mapper;
+
+/// Named style registry for sharing [`oxidui_style::Style`] values.
+///
+/// See [`stylesheet::StyleSheet`].
+pub mod stylesheet;
+
+pub use coord_mapper::{CoordMapper, MappedRect};
+pub use layout_engine::{LayoutEngine, LayoutError, LayoutNode, UiLayoutNode, UiStyleSource};
+pub use stylesheet::StyleSheet;
 
 #[cfg(test)]
 mod tests {
