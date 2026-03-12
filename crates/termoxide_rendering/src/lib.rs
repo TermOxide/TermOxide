@@ -106,6 +106,8 @@
 //!         .unwrap();
 //! }
 //! ```
+
+pub mod event_router;
 pub mod render_loop;
 pub mod renderer;
 pub mod view_node;
