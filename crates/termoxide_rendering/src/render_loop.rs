@@ -99,11 +99,16 @@
 //! - [`RenderLoop::quit`] sender is used from another thread.
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError, bounded, select};
-use crossterm::event::{self, Event, KeyModifiers};
+use crossterm::event::{Event, KeyModifiers};
 use ratatui::{backend::Backend, layout::Rect};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use crate::{
     event_router::EventRouter,
+    input::{DEFAULT_POLL_TIMEOUT, poll_crossterm_events},
     renderer::{RenderError, Renderer},
     view_node::{ComponentId, ViewNode},
 };
@@ -282,19 +287,23 @@ impl<B: Backend> RenderLoop<B> {
     pub fn run<A: App>(&mut self, app: &mut A) -> Result<(), RenderLoopError> {
         // Channel for crossterm events polled from a background thread.
         let (ev_tx, ev_rx) = bounded::<Event>(64);
+        let stop_flag = Arc::new(AtomicBool::new(false));
+        let stop_flag_worker = Arc::clone(&stop_flag);
 
-        // Spawn a thread that blocks on crossterm event reads and forwards
-        // them through the channel.
+        // Spawn a thread that polls crossterm events and forwards batches
+        // through the channel.
         let ev_thread = std::thread::spawn(move || {
-            loop {
-                match event::read() {
-                    Ok(ev) => {
-                        if ev_tx.send(ev).is_err() {
-                            // Receiver dropped — render loop has quit.
-                            break;
+            while !stop_flag_worker.load(Ordering::Relaxed) {
+                match poll_crossterm_events(DEFAULT_POLL_TIMEOUT) {
+                    Ok(events) => {
+                        for ev in events {
+                            if ev_tx.send(ev).is_err() {
+                                // Receiver dropped — render loop has quit.
+                                return;
+                            }
                         }
                     }
-                    Err(_) => break,
+                    Err(_) => return,
                 }
             }
         });
@@ -304,8 +313,8 @@ impl<B: Backend> RenderLoop<B> {
         // Restore terminal unconditionally.
         let restore_result = self.renderer.restore();
 
-        // Join the event thread (best-effort; it will exit on its own when the
-        // process terminates or the channel is dropped).
+        // Stop and join the event thread.
+        stop_flag.store(true, Ordering::Relaxed);
         drop(ev_rx); // Disconnect the channel so the thread exits.
         let _ = ev_thread.join();
 
@@ -431,5 +440,66 @@ impl From<RenderError> for RenderLoopError {
 impl From<std::io::Error> for RenderLoopError {
     fn from(e: std::io::Error) -> Self {
         Self::Render(RenderError::Io(e))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState};
+    use ratatui::backend::TestBackend;
+
+    fn key_event(code: KeyCode, modifiers: KeyModifiers) -> Event {
+        Event::Key(KeyEvent {
+            code,
+            modifiers,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    #[test]
+    fn dirty_channel_coalesces_multiple_marks() {
+        let (tx, rx) = dirty_channel();
+
+        tx.mark();
+        tx.mark();
+        tx.mark();
+
+        assert!(rx.try_recv());
+        assert!(!rx.try_recv());
+    }
+
+    #[test]
+    fn is_dirty_consumes_pending_signal() {
+        let (tx, rx) = dirty_channel();
+        tx.mark();
+
+        assert!(rx.is_dirty());
+        assert!(!rx.is_dirty());
+    }
+
+    #[test]
+    fn disconnected_dirty_sender_is_treated_as_dirty() {
+        let (tx, rx) = dirty_channel();
+        drop(tx);
+
+        assert!(rx.is_dirty());
+    }
+
+    #[test]
+    fn quit_event_detects_ctrl_c_and_ctrl_d_only() {
+        let ctrl_c = key_event(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        let ctrl_d = key_event(KeyCode::Char('d'), KeyModifiers::CONTROL);
+        let plain_c = key_event(KeyCode::Char('c'), KeyModifiers::NONE);
+        let ctrl_shift_c = key_event(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        );
+
+        assert!(RenderLoop::<TestBackend>::is_quit_event(&ctrl_c));
+        assert!(RenderLoop::<TestBackend>::is_quit_event(&ctrl_d));
+        assert!(!RenderLoop::<TestBackend>::is_quit_event(&plain_c));
+        assert!(!RenderLoop::<TestBackend>::is_quit_event(&ctrl_shift_c));
     }
 }

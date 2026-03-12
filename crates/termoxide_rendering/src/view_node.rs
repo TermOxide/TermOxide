@@ -337,3 +337,67 @@ impl ViewNode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constructors_start_dirty() {
+        let container = ViewNode::container(Rect::new(0, 0, 10, 10), vec![]);
+        let text = ViewNode::text(Rect::new(0, 0, 10, 1), "x", Style::default());
+        let raw = ViewNode::raw(Rect::new(0, 0, 1, 1), |_, _| {});
+
+        assert!(container.dirty);
+        assert!(text.dirty);
+        assert!(raw.dirty);
+    }
+
+    #[test]
+    fn mark_clean_is_recursive() {
+        let child = ViewNode::text(Rect::new(0, 0, 5, 1), "child", Style::default());
+        let mut root = ViewNode::container(Rect::new(0, 0, 10, 5), vec![child]);
+
+        root.mark_clean();
+
+        assert!(!root.dirty);
+        assert!(!root.children[0].dirty);
+        assert!(!root.is_subtree_dirty());
+    }
+
+    #[test]
+    fn subtree_dirty_detects_dirty_descendant_when_root_is_clean() {
+        let mut child = ViewNode::text(Rect::new(0, 0, 5, 1), "child", Style::default());
+        child.dirty = true;
+
+        let mut root = ViewNode::container(Rect::new(0, 0, 10, 5), vec![child]);
+        root.dirty = false;
+
+        assert!(root.is_subtree_dirty());
+    }
+
+    #[test]
+    fn with_children_replaces_existing_children() {
+        let original = ViewNode::container(Rect::new(0, 0, 10, 5), vec![]);
+        let child = ViewNode::text(Rect::new(0, 0, 2, 1), "x", Style::default());
+
+        let replaced = original.with_children(vec![child]);
+        assert_eq!(replaced.children.len(), 1);
+    }
+
+    #[test]
+    fn deep_tree_mark_clean_does_not_panic() {
+        let mut root = ViewNode::text(Rect::new(0, 0, 1, 1), "leaf", Style::default());
+        for _ in 0..1024 {
+            root = ViewNode::container(Rect::new(0, 0, 1, 1), vec![root]);
+        }
+
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            root.mark_clean();
+            root.is_subtree_dirty()
+        }));
+
+        assert!(outcome.is_ok(), "deep recursive traversal panicked");
+        assert!(!outcome.unwrap());
+    }
+}

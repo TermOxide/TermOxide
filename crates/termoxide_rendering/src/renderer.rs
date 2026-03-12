@@ -77,12 +77,16 @@ use crate::view_node::{ViewContent, ViewNode};
 pub enum RenderError {
     /// The underlying ratatui / crossterm I/O operation failed.
     Io(std::io::Error),
+
+    /// A user-provided raw draw closure panicked.
+    DrawPanic,
 }
 
 impl std::fmt::Display for RenderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Io(e) => write!(f, "render I/O error: {e}"),
+            Self::DrawPanic => write!(f, "render draw callback panicked"),
         }
     }
 }
@@ -91,6 +95,7 @@ impl std::error::Error for RenderError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Io(e) => Some(e),
+            Self::DrawPanic => None,
         }
     }
 }
@@ -167,15 +172,28 @@ impl<B: Backend> Renderer<B> {
     ///
     /// # Errors
     ///
-    /// Returns [`RenderError::Io`] on any I/O failure inside ratatui.
+    /// Returns [`RenderError::Io`] on any I/O failure inside ratatui, or
+    /// [`RenderError::DrawPanic`] if a raw draw callback panics.
     pub fn render_frame(&mut self, root: &mut ViewNode) -> Result<(), RenderError> {
+        let mut draw_error = None;
+
         // Draw directly into the frame buffer that ratatui provides.
         // ratatui handles the diff against the previous frame and writes
         // only changed cells to stdout.
         self.terminal.draw(|frame| {
+            if draw_error.is_some() {
+                return;
+            }
+
             let buf = frame.buffer_mut();
-            Self::draw_node(root, buf);
+            if let Err(err) = Self::draw_node(root, buf) {
+                draw_error = Some(err);
+            }
         })?;
+
+        if let Some(err) = draw_error {
+            return Err(err);
+        }
 
         // Clear dirty flags now that the frame is committed.
         root.mark_clean();
@@ -192,10 +210,10 @@ impl<B: Backend> Renderer<B> {
     ///
     /// The traversal is depth-first, parent before children, so that child
     /// content always appears on top of parent background fills.
-    pub fn draw_node(node: &ViewNode, buf: &mut Buffer) {
+    pub fn draw_node(node: &ViewNode, buf: &mut Buffer) -> Result<(), RenderError> {
         // Fast path: nothing changed in this sub-tree.
         if !node.is_subtree_dirty() {
-            return;
+            return Ok(());
         }
 
         // Draw this node's own content.
@@ -210,14 +228,21 @@ impl<B: Backend> Renderer<B> {
             }
 
             ViewContent::Raw(f) => {
-                f(buf, node.area);
+                let draw_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    f(buf, node.area);
+                }));
+                if draw_result.is_err() {
+                    return Err(RenderError::DrawPanic);
+                }
             }
         }
 
         // Recurse into children (document order).
         for child in &node.children {
-            Self::draw_node(child, buf);
+            Self::draw_node(child, buf)?;
         }
+
+        Ok(())
     }
 
     // ── Primitive draw helpers ─────────────────────────────────────────────── //
@@ -231,10 +256,34 @@ impl<B: Backend> Renderer<B> {
             return;
         }
 
-        let max_chars = area.width as usize;
-        let truncated: String = text.chars().take(max_chars).collect();
+        let buf_area = *buf.area();
+        let buf_right = buf_area.x.saturating_add(buf_area.width);
+        let buf_bottom = buf_area.y.saturating_add(buf_area.height);
 
-        buf.set_string(area.x, area.y, &truncated, style);
+        // Text nodes are single-line, so skip draws whose baseline row is off-screen.
+        if area.y < buf_area.y || area.y >= buf_bottom {
+            return;
+        }
+
+        let node_left = area.x;
+        let node_right = area.x.saturating_add(area.width);
+        let visible_left = node_left.max(buf_area.x);
+        let visible_right = node_right.min(buf_right);
+
+        if visible_left >= visible_right {
+            return;
+        }
+
+        // If the node starts off-screen to the left, skip that many chars.
+        let skip_chars = visible_left.saturating_sub(node_left) as usize;
+        let max_chars = visible_right.saturating_sub(visible_left) as usize;
+
+        let clipped: String = text.chars().skip(skip_chars).take(max_chars).collect();
+        if clipped.is_empty() {
+            return;
+        }
+
+        buf.set_string(visible_left, area.y, &clipped, style);
     }
 
     // ── Terminal lifecycle ─────────────────────────────────────────────────── //
@@ -265,5 +314,90 @@ impl<B: Backend> Renderer<B> {
     /// Mutably borrow the underlying [`Terminal`].
     pub fn terminal_mut(&mut self) -> &mut Terminal<B> {
         &mut self.terminal
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+
+    #[test]
+    fn draw_text_truncates_to_node_width() {
+        let mut buf = Buffer::empty(Rect::new(0, 0, 5, 1));
+        let node = ViewNode::text(Rect::new(0, 0, 3, 1), "abcdef", Style::default());
+
+        Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
+
+        assert_eq!(buf.get(0, 0).symbol(), "a");
+        assert_eq!(buf.get(1, 0).symbol(), "b");
+        assert_eq!(buf.get(2, 0).symbol(), "c");
+        assert_eq!(buf.get(3, 0).symbol(), " ");
+    }
+
+    #[test]
+    fn clean_subtree_is_skipped() {
+        let mut buf = Buffer::empty(Rect::new(0, 0, 5, 1));
+        let mut node = ViewNode::text(Rect::new(0, 0, 5, 1), "hello", Style::default());
+        node.dirty = false;
+
+        Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
+
+        assert_eq!(buf.get(0, 0).symbol(), " ");
+    }
+
+    #[test]
+    fn zero_area_text_node_is_noop() {
+        let mut buf = Buffer::empty(Rect::new(0, 0, 1, 1));
+        let node = ViewNode::text(Rect::new(0, 0, 0, 1), "x", Style::default());
+
+        Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
+
+        assert_eq!(buf.get(0, 0).symbol(), " ");
+    }
+
+    #[test]
+    fn raw_node_can_write_into_buffer() {
+        let mut buf = Buffer::empty(Rect::new(0, 0, 5, 1));
+        let node = ViewNode::raw(Rect::new(0, 0, 5, 1), |buf, area| {
+            buf.set_string(area.x, area.y, "ok", Style::default());
+        });
+
+        Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
+
+        assert_eq!(buf.get(0, 0).symbol(), "o");
+        assert_eq!(buf.get(1, 0).symbol(), "k");
+    }
+
+    #[test]
+    fn out_of_bounds_text_area_is_ignored() {
+        let mut buf = Buffer::empty(Rect::new(0, 0, 10, 1));
+        let node = ViewNode::text(Rect::new(0, 50, 3, 1), "boom", Style::default());
+
+        Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
+        assert_eq!(buf.get(0, 0).symbol(), " ");
+    }
+
+    #[test]
+    fn raw_draw_closure_panic_becomes_error() {
+        let mut buf = Buffer::empty(Rect::new(0, 0, 10, 1));
+        let node = ViewNode::raw(Rect::new(0, 0, 1, 1), |_, _| {
+            panic!("renderer raw closure panic");
+        });
+
+        let result = Renderer::<TestBackend>::draw_node(&node, &mut buf);
+        assert!(matches!(result, Err(RenderError::DrawPanic)));
+    }
+
+    #[test]
+    fn text_draw_clips_left_side_against_buffer_origin() {
+        let mut buf = Buffer::empty(Rect::new(2, 0, 3, 1));
+        let node = ViewNode::text(Rect::new(0, 0, 5, 1), "abcde", Style::default());
+
+        Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
+
+        assert_eq!(buf.get(2, 0).symbol(), "c");
+        assert_eq!(buf.get(3, 0).symbol(), "d");
+        assert_eq!(buf.get(4, 0).symbol(), "e");
     }
 }
