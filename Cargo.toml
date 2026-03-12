@@ -6,6 +6,7 @@ members = [
     "crates/termoxide_reactive",
     "crates/termoxide_layout",
     "crates/termoxide_event",
+    "crates/termoxide_rendering",
     "crates/cargo-extract",
 ]
 
