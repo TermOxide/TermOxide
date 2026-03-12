@@ -108,6 +108,7 @@
 //! ```
 
 pub mod event_router;
+pub mod input;
 pub mod render_loop;
 pub mod renderer;
 pub mod view_node;
