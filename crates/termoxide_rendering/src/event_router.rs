@@ -80,8 +80,13 @@
 
 use crossterm::event::{Event, MouseEventKind};
 use ratatui::layout::Rect;
+use termoxide_reactive::ArcRwSignal;
 
-use crate::view_node::{ComponentId, ViewNode};
+pub use crate::input::KeyBinding;
+use crate::{
+    input::{Event as InputEvent, KeyPress, KeySignalBindings},
+    view_node::{ComponentId, ViewNode},
+};
 
 // ─────────────────────────────────────────────────────────────────────────── //
 //  HitEntry
@@ -117,6 +122,9 @@ pub struct EventRouter {
     ///
     /// `None` when no component is focused (global hotkey mode).
     focused: Option<ComponentId>,
+
+    /// Global key bindings executed from routed key presses.
+    key_bindings: KeySignalBindings,
 }
 
 impl EventRouter {
@@ -128,6 +136,7 @@ impl EventRouter {
         Self {
             hit_map: Vec::new(),
             focused: None,
+            key_bindings: KeySignalBindings::new(),
         }
     }
 
@@ -192,6 +201,36 @@ impl EventRouter {
         self.focused = self.advance_focus(true);
     }
 
+    // ── Key-to-signal bindings ───────────────────────────────────────────── //
+
+    /// Bind a key to a fixed signal value.
+    ///
+    /// These bindings are executed from [`route_event`][Self::route_event], so
+    /// keyboard handling has a single entry point.
+    pub fn bind_key_set<T>(&mut self, key: KeyBinding, signal: ArcRwSignal<T>, value: T)
+    where
+        T: Clone + Send + Sync + 'static,
+    {
+        self.key_bindings.bind_set(key, signal, value);
+    }
+
+    /// Bind a key to an in-place signal update closure.
+    ///
+    /// These bindings are executed from [`route_event`][Self::route_event], so
+    /// keyboard handling has a single entry point.
+    pub fn bind_key_update<T, F>(&mut self, key: KeyBinding, signal: ArcRwSignal<T>, updater: F)
+    where
+        T: Send + Sync + 'static,
+        F: Fn(&mut T) + Send + Sync + 'static,
+    {
+        self.key_bindings.bind_update(key, signal, updater);
+    }
+
+    /// Mutable access to the underlying key bindings table.
+    pub fn key_bindings_mut(&mut self) -> &mut KeySignalBindings {
+        &mut self.key_bindings
+    }
+
     /// Advance focus forward (`reverse = false`) or backward (`reverse = true`).
     fn advance_focus(&self, reverse: bool) -> Option<ComponentId> {
         if self.hit_map.is_empty() {
@@ -246,7 +285,19 @@ impl EventRouter {
 
     /// Route a keyboard event.
     fn route_key(&mut self, ev: &crossterm::event::KeyEvent) -> Option<ComponentId> {
-        use crossterm::event::{KeyCode, KeyModifiers};
+        use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
+
+        if ev.kind != KeyEventKind::Press {
+            return self.focused;
+        }
+
+        // Keep Tab reserved for focus traversal. All other key presses can
+        // drive global reactive bindings.
+        if !matches!(ev.code, KeyCode::Tab) {
+            let _ = self
+                .key_bindings
+                .apply_event(&InputEvent::KeyPress(KeyPress::new(ev.code, ev.modifiers)));
+        }
 
         match ev.code {
             // Tab → focus next.
@@ -324,6 +375,7 @@ mod tests {
         MouseEventKind,
     };
     use ratatui::style::Style;
+    use termoxide_reactive::{ArcRwSignal, with_owner};
 
     fn make_tree() -> ViewNode {
         let left = ViewNode::text(Rect::new(0, 0, 40, 24), "left", Style::default()).with_id(1);
@@ -345,6 +397,31 @@ mod tests {
             state: KeyEventState::NONE,
         });
         assert_eq!(router.route_event(&ev, &root), Some(1));
+    }
+
+    #[test]
+    fn key_bindings_are_applied_by_router() {
+        with_owner(|| {
+            let root = make_tree();
+            let mut router = EventRouter::new();
+            let signal = ArcRwSignal::new(0i32);
+
+            router.bind_key_set(
+                KeyBinding::new(KeyCode::Char('k'), KeyModifiers::NONE),
+                signal.clone(),
+                7,
+            );
+
+            let ev = Event::Key(KeyEvent {
+                code: KeyCode::Char('k'),
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                state: KeyEventState::NONE,
+            });
+
+            assert_eq!(router.route_event(&ev, &root), None);
+            assert_eq!(signal.get_untracked(), 7);
+        });
     }
 
     #[test]
@@ -387,5 +464,173 @@ mod tests {
         assert!(contains(r, 29, 14)); // bottom-right - 1
         assert!(!contains(r, 30, 5)); // right edge (exclusive)
         assert!(!contains(r, 10, 15)); // bottom edge (exclusive)
+    }
+
+    #[test]
+    fn tab_on_empty_hit_map_keeps_focus() {
+        let root = make_tree();
+        let mut router = EventRouter::new();
+        router.set_focus(Some(42));
+
+        let tab = Event::Key(KeyEvent {
+            code: KeyCode::Tab,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        });
+
+        assert_eq!(router.route_event(&tab, &root), Some(42));
+        assert_eq!(router.focused(), Some(42));
+    }
+
+    #[test]
+    fn shift_tab_cycles_focus_backward() {
+        let root = make_tree();
+        let mut router = EventRouter::new();
+        router.sync_hit_map(&root);
+        router.set_focus(Some(1));
+
+        let tab = Event::Key(KeyEvent {
+            code: KeyCode::Tab,
+            modifiers: KeyModifiers::SHIFT,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        });
+
+        assert_eq!(router.route_event(&tab, &root), Some(2));
+        assert_eq!(router.focused(), Some(2));
+    }
+
+    #[test]
+    fn tab_does_not_trigger_key_bindings() {
+        with_owner(|| {
+            let root = make_tree();
+            let mut router = EventRouter::new();
+            let signal = ArcRwSignal::new(0i32);
+            router.sync_hit_map(&root);
+            router.set_focus(Some(1));
+
+            router.bind_key_update(
+                KeyBinding::new(KeyCode::Tab, KeyModifiers::NONE),
+                signal.clone(),
+                |value| *value += 1,
+            );
+
+            let tab = Event::Key(KeyEvent {
+                code: KeyCode::Tab,
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                state: KeyEventState::NONE,
+            });
+
+            assert_eq!(router.route_event(&tab, &root), Some(2));
+            assert_eq!(router.focused(), Some(2));
+            assert_eq!(signal.get_untracked(), 0);
+        });
+    }
+
+    #[test]
+    fn non_press_key_events_do_not_trigger_bindings() {
+        with_owner(|| {
+            let root = make_tree();
+            let mut router = EventRouter::new();
+            let signal = ArcRwSignal::new(0i32);
+
+            router.bind_key_update(
+                KeyBinding::new(KeyCode::Char('k'), KeyModifiers::NONE),
+                signal.clone(),
+                |value| *value += 1,
+            );
+
+            let repeat = Event::Key(KeyEvent {
+                code: KeyCode::Char('k'),
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Repeat,
+                state: KeyEventState::NONE,
+            });
+
+            assert_eq!(router.route_event(&repeat, &root), None);
+            assert_eq!(signal.get_untracked(), 0);
+        });
+    }
+
+    #[test]
+    fn mouse_down_miss_clears_focus() {
+        let root = make_tree();
+        let mut router = EventRouter::new();
+        router.sync_hit_map(&root);
+        router.set_focus(Some(1));
+
+        let miss = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 200,
+            row: 200,
+            modifiers: KeyModifiers::NONE,
+        });
+
+        assert_eq!(router.route_event(&miss, &root), None);
+        assert_eq!(router.focused(), None);
+    }
+
+    #[test]
+    fn overlap_prefers_last_drawn_node() {
+        let bottom = ViewNode::text(Rect::new(0, 0, 10, 10), "bottom", Style::default()).with_id(1);
+        let top = ViewNode::text(Rect::new(0, 0, 10, 10), "top", Style::default()).with_id(2);
+        let root = ViewNode::container(Rect::new(0, 0, 10, 10), vec![bottom, top]);
+
+        let mut router = EventRouter::new();
+        router.sync_hit_map(&root);
+
+        let click = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 1,
+            row: 1,
+            modifiers: KeyModifiers::NONE,
+        });
+
+        assert_eq!(router.route_event(&click, &root), Some(2));
+    }
+
+    #[test]
+    fn zero_sized_hitboxes_are_ignored() {
+        let zero = ViewNode::text(Rect::new(0, 0, 0, 0), "zero", Style::default()).with_id(10);
+        let root = ViewNode::container(Rect::new(0, 0, 10, 10), vec![zero]);
+
+        let mut router = EventRouter::new();
+        router.sync_hit_map(&root);
+
+        let click = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        });
+
+        assert_eq!(router.route_event(&click, &root), None);
+    }
+
+    #[test]
+    fn contains_near_u16_max_does_not_wrap() {
+        let r = Rect::new(u16::MAX - 1, u16::MAX - 1, 10, 10);
+        assert!(contains(r, u16::MAX - 1, u16::MAX - 1));
+        assert!(!contains(r, u16::MAX, u16::MAX));
+    }
+
+    #[test]
+    fn duplicate_ids_can_make_focus_cycle_sticky() {
+        let a = ViewNode::text(Rect::new(0, 0, 10, 10), "a", Style::default()).with_id(1);
+        let b = ViewNode::text(Rect::new(10, 0, 10, 10), "b", Style::default()).with_id(1);
+        let c = ViewNode::text(Rect::new(20, 0, 10, 10), "c", Style::default()).with_id(2);
+        let root = ViewNode::container(Rect::new(0, 0, 30, 10), vec![a, b, c]);
+
+        let mut router = EventRouter::new();
+        router.sync_hit_map(&root);
+        router.set_focus(Some(1));
+
+        router.focus_next();
+        assert_eq!(router.focused(), Some(1));
+
+        router.focus_prev();
+        assert_eq!(router.focused(), Some(2));
     }
 }
