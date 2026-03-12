@@ -324,6 +324,8 @@ impl<B: Backend> RenderLoop<B> {
         let viewport = self.renderer.viewport();
         let mut root = app.build_view(viewport);
         self.renderer.render_frame(&mut root)?;
+        // Build initial spatial index so mouse events are routed immediately.
+        self.event_router.sync_hit_map(&root);
 
         loop {
             // Block until either an event arrives or a dirty notification fires.

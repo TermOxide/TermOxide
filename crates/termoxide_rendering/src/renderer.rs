@@ -59,8 +59,11 @@
 //! renderer.render_frame(&mut root).unwrap();
 //! ```
 
-use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode};
 use crossterm::ExecutableCommand;
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use crossterm::terminal::{
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+};
 use ratatui::{Terminal, backend::Backend, buffer::Buffer, layout::Rect, style::Style};
 
 use crate::view_node::{ViewContent, ViewNode};
@@ -136,6 +139,8 @@ impl<B: Backend> Renderer<B> {
     pub fn new(mut terminal: Terminal<B>) -> Result<Self, RenderError> {
         enable_raw_mode()?;
         std::io::stdout().execute(EnterAlternateScreen)?;
+        // Enable mouse capture so the application receives mouse events.
+        std::io::stdout().execute(EnableMouseCapture)?;
         terminal.hide_cursor()?;
         Ok(Self { terminal })
     }
@@ -245,6 +250,8 @@ impl<B: Backend> Renderer<B> {
     /// should log the error but not panic — the process is about to exit anyway.
     pub fn restore(&mut self) -> Result<(), RenderError> {
         self.terminal.show_cursor()?;
+        // Disable mouse capture and restore the alternate screen and raw mode.
+        std::io::stdout().execute(DisableMouseCapture)?;
         std::io::stdout().execute(LeaveAlternateScreen)?;
         disable_raw_mode()?;
         Ok(())
