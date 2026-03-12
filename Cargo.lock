@@ -1163,6 +1163,7 @@ dependencies = [
  "crossterm",
  "ratatui",
  "termoxide_layout",
+ "termoxide_reactive",
 ]
 
 [[package]]
