@@ -25,14 +25,17 @@ long_description = "OxidUi is a framework for building terminal user interfaces 
 
 [workspace]
 members = [
-    "crates/oxidui_macros",
-    "crates/termoxide_layout",
     "crates/termoxide_reactive",
+    "crates/termoxide_rendering",
+    "crates/termoxide_layout",
 ]
 
-
 [dependencies]
-termoxide_reactive = { "crates/termoxide_reactive" }
+termoxide_reactive = { path = "crates/termoxide_reactive" }
+termoxide_rendering = { path = "crates/termoxide_rendering" }
+termoxide_layout = { path = "crates/termoxide_layout" }
+ratatui = { version = "0.26", features = ["crossterm"] }
+crossterm = "0.27"
 
 # Path handling
 walkdir = "2.5"
