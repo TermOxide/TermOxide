@@ -37,14 +37,23 @@ jobs:
           action: push
 
   run-builder:
-    name: "${{ matrix.crate }}"
-    needs: setup-builder
+    name: "${{ matrix.crate }} · cargo ${{ matrix.action }}"
+    runs-on: ubuntu-latest
+    if: inputs.crates != '[]' && inputs.actions != '[]'
     strategy:
       fail-fast: false
       matrix:
         crate: ${{ fromJson(inputs.crates) }}
-    uses: ./.github/workflows/crates-builder-internal.yaml
-    with:
-      crate: ${{ matrix.crate }}
-      actions: ${{ inputs.actions }}
-      ref: ${{ inputs.ref }}
+        action: ${{ fromJson(inputs.actions) }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || '' }}
+
+      - name: Restore Rust cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: pull
+
+      - name: Run cargo ${{ matrix.action }}
+        run: cargo ${{ matrix.action }} -p ${{ matrix.crate }}
