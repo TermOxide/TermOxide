@@ -1,0 +1,76 @@
+#!/bin/sh
+# Git commit-msg hook
+# Validates strict standard: <scope>: <subject>
+
+# Set up colors
+RED_BOLD="\033[1;31m"
+GREEN_BOLD="\033[1;32m"
+BLUE_BOLD="\033[1;34m"
+GOLD_BOLD="\033[1;33m"
+WHITE_BOLD="\033[1;37m"
+RESET="\033[0m"
+
+# Get the current branch name
+branch="$(git branch --show-current)"
+
+# Bypass if dev/
+case "$branch" in
+  dev/*)
+    exit 0
+    ;;
+esac
+
+printf "${BLUE_BOLD}Running commit-msg checks...${RESET}\n"
+
+msg_file="$1"
+# Read first line and full message
+msg="$(head -n 1 "$msg_file")"
+
+# 1. Max length <= 72
+# We use POSIX compatible string length calculation
+len=${#msg}
+if [ "$len" -gt 72 ]; then
+    printf "${RED_BOLD}Commit message exceeds 72 characters (actual: $len).${RESET}\n"
+    exit 1
+fi
+
+# 2. Format strict regex
+# Using POSIX grep
+if ! echo "$msg" | grep -Eq '^([a-z0-9\-\/]+): (.*)$'; then
+    printf "${RED_BOLD}Commit message does not match the strict format: <scope>: <subject>${RESET}\n"
+    exit 1
+fi
+
+# 3. No double spaces or trailing space
+if echo "$msg" | grep -Eq '  +'; then
+    printf "${RED_BOLD}Commit message contains multiple consecutive spaces.${RESET}\n"
+    exit 1
+fi
+
+if echo "$msg" | grep -Eq '[[:space:]]$'; then
+    printf "${RED_BOLD}Commit message contains trailing whitespace.${RESET}\n"
+    exit 1
+fi
+
+# 4. No trailing period
+case "$msg" in
+  *.)
+    printf "${RED_BOLD}Commit message must not end with a period.${RESET}\n"
+    exit 1
+    ;;
+esac
+
+# 5. Uppercase validation
+# Strip content inside single quotes, double quotes, and backticks.
+# What is left must not contain uppercase letters [A-Z].
+stripped_msg=$(echo "$msg" | sed -e "s/'[^']*'//g" -e 's/"[^"]*"//g' -e 's/`[^`]*`//g')
+if echo "$stripped_msg" | grep -q '[A-Z]'; then
+    printf "${RED_BOLD}Commit message contains uppercase letters outside of quotes or backticks.${RESET}\n"
+    printf "   (Only lowercase is allowed for the scope and subject).\n"
+    exit 1
+fi
+
+printf "${GREEN_BOLD}All commit-msg checks passed successfully!${RESET}\n"
+
+# Output success
+exit 0

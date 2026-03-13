@@ -1,0 +1,48 @@
+#!/bin/sh
+# Git pre-commit hook
+# Runs cargo fmt, check, and clippy on all Rust code
+
+# Set up colors
+RED_BOLD="\033[1;31m"
+GREEN_BOLD="\033[1;32m"
+BLUE_BOLD="\033[1;34m"
+GOLD_BOLD="\033[1;33m"
+WHITE_BOLD="\033[1;37m"
+RESET="\033[0m"
+
+# Get the current branch name
+branch="$(git branch --show-current)"
+
+# If we are on a dev/ branch, bypass all checks
+case "$branch" in
+  dev/*)
+    printf "${GOLD_BOLD}Branch starts with 'dev/', bypassing pre-commit checks.${RESET}\n"
+    exit 0
+    ;;
+esac
+
+printf "${BLUE_BOLD}Running pre-commit checks...${RESET}\n"
+
+# Run cargo fmt
+printf "${WHITE_BOLD}[1/3] Running cargo fmt...${RESET}\n"
+if ! cargo fmt --all -- --check; then
+    printf "${RED_BOLD}cargo fmt failed. Please run 'cargo fmt' to fix formatting issues.${RESET}\n"
+    exit 1
+fi
+
+# Run cargo check
+printf "${WHITE_BOLD}[2/3] Running cargo check...${RESET}\n"
+if ! cargo check --all-targets --all-features; then
+    printf "${RED_BOLD}cargo check failed. Please fix the compilation errors.${RESET}\n"
+    exit 1
+fi
+
+# Run cargo clippy
+printf "${WHITE_BOLD}[3/3] Running cargo clippy...${RESET}\n"
+if ! cargo clippy --all-targets --all-features -- -D warnings; then
+    printf "${RED_BOLD}cargo clippy failed. Please fix the linting warnings.${RESET}\n"
+    exit 1
+fi
+
+printf "${GREEN_BOLD}All pre-commit checks passed successfully!${RESET}\n"
+exit 0
