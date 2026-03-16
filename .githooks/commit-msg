@@ -53,6 +53,22 @@ if ! echo "$msg" | grep -Eq '[a-zA-Z0-9]$'; then
     exit 1
 fi
 
+# Extract subject and first word to check lowercase and imperative mood
+subject="${msg#*: }"
+first_word="${subject%% *}"
+
+# Check that the first word is strictly lowercase
+if printf "%s" "$first_word" | grep -q '[A-Z]'; then
+    printf "${RED_BOLD}The first word of the subject ('%s') must be in lowercase.${RESET}\n" "$first_word"
+    exit 1
+fi
+
+# Basic check for imperative mood (not ending in -ed, -ing, or -s)
+if printf "%s" "$first_word" | grep -Eq '(ed|ing|s)$' && ! printf "%s" "$first_word" | grep -Eq '^(pass|focus|bypass|alias|express)$'; then
+    printf "${RED_BOLD}The first word of the subject ('%s') must be in the imperative mood (e.g., 'remove' instead of 'removed' or 'removes').${RESET}\n" "$first_word"
+    exit 1
+fi
+
 printf "${GREEN_BOLD}All commit-msg checks passed successfully!${RESET}\n"
 
 # Output success
