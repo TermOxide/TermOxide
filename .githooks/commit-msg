@@ -53,16 +53,6 @@ if ! echo "$msg" | grep -Eq '[a-zA-Z0-9]$'; then
     exit 1
 fi
 
-# Uppercase validation
-# Strip content inside single quotes, double quotes, and backticks.
-# What is left must not contain uppercase letters [A-Z].
-stripped_msg=$(echo "$msg" | sed -e "s/'[^']*'//g" -e 's/"[^"]*"//g' -e 's/`[^`]*`//g')
-if echo "$stripped_msg" | grep -q '[A-Z]'; then
-    printf "${RED_BOLD}Commit message contains uppercase letters outside of quotes or backticks.${RESET}\n"
-    printf "   (Only lowercase is allowed for the scope and subject).\n"
-    exit 1
-fi
-
 printf "${GREEN_BOLD}All commit-msg checks passed successfully!${RESET}\n"
 
 # Output success
