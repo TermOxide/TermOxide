@@ -26,7 +26,7 @@ msg_file="$1"
 # Read first line and full message
 msg="$(head -n 1 "$msg_file")"
 
-# 1. Max length <= 72
+# Max length <= 72
 # We use POSIX compatible string length calculation
 len=${#msg}
 if [ "$len" -gt 72 ]; then
@@ -34,33 +34,26 @@ if [ "$len" -gt 72 ]; then
     exit 1
 fi
 
-# 2. Format strict regex
+# Format strict regex
 # Using POSIX grep
 if ! echo "$msg" | grep -Eq '^([a-z0-9\-\/]+): (.*)$'; then
     printf "${RED_BOLD}Commit message does not match the strict format: <scope>: <subject>${RESET}\n"
     exit 1
 fi
 
-# 3. No double spaces or trailing space
+# No double spaces
 if echo "$msg" | grep -Eq '  +'; then
     printf "${RED_BOLD}Commit message contains multiple consecutive spaces.${RESET}\n"
     exit 1
 fi
 
-if echo "$msg" | grep -Eq '[[:space:]]$'; then
-    printf "${RED_BOLD}Commit message contains trailing whitespace.${RESET}\n"
+# Last character must be a letter or a number
+if ! echo "$msg" | grep -Eq '[a-zA-Z0-9]$'; then
+    printf "${RED_BOLD}Commit message must end with a letter or a number.${RESET}\n"
     exit 1
 fi
 
-# 4. No trailing period
-case "$msg" in
-  *.)
-    printf "${RED_BOLD}Commit message must not end with a period.${RESET}\n"
-    exit 1
-    ;;
-esac
-
-# 5. Uppercase validation
+# Uppercase validation
 # Strip content inside single quotes, double quotes, and backticks.
 # What is left must not contain uppercase letters [A-Z].
 stripped_msg=$(echo "$msg" | sed -e "s/'[^']*'//g" -e 's/"[^"]*"//g' -e 's/`[^`]*`//g')
