@@ -93,6 +93,8 @@ jobs:
     with:
       crates: ${{ needs.detect.outputs.crates }}
       tags: ${{ needs.resolve-inputs.outputs.tags }}
+    permissions:
+      contents: write  # For pushing bump commits
 
   build:
     name: Build crates

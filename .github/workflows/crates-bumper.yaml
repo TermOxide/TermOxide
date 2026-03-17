@@ -40,6 +40,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ github.token }}
+          ref: ${{ github.head_ref }}
 
       - name: Restore Rust cache
         uses: ./.github/actions/rust-cache
@@ -69,7 +70,7 @@ jobs:
 
           while IFS= read -r label; do
             echo "Found label: $label"
-            if [[ "$label" =~ ^\d+\.release:\ (major|minor|patch)$ ]]; then
+            if [[ "$label" =~ ^[0-9]+\.release:\ (major|minor|patch)$ ]]; then
               RELEASE_TYPE="${BASH_REMATCH[1]}"
               break
             fi
@@ -89,6 +90,8 @@ jobs:
             echo "::endgroup::"
             BUMPED_CRATES+=("$crate")
           done < <(echo "$INPUT_CRATES" | jq -r '.[]')
+
+          cargo update --workspace
 
           # Save bumped crates as multi-line output
           if [ ${#BUMPED_CRATES[@]} -gt 0 ]; then
