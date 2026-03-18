@@ -25,9 +25,9 @@ long_description = "OxidUi is a framework for building terminal user interfaces 
 
 [workspace]
 members = [
-  "crates/oxidui_style",
-  "crates/oxidui_macros",
-  "crates/cargo-extract",
+    "crates/oxidui_style",
+    "crates/oxidui_macros",
+    "crates/cargo-extract",
 ]
 
 [dependencies]

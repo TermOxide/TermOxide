@@ -1,11 +1,14 @@
+use std::{
+    collections::{HashSet, VecDeque},
+    env,
+    process::Command,
+};
+
 use anyhow::{Context, Result};
 use guppy::{
     CargoMetadata,
     graph::{DependencyDirection::Reverse, PackageGraph},
 };
-use std::collections::{HashSet, VecDeque};
-use std::env;
-use std::process::Command;
 
 fn main() -> Result<()> {
     // Get the --since argument from the command line
@@ -65,7 +68,8 @@ fn main() -> Result<()> {
             continue;
         };
 
-        let reverse = graph.query_reverse(&[pkg_id.clone()])?.resolve();
+        let reverse =
+            graph.query_reverse(std::slice::from_ref(pkg_id))?.resolve();
 
         for pkg in reverse.packages(Reverse) {
             let name = pkg.name().to_string();
