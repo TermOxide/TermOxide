@@ -85,24 +85,12 @@ jobs:
         run: |
           echo "::notice::Detected crates: $CRATES"
 
-  bump:
-    name: Bump versions
-    needs: [resolve-inputs, detect]
-    if: needs.detect.outputs.crates != '[]'
-    uses: ./.github/workflows/crates-bumper.yaml
-    with:
-      crates: ${{ needs.detect.outputs.crates }}
-      tags: ${{ needs.resolve-inputs.outputs.tags }}
-    permissions:
-      contents: write  # For pushing bump commits
-
   build:
     name: Build crates
-    needs: [resolve-inputs, detect, bump]
+    needs: [resolve-inputs, detect]
     if: |
       always() &&
-      needs.detect.result == 'success' &&
-      (needs.bump.result == 'success' || needs.bump.result == 'skipped')
+      needs.detect.result == 'success'
     uses: ./.github/workflows/crates-builder.yaml
     with:
       crates: ${{ needs.detect.outputs.crates }}
