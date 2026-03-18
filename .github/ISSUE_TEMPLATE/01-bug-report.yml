@@ -1,0 +1,93 @@
+name: "\U0001F41B Bug Report"
+description: Report an unintended defect or incorrect behaviour.
+title: "[Bug]: "
+labels: ["1.type: bug", "2.component: uncategorized"]
+body:
+  - type: checkboxes
+    id: regression
+    attributes:
+      label: Regression?
+      description: >
+        Check this if the bug is about functionality that previously worked
+        and has now broken (i.e. a regression).
+      options:
+        - label: This is a regression (it used to work in a previous version).
+
+  - type: markdown
+    attributes:
+      value: |
+        What version on TermOxide are you running?
+
+        You can find the version from `termoxide --version`
+        If you are using an older version, please update to the latest stable version and check if the issue persists before continuing this bug report.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the bug.
+      placeholder: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen instead?
+      placeholder: I expected…
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: >
+        Minimal steps to reproduce the behaviour. If possible, include a
+        short code snippet or link to a minimal reproduction repository.
+      placeholder: |
+        1. Create a component with…
+        2. Run the application…
+        3. Observe that…
+    validations:
+      required: true
+
+  - type: textarea
+    id: metadata
+    attributes:
+      label: metadata
+      description: >
+        Paste the output of `rustc --version` here as well as
+        - The version of your OS (Ubuntu, macOS, Fedora, etc.)
+        - The version of your terminal emulator (Alakitty, Ghostty, WezTerm, etc.)
+        - The version of your shell (zsh, nu, powershell, etc.)
+      placeholder: rustc 1.92.0, Fedora 43, kitty 0.43.1, zsh 5.9
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: >
+        Logs, screenshots, panic backtraces, minimal reproducible code, or
+        anything else that might help diagnose the issue.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I have searched the [existing issues](https://github.com/TermOxide/TermOxide/labels/1.type:%20bug) and this bug has not been reported yet.
+          required: true
+        - label: I have read the [latest TermOxide manual](https://termoxide.dev/docs/)
+          required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        Consider adding :+1: to [existing bug reports](https://github.com/TermOxide/TermOxide/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc) that affect you instead of opening a duplicate.

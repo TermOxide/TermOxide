@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "\U00002753 Questions & Discussions"
+    url: https://github.com/orgs/TermOxide/discussions
+    about: Ask questions, share ideas, or start a discussion with the community.
+  - name: "\U0001F4AC Discord"
+    url: https://discord.gg/SFEynrYBD6
+    about: Join our Discord server for real-time help and chat.

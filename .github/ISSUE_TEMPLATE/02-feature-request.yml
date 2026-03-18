@@ -1,0 +1,70 @@
+name: "\u2728 Feature Request"
+description: Suggest new functionality or a capability improvement.
+title: "[Feature]: "
+labels: ["1.type: feature", "2.component: uncategorized"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: >
+        What problem does this feature solve? What are you trying to
+        achieve that you currently cannot?
+      placeholder: "I'm trying to… but currently I have to…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: >
+        How do you envision this feature working? API sketches,
+        pseudocode, or prose are all welcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: >
+        Have you considered other approaches or workarounds?
+        Why are they insufficient?
+    validations:
+      required: false
+
+  - type: textarea
+    id: prior-art
+    attributes:
+      label: Prior art
+      description: >
+        Does a similar feature exist in another framework (Ink, Bubble Tea,
+        Textual, Ratatui, iocraft, etc.)? Links and comparisons help us
+        evaluate the design space.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Related issues, screenshots, mockups, or anything else.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I have searched the [existing issues](https://github.com/TermOxide/TermOxide/labels/1.type:%20feature) and this feature has not already been requested.
+          required: true
+        - label: I have read the [latest TermOxide manual](https://termoxide.dev/docs/)
+          required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        Consider adding :+1: to [existing feature requests](https://github.com/TermOxide/TermOxide/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc) that you want in the next release instead of opening a duplicate.
