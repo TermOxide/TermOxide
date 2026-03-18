@@ -1,0 +1,56 @@
+# REQUIRES: .github/advanced-issue-labeler.yml (policy config file)
+name: "Issue: regression label"
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  regression-label:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.labels.*.name, '1.type: bug')
+    steps:
+      # Needed so the parser can read the form template
+      # and the labeler can read the policy config file.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Parse issue form
+        id: issue-parser
+        uses: stefanbuck/github-issue-parser@v3
+        with:
+          issue-body: ${{ github.event.issue.body }}
+          template-path: .github/ISSUE_TEMPLATE/01-bug-report.yml
+
+      - name: Apply labels from policy
+        id: labeler
+        uses: redhat-plumbers-in-action/advanced-issue-labeler@v3
+        with:
+          issue-form: ${{ steps.issue-parser.outputs.jsonString }}
+          section: regression
+          config-path: .github/advanced-issue-labeler.yml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Remove "1.type: bug" if regression was applied
+        if: steps.labeler.outputs.labels != '[]'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            try {
+              await github.rest.issues.removeLabel({
+                owner,
+                repo,
+                issue_number,
+                name: '1.type: bug',
+              });
+              core.info('Removed "1.type: bug" label.');
+            } catch (err) {
+              core.warning(`Could not remove "1.type: bug": ${err.message}`);
+            }
