@@ -1,7 +1,7 @@
 //! Reactive rendering pipeline for TermOxide.
 //!
-//! This crate is the layer where reactive signals meet the physical terminal.
-//! It orchestrates the complete **dirty → layout → render → diff → terminal
+//! This crate is the layer where application events meet the physical terminal.
+//! It orchestrates the complete **event → layout → render → diff → terminal
 //! output** cycle that drives every frame of a TermOxide application.
 //!
 //! ## Architecture overview
@@ -20,8 +20,8 @@
 //! │  │             │                         ┌───▼────────┐            │
 //! │  │  (main loop)│                         │  Renderer  │            │
 //! │  │             │                         │            │            │
-//! │  │  ├─signals  │                         │ Buffer fill│            │
-//! │  │  └─events   │                         │ + diff     │            │
+//! │  │  └─events   │                         │ Buffer fill│            │
+//! │  │             │                         │ + diff     │            │
 //! │  └──────┬──────┘                         └───┬────────┘            │
 //! │         │                                    │                     │
 //! │  ┌──────▼──────┐   routes to                 │ stdout              │
@@ -41,27 +41,26 @@
 //!   ratatui draw routines, and accumulates into a `Buffer` diffed against the
 //!   previous frame.
 //! - [`render_loop`]: [`RenderLoop`][render_loop::RenderLoop], the main loop;
-//!   blocks on crossterm events and reactive dirty notifications, then triggers
-//!   redraws.
+//!   blocks on crossterm events and redraws after input.
 //! - [`event_router`]: [`EventRouter`][event_router::EventRouter] maps raw
 //!   crossterm events to component ids via focus tracking (keyboard) and
 //!   spatial hit-testing (mouse).
 //!
 //! ## Render pipeline — data flow
 //!
-//! The pipeline below describes a single dirty frame.  Steps 1–2 are the
-//! reactive and layout layers (outside this crate); steps 3–6 are performed
-//! inside `termoxide_rendering`.
+//! The pipeline below describes a single input-driven frame.  Steps 1–2 are
+//! the application and layout layers (outside this crate); steps 3–6 are
+//! performed inside `termoxide_rendering`.
 //!
 //! ```text
-//! 1. Signal changes  →  reactive effect sets dirty flag
+//! 1. Input event arrives
 //! 2. LayoutEngine::compute()  →  assigns Rect to every ViewNode
-//! 3. RenderLoop wakes (dirty channel fires)
+//! 3. RenderLoop handles the event
 //! 4. App::build_view()  →  returns updated ViewNode tree
 //! 5. Renderer::render_frame()
 //!       ├── draw_node() recursive walk  →  Buffer (current frame)
 //!       └── Terminal::draw()  →  diff against previous Buffer  →  stdout
-//! 6. ViewNode::mark_clean()  →  clear dirty flags for next frame
+//! 6. ViewNode::mark_clean()  →  clear render bookkeeping for next frame
 //! ```
 //!
 //! ## Quick-start
@@ -77,8 +76,7 @@
 //!     style::Style,
 //! };
 //! use termoxide_rendering::{
-//!     event_router::EventRouter,
-//!     render_loop::{App, RenderLoop, dirty_channel},
+//!     render_loop::{App, RenderLoop},
 //!     renderer::Renderer,
 //!     view_node::{ComponentId, ViewNode},
 //! };
@@ -103,13 +101,9 @@
 //!     let backend = CrosstermBackend::new(stdout());
 //!     let terminal = Terminal::new(backend).unwrap();
 //!     let renderer = Renderer::new(terminal).unwrap();
-//!     let (dirty_tx, dirty_rx) = dirty_channel();
 //!     let event_router = EventRouter::new();
 //!
-//!     // Pass dirty_tx to the reactive layer.
-//!     // …
-//!
-//!     RenderLoop::new(renderer, event_router, dirty_rx)
+//!     RenderLoop::new(renderer, event_router)
 //!         .run(&mut Hello)
 //!         .unwrap();
 //! }

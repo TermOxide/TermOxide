@@ -7,7 +7,7 @@
 //!
 //! | Event class   | Routing strategy                                        |
 //! |---------------|---------------------------------------------------------|
-//! | Keyboard      | **Focus-based** — delivered to the currently focused    |
+//! | Keyboard      | delivered to the currently focused    |
 //! |               | component, identified by [`ComponentId`].               |
 //! | Mouse (click, | **Hit-test** — the [`ViewNode`] area that contains the  |
 //! | hover, scroll)| cursor position claims the event.  Ties are broken by   |
@@ -64,8 +64,7 @@
 //! let root = ViewNode::container(Rect::new(0, 0, 80, 24), vec![a, b]);
 //!
 //! let mut router = EventRouter::new();
-//! router.sync_hit_map(&root); // build the spatial index
-//! router.set_focus(Some(1)); // focus the left panel
+//! router.sync_hit_map(&root);          // build the spatial index
 //!
 //! // Keyboard events go to the focused component.
 //! use crossterm::event::{
@@ -82,20 +81,11 @@
 //!     kind: KeyEventKind::Press,
 //!     state: KeyEventState::NONE,
 //! });
-//! assert_eq!(router.route_event(&key_ev, &root), Some(1));
-//!
-//! // Mouse click in the right half → component 2.
-//! use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-//! let mouse_ev = Event::Mouse(MouseEvent {
-//!     kind: MouseEventKind::Down(MouseButton::Left),
-//!     column: 60,
-//!     row: 5,
-//!     modifiers: KeyModifiers::NONE,
-//! });
-//! assert_eq!(router.route_event(&mouse_ev, &root), Some(2));
+//! assert_eq!(router.route_event(&key_ev, &root), None);
 //! ```
 
-use crossterm::event::{Event, MouseEventKind};
+use crossterm::event::Event;
+use crossterm::event::KeyEventKind;
 use ratatui::layout::Rect;
 use termoxide_reactive::Signal;
 
@@ -193,32 +183,7 @@ impl EventRouter {
         }
     }
 
-    // ── Focus management ─────────────────────────────────────────────────────
-    // //
-
-    /// Return the [`ComponentId`] of the currently focused component, or
-    /// `None`.
-    pub fn focused(&self) -> Option<ComponentId> { self.focused }
-
-    /// Programmatically set keyboard focus to `id`.
-    ///
-    /// Pass `None` to clear focus (global hotkey mode).
-    pub fn set_focus(&mut self, id: Option<ComponentId>) { self.focused = id; }
-
-    /// Move focus to the next focusable component in document order.
-    ///
-    /// Wraps around from the last component to the first.  Does nothing when
-    /// the hit map is empty.
-    pub fn focus_next(&mut self) { self.focused = self.advance_focus(false); }
-
-    /// Move focus to the previous focusable component in document order.
-    ///
-    /// Wraps around from the first component to the last.  Does nothing when
-    /// the hit map is empty.
-    pub fn focus_prev(&mut self) { self.focused = self.advance_focus(true); }
-
-    // ── Key-to-signal bindings ─────────────────────────────────────────────
-    // //
+    // ── Key-to-signal bindings ───────────────────────────────────────────── //
 
     /// Bind a key to a fixed signal value.
     ///
@@ -256,42 +221,7 @@ impl EventRouter {
         &mut self.key_bindings
     }
 
-    /// Advance focus forward (`reverse = false`) or backward (`reverse =
-    /// true`).
-    fn advance_focus(&self, reverse: bool) -> Option<ComponentId> {
-        if self.hit_map.is_empty() {
-            return self.focused;
-        }
-
-        let ids: Vec<ComponentId> = self.hit_map.iter().map(|e| e.id).collect();
-        let len = ids.len();
-
-        let current_pos = self
-            .focused
-            .and_then(|focused| ids.iter().position(|&id| id == focused));
-
-        let next_pos = match current_pos {
-            None => {
-                if reverse {
-                    len - 1
-                } else {
-                    0
-                }
-            },
-            Some(pos) => {
-                if reverse {
-                    if pos == 0 { len - 1 } else { pos - 1 }
-                } else {
-                    (pos + 1) % len
-                }
-            },
-        };
-
-        Some(ids[next_pos])
-    }
-
-    // ── Event routing ────────────────────────────────────────────────────────
-    // //
+    // ── Event routing ──────────────────────────────────────────────────────── //
 
     /// Determine which component should handle `event` and return its id.
     ///
@@ -308,74 +238,24 @@ impl EventRouter {
     ) -> Option<ComponentId> {
         match event {
             Event::Key(key_ev) => self.route_key(key_ev),
-            Event::Mouse(mouse_ev) => self.route_mouse(mouse_ev),
-            // Resize, FocusGained, FocusLost, Paste → broadcast (no specific
-            // target).
+            // Resize, FocusGained, FocusLost, Paste → broadcast (no specific target).
             _ => None,
         }
     }
 
     /// Route a keyboard event.
-    fn route_key(
-        &mut self,
-        ev: &crossterm::event::KeyEvent,
-    ) -> Option<ComponentId> {
-        use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
-
+    fn route_key(&mut self, ev: &crossterm::event::KeyEvent) -> Option<ComponentId> {
         if ev.kind != KeyEventKind::Press {
             return self.focused;
         }
 
         // Keep Tab reserved for focus traversal. All other key presses can
         // drive global reactive bindings.
-        if !matches!(ev.code, KeyCode::Tab) {
-            let _ = self.key_bindings.apply_event(&InputEvent::KeyPress(
-                KeyPress::new(ev.code, ev.modifiers),
-            ));
-        }
+        let _ = self
+            .key_bindings
+            .apply_event(&InputEvent::KeyPress(KeyPress::new(ev.code, ev.modifiers)));
 
-        match ev.code {
-            // Tab → focus next.
-            KeyCode::Tab if !ev.modifiers.contains(KeyModifiers::SHIFT) => {
-                self.focus_next();
-                self.focused
-            },
-            // Shift-Tab → focus previous.
-            KeyCode::Tab => {
-                self.focus_prev();
-                self.focused
-            },
-            // Any other key → current focus.
-            _ => self.focused,
-        }
-    }
-
-    /// Route a mouse event.
-    ///
-    /// For button-down events the hit-tested component also steals keyboard
-    /// focus, mirroring conventional GUI behavior.
-    fn route_mouse(
-        &mut self,
-        ev: &crossterm::event::MouseEvent,
-    ) -> Option<ComponentId> {
-        let col = ev.column;
-        let row = ev.row;
-
-        // Hit-test: iterate in reverse document order so the topmost painted
-        // component wins when areas overlap
-        let hit = self
-            .hit_map
-            .iter()
-            .rev()
-            .find(|entry| contains(entry.area, col, row))
-            .map(|entry| entry.id);
-
-        // Mouse-down → transfer keyboard focus to the clicked component.
-        if matches!(ev.kind, MouseEventKind::Down(_)) {
-            self.focused = hit;
-        }
-
-        hit
+        self.focused
     }
 }
 
@@ -433,22 +313,6 @@ mod tests {
     }
 
     #[test]
-    fn keyboard_routed_to_focus() {
-        let root = make_tree();
-        let mut router = EventRouter::new();
-        router.sync_hit_map(&root);
-        router.set_focus(Some(1));
-
-        let ev = Event::Key(KeyEvent {
-            code: KeyCode::Char('x'),
-            modifiers: KeyModifiers::NONE,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        });
-        assert_eq!(router.route_event(&ev, &root), Some(1));
-    }
-
-    #[test]
     fn key_bindings_are_applied_by_router() {
         with_owner(|| {
             let root = make_tree();
@@ -474,108 +338,12 @@ mod tests {
     }
 
     #[test]
-    fn mouse_hit_test() {
-        let root = make_tree();
-        let mut router = EventRouter::new();
-        router.sync_hit_map(&root);
-
-        // Click in the right half.
-        let ev = Event::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: 60,
-            row: 5,
-            modifiers: KeyModifiers::NONE,
-        });
-        assert_eq!(router.route_event(&ev, &root), Some(2));
-    }
-
-    #[test]
-    fn tab_cycles_focus() {
-        let root = make_tree();
-        let mut router = EventRouter::new();
-        router.sync_hit_map(&root);
-        router.set_focus(Some(1));
-
-        let tab = Event::Key(KeyEvent {
-            code: KeyCode::Tab,
-            modifiers: KeyModifiers::NONE,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        });
-        router.route_event(&tab, &root);
-        assert_eq!(router.focused(), Some(2));
-    }
-
-    #[test]
     fn contains_edge_cases() {
         let r = Rect::new(10, 5, 20, 10);
         assert!(contains(r, 10, 5)); // top-left corner
         assert!(contains(r, 29, 14)); // bottom-right - 1
         assert!(!contains(r, 30, 5)); // right edge (exclusive)
         assert!(!contains(r, 10, 15)); // bottom edge (exclusive)
-    }
-
-    #[test]
-    fn tab_on_empty_hit_map_keeps_focus() {
-        let root = make_tree();
-        let mut router = EventRouter::new();
-        router.set_focus(Some(42));
-
-        let tab = Event::Key(KeyEvent {
-            code: KeyCode::Tab,
-            modifiers: KeyModifiers::NONE,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        });
-
-        assert_eq!(router.route_event(&tab, &root), Some(42));
-        assert_eq!(router.focused(), Some(42));
-    }
-
-    #[test]
-    fn shift_tab_cycles_focus_backward() {
-        let root = make_tree();
-        let mut router = EventRouter::new();
-        router.sync_hit_map(&root);
-        router.set_focus(Some(1));
-
-        let tab = Event::Key(KeyEvent {
-            code: KeyCode::Tab,
-            modifiers: KeyModifiers::SHIFT,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        });
-
-        assert_eq!(router.route_event(&tab, &root), Some(2));
-        assert_eq!(router.focused(), Some(2));
-    }
-
-    #[test]
-    fn tab_does_not_trigger_key_bindings() {
-        with_owner(|| {
-            let root = make_tree();
-            let mut router = EventRouter::new();
-            let signal = Signal::new(0i32);
-            router.sync_hit_map(&root);
-            router.set_focus(Some(1));
-
-            router.bind_key_update(
-                KeyBinding::new(KeyCode::Tab, KeyModifiers::NONE),
-                signal,
-                |value| *value += 1,
-            );
-
-            let tab = Event::Key(KeyEvent {
-                code: KeyCode::Tab,
-                modifiers: KeyModifiers::NONE,
-                kind: KeyEventKind::Press,
-                state: KeyEventState::NONE,
-            });
-
-            assert_eq!(router.route_event(&tab, &root), Some(2));
-            assert_eq!(router.focused(), Some(2));
-            assert_eq!(signal.get_untracked(), 0);
-        });
     }
 
     #[test]
@@ -601,48 +369,6 @@ mod tests {
             assert_eq!(router.route_event(&repeat, &root), None);
             assert_eq!(signal.get_untracked(), 0);
         });
-    }
-
-    #[test]
-    fn mouse_down_miss_clears_focus() {
-        let root = make_tree();
-        let mut router = EventRouter::new();
-        router.sync_hit_map(&root);
-        router.set_focus(Some(1));
-
-        let miss = Event::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: 200,
-            row: 200,
-            modifiers: KeyModifiers::NONE,
-        });
-
-        assert_eq!(router.route_event(&miss, &root), None);
-        assert_eq!(router.focused(), None);
-    }
-
-    #[test]
-    fn overlap_prefers_last_drawn_node() {
-        let bottom =
-            ViewNode::text(Rect::new(0, 0, 10, 10), "bottom", Style::default())
-                .with_id(1);
-        let top =
-            ViewNode::text(Rect::new(0, 0, 10, 10), "top", Style::default())
-                .with_id(2);
-        let root =
-            ViewNode::container(Rect::new(0, 0, 10, 10), vec![bottom, top]);
-
-        let mut router = EventRouter::new();
-        router.sync_hit_map(&root);
-
-        let click = Event::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: 1,
-            row: 1,
-            modifiers: KeyModifiers::NONE,
-        });
-
-        assert_eq!(router.route_event(&click, &root), Some(2));
     }
 
     #[test]
@@ -673,23 +399,37 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_ids_can_make_focus_cycle_sticky() {
-        let a = ViewNode::text(Rect::new(0, 0, 10, 10), "a", Style::default())
-            .with_id(1);
-        let b = ViewNode::text(Rect::new(10, 0, 10, 10), "b", Style::default())
-            .with_id(1);
-        let c = ViewNode::text(Rect::new(20, 0, 10, 10), "c", Style::default())
-            .with_id(2);
-        let root = ViewNode::container(Rect::new(0, 0, 30, 10), vec![a, b, c]);
+    fn route_event_with_no_matching_bindings_returns_none() {
+        let root = make_tree();
+        let mut router = EventRouter::new();
 
+        let ev = Event::Key(KeyEvent {
+            code: KeyCode::Char('k'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        });
+
+        assert_eq!(router.route_event(&ev, &root), None);
+    }
+
+    #[test]
+    fn collect_hit_entries_finds_all_components() {
+        let root = make_tree();
+        let mut entries = Vec::new();
+        EventRouter::collect_hit_entries(&root, &mut entries);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].id, 1);
+        assert_eq!(entries[1].id, 2);
+    }
+
+    #[test]
+    fn sync_hit_map_builds_correct_mapping() {
+        let root = make_tree();
         let mut router = EventRouter::new();
         router.sync_hit_map(&root);
-        router.set_focus(Some(1));
-
-        router.focus_next();
-        assert_eq!(router.focused(), Some(1));
-
-        router.focus_prev();
-        assert_eq!(router.focused(), Some(2));
+        assert_eq!(router.hit_map.len(), 2);
     }
+
+    
 }
