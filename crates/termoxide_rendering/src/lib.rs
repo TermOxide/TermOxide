@@ -60,7 +60,7 @@
 //! 5. Renderer::render_frame()
 //!       ├── draw_node() recursive walk  →  Buffer (current frame)
 //!       └── Terminal::draw()  →  diff against previous Buffer  →  stdout
-//! 6. ViewNode::mark_clean()  →  clear render bookkeeping for next frame
+//! 6. ViewNode::mark_clean()  →  clear render bookkeeping for next frame (not implemented yet)
 //! ```
 //!
 //! ## Quick-start

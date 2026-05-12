@@ -30,6 +30,7 @@
 //!   layer whenever a signal that the node depends on changes.  The
 //!   [`RenderLoop`][crate::render_loop::RenderLoop] only re-renders the
 //!   sub-tree containing at least one dirty node, keeping frame work low.
+//!   (note implemented yet)
 //!
 //! - **Spatial metadata**: every node carries the terminal area ([`Rect`])
 //!   assigned to it by the layout engine so that the

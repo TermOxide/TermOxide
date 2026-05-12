@@ -154,10 +154,17 @@ impl<B: Backend> Renderer<B> {
     /// Returns [`RenderError::Io`] if hiding the cursor fails.
     pub fn new(mut terminal: Terminal<B>) -> Result<Self, RenderError> {
         enable_raw_mode()?;
-        std::io::stdout().execute(EnterAlternateScreen)?;
-        // Enable mouse capture so the application receives mouse events.
-        std::io::stdout().execute(EnableMouseCapture)?;
-        terminal.hide_cursor()?;
+        if let Err(e) = (|| -> std::io::Result<()> {
+            std::io::stdout().execute(EnterAlternateScreen)?;
+            std::io::stdout().execute(EnableMouseCapture)?;
+            terminal.hide_cursor()?;
+            Ok(())
+        })() {
+            let _ = std::io::stdout().execute(DisableMouseCapture);
+            let _ = std::io::stdout().execute(LeaveAlternateScreen);
+            let _ = disable_raw_mode();
+            return Err(RenderError::Io(e));
+        }
         Ok(Self {
             terminal,
             terminal_mode_active: true,

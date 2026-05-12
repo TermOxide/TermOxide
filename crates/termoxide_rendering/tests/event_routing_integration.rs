@@ -73,7 +73,7 @@ fn test_event_router_keyboard_basic() {
     });
 
     let target = router.route_event(&ev, &root);
-    let _ = target;
+    assert!((target.is_none()));
 }
 
 #[test]
@@ -90,7 +90,7 @@ fn test_event_router_keyboard_multiple_events() {
             state: KeyEventState::NONE,
         });
         let target = router.route_event(&ev, &root);
-        let _ = target;
+        assert!(target.is_none());
     }
 }
 
@@ -108,13 +108,11 @@ fn test_event_router_keyboard_with_modifiers() {
     });
 
     let target = router.route_event(&ev, &root);
-    let _ = target;
+    assert!(target.is_none());
 }
 
-
-
 // ─────────────────────────────────────────────────────────────────────────── //
-//  Mouse hit-testing tests
+//  Mouse hit-testing tests.-
 // ─────────────────────────────────────────────────────────────────────────── //
 
 #[test]
@@ -131,7 +129,7 @@ fn test_event_router_mouse_hit_test_basic() {
     });
 
     let target = router.route_event(&mouse_ev, &root);
-    let _ = target;
+    assert!(target.is_none());
 }
 
 #[test]
@@ -149,7 +147,7 @@ fn test_event_router_mouse_multiple_clicks() {
         });
 
         let target = router.route_event(&mouse_ev, &root);
-        let _ = target; // Just verify no panics
+        assert!(target.is_none());
     }
 }
 
@@ -168,7 +166,8 @@ fn test_event_router_mouse_buttons() {
             modifiers: KeyModifiers::NONE,
         });
 
-        let _target = router.route_event(&mouse_ev, &root);
+        let target = router.route_event(&mouse_ev, &root);
+        assert!(target.is_none());
     }
 }
 
@@ -196,7 +195,8 @@ fn test_event_router_sync_hit_map_rebuilds() {
         modifiers: KeyModifiers::NONE,
     });
 
-    let _target = router.route_event(&mouse_ev, &root2);
+    let target = router.route_event(&mouse_ev, &root2);
+    assert!(target.is_none());
 }
 
 #[test]
@@ -214,7 +214,8 @@ fn test_event_router_nested_components_sync() {
         modifiers: KeyModifiers::NONE,
     });
 
-    let _target = router.route_event(&mouse_ev, &root);
+    let target = router.route_event(&mouse_ev, &root);
+    assert!(target.is_none());
 }
 
 // ─────────────────────────────────────────────────────────────────────────── //
@@ -234,7 +235,7 @@ fn test_event_router_mouse_scroll_events() {
         modifiers: KeyModifiers::NONE,
     });
 
-    let _target = router.route_event(&scroll_up, &root);
+    let target = router.route_event(&scroll_up, &root);
 
     let scroll_down = Event::Mouse(MouseEvent {
         kind: MouseEventKind::ScrollDown,
@@ -243,7 +244,8 @@ fn test_event_router_mouse_scroll_events() {
         modifiers: KeyModifiers::NONE,
     });
 
-    let _target = router.route_event(&scroll_down, &root);
+    let target = router.route_event(&scroll_down, &root);
+    assert!(target.is_none());
 }
 
 #[test]
@@ -259,7 +261,8 @@ fn test_event_router_mouse_drag() {
         modifiers: KeyModifiers::NONE,
     });
 
-    let _target = router.route_event(&drag_ev, &root);
+    let target = router.route_event(&drag_ev, &root);
+    assert!(target.is_none());
 }
 
 // ─────────────────────────────────────────────────────────────────────────── //
@@ -279,7 +282,8 @@ fn test_event_router_mouse_moved() {
         modifiers: KeyModifiers::NONE,
     });
 
-    let _target = router.route_event(&moved_ev, &root);
+    let target = router.route_event(&moved_ev, &root);
+    assert!(target.is_none());
 }
 
 // ─────────────────────────────────────────────────────────────────────────── //
@@ -300,7 +304,8 @@ fn test_event_router_click_boundaries() {
             modifiers: KeyModifiers::NONE,
         });
 
-        let _target = router.route_event(&mouse_ev, &root);
+        let target = router.route_event(&mouse_ev, &root);
+        assert!(target.is_none());
     }
 }
 
@@ -323,6 +328,7 @@ fn test_event_router_preserves_component_ids() {
             modifiers: KeyModifiers::NONE,
         });
 
-        let _target = router.route_event(&mouse_ev, &root);
+        let target = router.route_event(&mouse_ev, &root);
+        assert!(target.is_none());
     }
 }
