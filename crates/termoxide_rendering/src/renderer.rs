@@ -171,6 +171,16 @@ impl<B: Backend> Renderer<B> {
         })
     }
 
+    /// Create a `Renderer` for testing, which does not enable raw mode or
+    /// alternate screen.
+    #[cfg(test)]
+    pub(crate) fn new_for_test(terminal: Terminal<B>) -> Self {
+        Self {
+            terminal,
+            terminal_mode_active: false,
+        }
+    }
+
     /// Return the current terminal viewport size as a [`Rect`].
     ///
     /// This is the authoritative size the layout engine should use when
@@ -290,5 +300,85 @@ impl<B: Backend> Renderer<B> {
 impl<B: Backend> Drop for Renderer<B> {
     fn drop(&mut self) {
         let _ = self.restore();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::IsTerminal;
+
+    use ratatui::backend::{CrosstermBackend, TestBackend};
+    use ratatui::layout::Rect;
+    use ratatui::style::Style;
+
+    #[test]
+    fn draw_node_truncates_text_to_area() {
+        let area = Rect::new(0, 0, 3, 1);
+        let node = ViewNode::text(area, "abcdef", Style::default());
+        let mut buf = Buffer::empty(area);
+
+        Renderer::<TestBackend>::draw_node(&node, &mut buf);
+
+        assert_eq!(buf.get(0, 0).symbol(), "a");
+        assert_eq!(buf.get(1, 0).symbol(), "b");
+        assert_eq!(buf.get(2, 0).symbol(), "c");
+    }
+
+    #[test]
+    fn draw_node_renders_children_after_parent() {
+        let area = Rect::new(0, 0, 1, 1);
+        let parent = ViewNode::raw(area, |buf, rect| {
+            buf.get_mut(rect.x, rect.y).set_symbol("A");
+        })
+        .with_children(vec![ViewNode::text(area, "B", Style::default())]);
+
+        let mut buf = Buffer::empty(area);
+        Renderer::<TestBackend>::draw_node(&parent, &mut buf);
+
+        assert_eq!(buf.get(0, 0).symbol(), "B");
+    }
+
+    #[test]
+    fn render_frame_writes_to_backend_buffer() {
+        let backend = TestBackend::new(4, 1);
+        let terminal = Terminal::new(backend).expect("terminal");
+        let mut renderer = Renderer::new_for_test(terminal);
+        let area = Rect::new(0, 0, 4, 1);
+        let mut root = ViewNode::text(area, "hey!", Style::default());
+
+        renderer.render_frame(&mut root).expect("render");
+
+        let buffer = renderer.terminal().backend().buffer();
+        assert_eq!(buffer.get(0, 0).symbol(), "h");
+        assert_eq!(buffer.get(1, 0).symbol(), "e");
+        assert_eq!(buffer.get(2, 0).symbol(), "y");
+        assert_eq!(buffer.get(3, 0).symbol(), "!");
+    }
+
+    #[test]
+    fn restore_is_noop_when_inactive() {
+        let backend = TestBackend::new(2, 1);
+        let terminal = Terminal::new(backend).expect("terminal");
+        let mut renderer = Renderer::new_for_test(terminal);
+
+        assert!(!renderer.terminal_mode_active);
+        assert!(renderer.restore().is_ok());
+        assert!(!renderer.terminal_mode_active);
+    }
+
+    #[test]
+    fn new_and_restore_work_on_terminal() {
+        if !std::io::stdout().is_terminal() {
+            return;
+        }
+
+        let backend = CrosstermBackend::new(std::io::stdout());
+        let terminal = Terminal::new(backend).expect("terminal");
+        let mut renderer = Renderer::new(terminal).expect("renderer");
+
+        assert!(renderer.terminal_mode_active);
+        renderer.restore().expect("restore");
+        assert!(!renderer.terminal_mode_active);
     }
 }

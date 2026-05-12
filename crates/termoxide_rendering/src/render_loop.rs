@@ -133,12 +133,37 @@ pub trait App {
 ///
 /// ```rust,no_run
 /// use std::io::stdout;
+/// use ratatui::{Terminal, backend::CrosstermBackend};
+/// use termoxide_rendering::render_loop::RenderLoop;
+/// use termoxide_rendering::renderer::Renderer;
+/// use termoxide_rendering::event_router::EventRouter;
+///
+/// let backend  = CrosstermBackend::new(stdout());
+/// let terminal = Terminal::new(backend).unwrap();
+/// let renderer = Renderer::new(terminal).unwrap();
+///
+/// let event_router = EventRouter::new();
+///
+/// // let mut app = MyApp::new();
+/// // RenderLoop::new(renderer, event_router).run(&mut app);
+/// ```
+pub struct RenderLoop<B: Backend> {
+    renderer: Renderer<B>,
+    event_router: EventRouter,
+    event_reader: Option<Box<dyn FnMut() -> std::io::Result<Event>>>,
+}
+
+impl<B: Backend> RenderLoop<B> {
+    /// Create a new render loop.
+    ///
+    /// - `renderer` — the configured [`Renderer`] to paint frames.
     /// - `event_router` — the [`EventRouter`] that maps raw crossterm events
     ///   to component ids.
     pub fn new(renderer: Renderer<B>, event_router: EventRouter) -> Self {
         Self {
             renderer,
             event_router,
+            event_reader: None,
         }
     }
 
@@ -183,7 +208,7 @@ pub trait App {
         self.event_router.sync_hit_map(&root);
 
         loop {
-            let ev = event::read()?;
+            let ev = self.read_event()?;
 
             // Default quit bindings: Ctrl-C and Ctrl-D.
             if Self::is_quit_event(&ev) {
@@ -229,6 +254,14 @@ pub trait App {
             })
         )
     }
+
+    fn read_event(&mut self) -> std::io::Result<Event> {
+        if let Some(reader) = self.event_reader.as_mut() {
+            reader()
+        } else {
+            event::read()
+        }
+    }
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -265,4 +298,130 @@ impl From<RenderError> for RenderLoopError {
 
 impl From<std::io::Error> for RenderLoopError {
     fn from(e: std::io::Error) -> Self { Self::Render(RenderError::Io(e)) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::VecDeque;
+    use std::io::{Error, ErrorKind};
+
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::layout::Rect;
+    use ratatui::style::Style;
+
+    struct CountingApp {
+        build_count: usize,
+        handle_count: usize,
+    }
+
+    impl CountingApp {
+        fn new() -> Self {
+            Self {
+                build_count: 0,
+                handle_count: 0,
+            }
+        }
+    }
+
+    impl App for CountingApp {
+        fn build_view(&mut self, viewport: Rect) -> ViewNode {
+            self.build_count += 1;
+            ViewNode::text(viewport, "count", Style::default())
+        }
+
+        fn handle_event(&mut self, _id: Option<ComponentId>, event: Event) -> bool {
+            self.handle_count += 1;
+            matches!(
+                event,
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('x'),
+                    ..
+                })
+            )
+        }
+    }
+
+    fn make_key_event(code: KeyCode, modifiers: KeyModifiers) -> Event {
+        Event::Key(KeyEvent {
+            code,
+            modifiers,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn event_reader(events: Vec<Event>) -> Box<dyn FnMut() -> std::io::Result<Event>> {
+        let mut queue: VecDeque<Event> = events.into();
+        Box::new(move || {
+            queue
+                .pop_front()
+                .ok_or_else(|| Error::new(ErrorKind::UnexpectedEof, "no events"))
+        })
+    }
+
+    #[test]
+    fn run_quits_on_ctrl_c_before_app_handle() {
+        let backend = TestBackend::new(10, 1);
+        let terminal = Terminal::new(backend).expect("terminal");
+        let renderer = Renderer::new_for_test(terminal);
+        let event_router = EventRouter::new();
+        let mut render_loop = RenderLoop::new(renderer, event_router);
+
+        render_loop.event_reader = Some(event_reader(vec![make_key_event(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+        )]));
+
+        let mut app = CountingApp::new();
+        let result = render_loop.run(&mut app);
+
+        assert!(result.is_ok());
+        assert_eq!(app.build_count, 1);
+        assert_eq!(app.handle_count, 0);
+    }
+
+    #[test]
+    fn run_stops_when_app_handles_event() {
+        let backend = TestBackend::new(10, 1);
+        let terminal = Terminal::new(backend).expect("terminal");
+        let renderer = Renderer::new_for_test(terminal);
+        let event_router = EventRouter::new();
+        let mut render_loop = RenderLoop::new(renderer, event_router);
+
+        render_loop.event_reader = Some(event_reader(vec![make_key_event(
+            KeyCode::Char('x'),
+            KeyModifiers::NONE,
+        )]));
+
+        let mut app = CountingApp::new();
+        let result = render_loop.run(&mut app);
+
+        assert!(result.is_ok());
+        assert_eq!(app.build_count, 1);
+        assert_eq!(app.handle_count, 1);
+    }
+
+    #[test]
+    fn loop_body_rebuilds_after_non_quit_event() {
+        let backend = TestBackend::new(10, 1);
+        let terminal = Terminal::new(backend).expect("terminal");
+        let renderer = Renderer::new_for_test(terminal);
+        let event_router = EventRouter::new();
+        let mut render_loop = RenderLoop::new(renderer, event_router);
+
+        render_loop.event_reader = Some(event_reader(vec![
+            make_key_event(KeyCode::Char('a'), KeyModifiers::NONE),
+            make_key_event(KeyCode::Char('c'), KeyModifiers::CONTROL),
+        ]));
+
+        let mut app = CountingApp::new();
+        let result = render_loop.run(&mut app);
+
+        assert!(result.is_ok());
+        assert_eq!(app.build_count, 2);
+        assert_eq!(app.handle_count, 1);
+    }
 }

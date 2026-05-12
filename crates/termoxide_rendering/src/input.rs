@@ -86,10 +86,21 @@ pub fn poll_events() -> Vec<Event> {
 ///
 /// The first event wait uses `timeout`; if one event is found, this function
 /// drains all remaining ready events with a zero timeout.
-pub(crate) fn poll_events_timeout(
+#[allow(dead_code)]
+pub(crate) fn poll_events_timeout(timeout: Duration) -> std::io::Result<Vec<Event>> {
+    poll_events_timeout_with(timeout, event::poll, event::read)
+}
+
+pub(crate) fn poll_events_timeout_with<PollFn, ReadFn>(
     timeout: Duration,
-) -> std::io::Result<Vec<Event>> {
-    let raw = poll_crossterm_events(timeout)?;
+    poll: PollFn,
+    read: ReadFn,
+) -> std::io::Result<Vec<Event>>
+where
+    PollFn: FnMut(Duration) -> std::io::Result<bool>,
+    ReadFn: FnMut() -> std::io::Result<CrosstermEvent>,
+{
+    let raw = drain_events_with(timeout, poll, read)?;
     Ok(to_framework_events(raw))
 }
 
@@ -126,7 +137,6 @@ where
 
     Ok(events)
 }
-
 /// Keyboard matcher used by [`KeySignalBindings`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct KeyBinding {
@@ -230,6 +240,7 @@ impl KeySignalBindings {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
     use std::io::{Error, ErrorKind};
 
     use crossterm::event::{
@@ -459,5 +470,59 @@ mod tests {
             assert_eq!(updates, 2);
             assert_eq!(signal.get_untracked(), 2);
         });
+    }
+
+    #[test]
+    fn poll_events_uses_default_timeout() {
+        let captured = RefCell::new(None);
+        let timeout = Duration::from_millis(42);
+
+        let events = poll_events_timeout_with(
+            timeout,
+            |observed| {
+                *captured.borrow_mut() = Some(observed);
+                Ok(false)
+            },
+            || {
+                Err(Error::new(
+                    ErrorKind::UnexpectedEof,
+                    "read should not be called",
+                ))
+            },
+        )
+        .expect("poll events");
+
+        assert!(events.is_empty());
+        assert_eq!(captured.borrow().unwrap(), timeout);
+    }
+
+    #[test]
+    fn poll_events_returns_empty_on_error() {
+        let mut poll_results = vec![Ok(true), Ok(false)].into_iter();
+        let mut read_results = vec![Ok(key_event(
+            KeyCode::Char('z'),
+            KeyModifiers::NONE,
+            KeyEventKind::Press,
+        ))]
+        .into_iter();
+
+        let events = poll_events_timeout_with(
+            Duration::from_millis(5),
+            |_| poll_results.next().unwrap_or(Ok(false)),
+            || {
+                read_results
+                    .next()
+                    .unwrap_or_else(|| Err(Error::new(ErrorKind::UnexpectedEof, "no event")))
+            },
+        )
+        .expect("poll events");
+
+        assert_eq!(
+            events,
+            vec![Event::KeyPress(KeyPress::new(
+                KeyCode::Char('z'),
+                KeyModifiers::NONE
+            ))]
+        );
     }
 }
