@@ -224,7 +224,7 @@ fn test_form_app_view_reflects_focus() {
     app.focused_field = 1;
     let view = app.build_view(viewport);
 
-    assert!(view.children.len() >= 5);
+    assert_eq!(view.children.len(), 5);
 }
 
 // ─────────────────────────────────────────────────────────────────────────── //
