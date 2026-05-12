@@ -8,7 +8,6 @@
 //! - tree structure integrity
 
 use ratatui::layout::Rect;
-use ratatui::style::Color;
 use ratatui::style::Style;
 
 use termoxide_rendering::view_node::{ComponentId, ViewNode};
@@ -251,6 +250,17 @@ fn test_view_node_children_order_preserved() {
     }
 }
 
+#[test]
+fn test_view_node_with_children_replaces_children() {
+    let rect = Rect::new(0, 0, 10, 2);
+    let child = ViewNode::text(Rect::new(0, 0, 5, 1), "Child", Style::default()).with_id(7);
+
+    let node = ViewNode::container(rect, vec![]).with_children(vec![child]);
+
+    assert_eq!(node.children.len(), 1);
+    assert_eq!(node.children[0].id, Some(7));
+}
+
 // ─────────────────────────────────────────────────────────────────────────── //
 //  Mixed tree tests
 // ─────────────────────────────────────────────────────────────────────────── //
@@ -316,4 +326,14 @@ fn test_view_node_child_exceeds_parent_bounds() {
     let parent = ViewNode::container(parent_rect, vec![child]);
 
     assert_eq!(parent.children[0].area.width, 20);
+}
+
+#[test]
+fn test_view_node_with_area_overwrites_area() {
+    let original = Rect::new(0, 0, 2, 2);
+    let updated = Rect::new(5, 6, 7, 8);
+
+    let node = ViewNode::text(original, "Area", Style::default()).with_area(updated);
+
+    assert_eq!(node.area, updated);
 }

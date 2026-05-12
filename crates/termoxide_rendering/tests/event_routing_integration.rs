@@ -235,7 +235,7 @@ fn test_event_router_mouse_scroll_events() {
         modifiers: KeyModifiers::NONE,
     });
 
-    let target = router.route_event(&scroll_up, &root);
+    let _target = router.route_event(&scroll_up, &root);
 
     let scroll_down = Event::Mouse(MouseEvent {
         kind: MouseEventKind::ScrollDown,
