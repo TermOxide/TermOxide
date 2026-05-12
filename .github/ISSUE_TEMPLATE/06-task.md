@@ -9,10 +9,10 @@ assignees: ""
 <!-- TermOxide — Task
 
    Tasks are atomic units of work assigned to one person.
-   Each task should be completable within a single sprint
+   Each task should be completable within a single iteration
    and typically maps to one branch and one PR.
 
-   The assignent will be made during sprint planning. -->
+   The assignment is made during planning. -->
 
 ## Parent story
 

@@ -11,4 +11,4 @@ policy:
       - id: [regression]
         label:
           - name: "1.type: regression"
-            keys: ["This is a regression (it used to work in a previous version)."]
+            keys: ["This is a regression on `main`."]

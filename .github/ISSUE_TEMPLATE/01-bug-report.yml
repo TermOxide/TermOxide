@@ -1,32 +1,33 @@
-name: "\U0001F41B Bug Report"
-description: Report an unintended defect or incorrect behaviour.
+name: "\U0001F41B Bug Report (internal)"
+description: Report a bug observed while working on the codebase.
 title: "[Bug]: "
-labels: ["1.type: bug", "2.component: uncategorized"]
+labels: ["1.type: bug", "2.component: uncategorized", "01.status: needs-triage"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        This template assumes you are reporting a bug observed while building or running the project locally — there is no released version yet.
+
+        When the project is opened to external contributors, a public-flavored bug report template will be written alongside this one.
+
   - type: checkboxes
     id: regression
     attributes:
       label: Regression?
       description: >
-        Check this if the bug is about functionality that previously worked
-        and has now broken (i.e. a regression).
+        Check this if the bug is about functionality that worked on
+        a previous commit on `main` and has now broken. Mention the
+        suspected breaking commit in the "Additional context" section
+        if you have a candidate.
       options:
-        - label: This is a regression (it used to work in a previous version).
-
-  - type: markdown
-    attributes:
-      value: |
-        What version on TermOxide are you running?
-
-        You can find the version from `termoxide --version`
-        If you are using an older version, please update to the latest stable version and check if the issue persists before continuing this bug report.
+        - label: This is a regression on `main`.
 
   - type: textarea
     id: description
     attributes:
       label: Description
-      description: A clear and concise description of the bug.
-      placeholder: What happened?
+      description: A short, clear description of the bug.
+      placeholder: What did you observe?
     validations:
       required: true
 
@@ -44,25 +45,23 @@ body:
     attributes:
       label: Steps to reproduce
       description: >
-        Minimal steps to reproduce the behaviour. If possible, include a
-        short code snippet or link to a minimal reproduction repository.
+        Minimal steps so a teammate can reproduce locally. A code snippet
+        or a pointer to a failing test is ideal.
       placeholder: |
-        1. Create a component with…
-        2. Run the application…
-        3. Observe that…
+        1. Run this snippet
+        2. Observe that `...` panics
     validations:
       required: true
 
-  - type: textarea
-    id: metadata
+  - type: input
+    id: commit
     attributes:
-      label: metadata
+      label: Commit SHA
       description: >
-        Paste the output of `rustc --version` here as well as
-        - The version of your OS (Ubuntu, macOS, Fedora, etc.)
-        - The version of your terminal emulator (Alakitty, Ghostty, WezTerm, etc.)
-        - The version of your shell (zsh, nu, powershell, etc.)
-      placeholder: rustc 1.92.0, Fedora 43, kitty 0.43.1, zsh 5.9
+        Output of `git rev-parse HEAD` (or `jj log -r @ -T commit_id`).
+        Short SHA is fine.
+        A branch name that points to the commit is also fine.
+      placeholder: "e.g. 9809b9b3, feat/<component>/<scope>"
     validations:
       required: true
 
@@ -71,23 +70,7 @@ body:
     attributes:
       label: Additional context
       description: >
-        Logs, screenshots, panic backtraces, minimal reproducible code, or
-        anything else that might help diagnose the issue.
+        Logs, panic backtraces, screenshots, a candidate breaking commit,
+        or anything else that might help diagnose the issue. `RUST_BACKTRACE=1` output is welcome.
     validations:
       required: false
-
-  - type: checkboxes
-    id: checklist
-    attributes:
-      label: Pre-submission checklist
-      options:
-        - label: I have searched the [existing issues](https://github.com/TermOxide/TermOxide/labels/1.type:%20bug) and this bug has not been reported yet.
-          required: true
-        - label: I have read the [latest TermOxide manual](https://termoxide.dev/docs/)
-          required: true
-
-  - type: markdown
-    attributes:
-      value: |
-        ---
-        Consider adding :+1: to [existing bug reports](https://github.com/TermOxide/TermOxide/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc) that affect you instead of opening a duplicate.

@@ -1,7 +1,7 @@
 name: "\u2728 Feature Request"
 description: Suggest new functionality or a capability improvement.
 title: "[Feature]: "
-labels: ["1.type: feature", "2.component: uncategorized"]
+labels: ["1.type: feature", "2.component: uncategorized", "01.status: needs-triage"]
 body:
   - type: textarea
     id: problem
