@@ -1,7 +1,7 @@
 name: "\U0001F4DA Documentation Issue"
 description: Report incorrect, missing, or confusing documentation.
 title: "[Docs]: "
-labels: ["1.type: documentation"]
+labels: ["1.type: documentation", "01.status: needs-triage"]
 body:
   - type: dropdown
     id: kind

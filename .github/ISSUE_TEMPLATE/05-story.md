@@ -9,10 +9,15 @@ assignees: ""
 <!-- TermOxide — Story
 
    Stories describe WHAT needs to exist and WHY, scoped so they can
-   be completed within 1–3 sprints. A story links upward to an epic
-   and downward to tasks.
+   be completed within 1–3 iterations. A story links upward to an
+   epic and downward to tasks.
 
-   Assign to: @TermOxide/maintainers during sprint planning.
+   A story may also serve as an RFC vehicle:
+   open the story, fill out "Design notes" and "Public API impact"
+   in detail, discuss in the comments, and only cut tasks once the
+   design has settled.
+
+   Assign during planning.
    Set priority and size labels during creation. -->
 
 ## Parent epic
@@ -31,8 +36,8 @@ Part of #
 
 <!-- Break the story into atomic tasks. Create separate task issues
      and link them here as they are defined. Each task should be
-     completable by one person in one sprint or less.
-     Acceptance crietria for this story should be reflected into
+     completable by one person in one iteration or less.
+     Acceptance criteria for this story should be reflected in
      the "Definition of done" section of the tasks. -->
 
 - [ ] #

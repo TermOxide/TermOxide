@@ -1,29 +1,29 @@
-<!-- TermOxide PR — MVP/Internal (default template) -->
+<!-- TermOxide PR — internal default
 
-<!-- Remove this section if using the correct template,
-otherwise go to the `Preview` tab and select the appropriate template -->
-Other templates:
-- [Contributing to the project](?quick_pull=1&template=external.md)
-- [Merging a release](?quick_pull=1&template=release.md)
+     This template is for the original team during the concept phase.
 
-## What does this PR do?
+     Keep this PR small and focused. If you're tempted to add a long
+     description, consider whether the work should have been split. -->
 
-<!-- A brief summary of the changes. A couple of sentences is fine. -->
+## Summary
 
-## Changes
+<!-- One or two sentences. What does this PR do and why? -->
 
-<!-- What was added, modified, or removed? Bullet points are fine. -->
+## Related issue
 
--
+<!-- Use "Closes #123" to auto-close on merge. Use "Part of #123" if
+     this is one of several PRs landing the same story. -->
+
+Closes #
 
 ## Reviewer focus
 
-<!-- Is there anything tricky, uncertain, or that you'd like specific feedback on?
-     Leave empty if straightforward. -->
+<!-- Optional. Anything tricky, uncertain, or that you want a second
+     pair of eyes on. Leave empty if the PR is self-explanatory. -->
 
-## Checklist
+## Pre-merge checklist
 
-- [ ] Any dependent changes have been merged before opening this PR
-- [ ] New code has tests where applicable
-- [ ] I have made corresponding changes to the documentation (!rustdoc)
-- [ ] The related story/task is updated
+- [ ] PR title follows the squash-merge commit title
+- [ ] Missing coverage of the new change is explained in reviewer focus
+- [ ] Public API changes (if any) are noted in the summary above
+- [ ] The linked story/task is updated if scope has shifted
