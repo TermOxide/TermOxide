@@ -139,6 +139,8 @@ impl From<std::io::Error> for RenderError {
 pub struct Renderer<B: Backend> {
     /// Ratatui terminal — owns the backend and the two-frame diff buffer.
     terminal: Terminal<B>,
+    /// Tracks whether terminal UI mode was enabled so it can be restored once.
+    terminal_mode_active: bool,
 }
 
 impl<B: Backend> Renderer<B> {
@@ -156,7 +158,10 @@ impl<B: Backend> Renderer<B> {
         // Enable mouse capture so the application receives mouse events.
         std::io::stdout().execute(EnableMouseCapture)?;
         terminal.hide_cursor()?;
-        Ok(Self { terminal })
+        Ok(Self {
+            terminal,
+            terminal_mode_active: true,
+        })
     }
 
     /// Return the current terminal viewport size as a [`Rect`].
@@ -255,11 +260,16 @@ impl<B: Backend> Renderer<B> {
     /// should log the error but not panic — the process is about to exit
     /// anyway.
     pub fn restore(&mut self) -> Result<(), RenderError> {
+        if !self.terminal_mode_active {
+            return Ok(());
+        }
+
         self.terminal.show_cursor()?;
         // Disable mouse capture and restore the alternate screen and raw mode.
         std::io::stdout().execute(DisableMouseCapture)?;
         std::io::stdout().execute(LeaveAlternateScreen)?;
         disable_raw_mode()?;
+        self.terminal_mode_active = false;
         Ok(())
     }
 
@@ -268,4 +278,10 @@ impl<B: Backend> Renderer<B> {
 
     /// Mutably borrow the underlying [`Terminal`].
     pub fn terminal_mut(&mut self) -> &mut Terminal<B> { &mut self.terminal }
+}
+
+impl<B: Backend> Drop for Renderer<B> {
+    fn drop(&mut self) {
+        let _ = self.restore();
+    }
 }
