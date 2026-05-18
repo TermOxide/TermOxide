@@ -2,7 +2,8 @@
 //!
 //! The reactive graph from `reactive_graph` is scoped by an [`Owner`].
 //! All primitives (signals, memos, effects) must be created inside an
-//! active owner to be collected correctly.
+//! active owner: their subscriptions, values...
+//! all live and die with the owner.
 
 use reactive_graph::owner::Owner as InnerOwner;
 
@@ -10,21 +11,18 @@ use reactive_graph::owner::Owner as InnerOwner;
 ///
 /// An `Owner` defines the lifetime scope for reactive primitives.
 /// When it is dropped, all signals, memos and effects created within its
-/// scope are invalidated and freed.
-///
-/// In production it is recommended to create a single `Owner` at
-/// application startup and keep it for the lifetime of the app.
+/// scope are disposed.
 ///
 /// # Example
 ///
 /// ```rust
 /// use termoxide_reactive::runtime::Owner;
-/// use termoxide_reactive::ArcRwSignal;
+/// use termoxide_reactive::Signal;
 ///
 /// let owner = Owner::new();
-/// let _guard = owner.set(); // activate the owner on the current thread
+/// owner.set(); // activate the owner on the current thread
 ///
-/// let signal = ArcRwSignal::new(42i32);
+/// let signal = Signal::new(42i32);
 /// assert_eq!(signal.get(), 42);
 /// ```
 pub struct Owner(InnerOwner);
@@ -35,11 +33,12 @@ impl Owner {
         Self(InnerOwner::new())
     }
 
-    /// Activate this owner on the current thread and return an RAII guard.
+    /// Activate this owner on the current thread.
     ///
-    /// The previous owner is restored when the guard is dropped.
+    /// Prefer [`Owner::with`] or [`with_owner`] when the scope is
+    /// well-defined — they restore the previous owner automatically.
     pub fn set(&self) {
-        self.0.set()
+        self.0.set();
     }
 
     /// Execute `f` within the scope of this owner.
@@ -56,14 +55,13 @@ impl Default for Owner {
 
 /// Execute `f` in a new reactive scope.
 ///
-/// This function is the most concise way to create a temporary owner,
-/// suitable for tests and small examples.
+/// This function is the most concise way to create a temporary owner.
 ///
 /// ```rust
-/// use termoxide_reactive::{ArcRwSignal, runtime::with_owner};
+/// use termoxide_reactive::{Signal, runtime::with_owner};
 ///
 /// with_owner(|| {
-///     let x = ArcRwSignal::new(1u32);
+///     let x = Signal::new(1u32);
 ///     x.set(2);
 ///     assert_eq!(x.get(), 2);
 /// });

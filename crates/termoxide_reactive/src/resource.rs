@@ -1,37 +1,29 @@
 //! # Resource — reactive asynchronous loading
 //!
-//! [`Resource<T>`] integrates asynchronous data loading into the reactive
-//! graph. The request is launched on the Tokio runtime; the result is then
-//! exposed via an internal [`ArcRwSignal`](crate::signal::ArcRwSignal) so that
-//! any subscribed reactive context is notified once the data becomes available.
+//! [`Resource<T>`] integrates asynchronous data loading.
+//! The result is then exposed via an internal [`Signal`](crate::signal::Signal).
 
-use crate::signal::ArcRwSignal;
+use crate::signal::Signal;
 use std::fmt;
 use std::future::Future;
 
 /// Loading state of a [`Resource`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResourceState<T> {
-    /// Loading is in progress.
     Loading,
-    /// The data is available.
     Ready(T),
-    /// Loading failed.
     Error(String),
 }
 
 impl<T> ResourceState<T> {
-    /// Returns `true` if loading is in progress.
     pub fn is_loading(&self) -> bool {
         matches!(self, ResourceState::Loading)
     }
 
-    /// Returns `true` if the data is available.
     pub fn is_ready(&self) -> bool {
         matches!(self, ResourceState::Ready(_))
     }
 
-    /// Returns a reference to the value if available.
     pub fn value(&self) -> Option<&T> {
         if let ResourceState::Ready(v) = self {
             Some(v)
@@ -41,7 +33,7 @@ impl<T> ResourceState<T> {
     }
 }
 
-/// Asynchronous data loading integrated into the reactive graph.
+/// Asynchronous data loading.
 ///
 /// The `fetcher` function is executed once on the Tokio runtime.
 /// Reactive contexts that read [`Resource::state`] or [`Resource::get`]
@@ -50,46 +42,53 @@ impl<T> ResourceState<T> {
 /// # Example
 ///
 /// ```no_run
-/// use termoxide_reactive::{Resource, runtime::with_owner};
+/// use termoxide_reactive::{Resource, Effect, runtime::with_owner};
 ///
-/// #[tokio::main]
-/// async fn main() {
-///     let rt = tokio::runtime::Handle::current();
-///     with_owner(|| {
-///         let user = Resource::new(|| async {
-///             // simulate a network call
-///             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-///             String::from("Alice")
-///         });
-///
-///         // Immediately: Loading state
-///         assert!(user.is_loading());
+/// with_owner(|| {
+///     let user = Resource::new(|| async {
+///         // perform the asynchronous work here
+///         String::from("Alice")
 ///     });
-/// }
+///
+///     assert!(user.state_untracked().is_loading());
+///
+///     Effect::new(move |_prev| {
+///         if let Some(name) = user.get() {
+///             println!("User loaded: {}", name);
+///             assert!(!user.state_untracked().is_loading());
+///         }
+///     });
+/// });
 /// ```
-#[derive(Clone)]
 pub struct Resource<T: Clone + Send + Sync + 'static> {
-    state: ArcRwSignal<ResourceState<T>>,
+    state: Signal<ResourceState<T>>,
+}
+
+impl<T: Clone + Send + Sync + 'static> Copy for Resource<T> {}
+impl<T: Clone + Send + Sync + 'static> Clone for Resource<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 impl<T: Clone + Send + Sync + 'static> Resource<T> {
     /// Create a new asynchronous resource.
     ///
-    /// `fetcher` is a closure `Fn() -> impl Future<Output = T>` invoked
-    /// immediately. The resulting data is available via [`state`](Resource::state)
+    /// `fetcher` is a closure invoked immediately.
+    /// The resulting data is available via [`state`](Resource::state)
     /// or [`get`](Resource::get) once the `Future` resolves.
+    ///
+    /// For a version that unwrap the error, see ['Resource::new_fallible'].
     pub fn new<F, Fut>(fetcher: F) -> Self
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = T> + Send + 'static,
     {
-        let state: ArcRwSignal<ResourceState<T>> = ArcRwSignal::new(ResourceState::Loading);
-
-        let state_clone = state.clone();
-
         tokio::spawn(async move {
+        let state: Signal<ResourceState<T>> = Signal::new(ResourceState::Loading);
+
             let result = fetcher().await;
-            state_clone.set(ResourceState::Ready(result));
+            state.set(ResourceState::Ready(result));
         });
 
         Self { state }
@@ -97,22 +96,19 @@ impl<T: Clone + Send + Sync + 'static> Resource<T> {
 
     /// Create an asynchronous resource whose fetcher may fail.
     ///
-    /// On error, the state becomes [`ResourceState::Error`],
-    /// avoiding panicking the reactive graph.
+    /// On error, the state becomes [`ResourceState::Error`].
     pub fn new_fallible<F, Fut, E>(fetcher: F) -> Self
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<T, E>> + Send + 'static,
         E: fmt::Display + Send + 'static,
     {
-        let state: ArcRwSignal<ResourceState<T>> = ArcRwSignal::new(ResourceState::Loading);
-
-        let state_clone = state.clone();
-
         tokio::spawn(async move {
+        let state: Signal<ResourceState<T>> = Signal::new(ResourceState::Loading);
+
             match fetcher().await {
-                Ok(val) => state_clone.set(ResourceState::Ready(val)),
-                Err(e) => state_clone.set(ResourceState::Error(e.to_string())),
+                Ok(val) => state.set(ResourceState::Ready(val)),
+                Err(e) => state.set(ResourceState::Error(e.to_string())),
             }
         });
 
@@ -146,8 +142,17 @@ impl<T: Clone + Send + Sync + 'static> Resource<T> {
         }
     }
 
-    /// Returns the inner signal for advanced subscriptions.
-    pub fn as_signal(&self) -> &ArcRwSignal<ResourceState<T>> {
+    /// Return the error message if available, or `node`otherwise.
+    ///
+    /// Registers a reactive dependency.
+    pub fn error(&self) -> Option<String> {
+        match self.state() {
+            ResourceState::Error(msg) => Some(msg.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_signal(&self) -> &Signal<ResourceState<T>> {
         &self.state
     }
 }

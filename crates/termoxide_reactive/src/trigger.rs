@@ -1,13 +1,8 @@
 //! # Trigger — manual reactivity trigger
 //!
-//! [`Trigger`] is a trigger without an associated value. It allows
+//! [`Trigger`] is a signal without an associated value. It allows
 //! manually notifying reactive subscribers (effects, memos) without
 //! storing or exposing data.
-//!
-//! Useful for invalidating caches, signaling events, or orchestrating
-//! conditional recomputations.
-//!
-//! Based on [`reactive_graph::trigger::ArcTrigger`].
 
 use reactive_graph::{
     signal::Trigger as InnerTrigger,
@@ -25,16 +20,15 @@ use std::fmt;
 /// with_owner(|| {
 ///     let trigger = Trigger::new();
 ///
-///     let t = trigger.clone();
-///     let _effect = Effect::new(move |_prev| {
-///         t.track(); // registers the dependency
+///     Effect::new(move |_prev| {
+///         trigger.track(); // registers the dependency
 ///         println!("Effect triggered!");
 ///     });
 ///
 ///     trigger.notify(); // forces the effect to re-run
 /// });
 /// ```
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct Trigger(pub(crate) InnerTrigger);
 
 impl Trigger {
@@ -55,7 +49,6 @@ impl Trigger {
         self.0.notify();
     }
 
-    /// Direct access to the inner `reactive_graph` trigger for advanced usages.
     pub fn inner(&self) -> &InnerTrigger {
         &self.0
     }

@@ -2,7 +2,7 @@
 name = "termoxide_reactive"
 version = "0.1.0"
 edition = "2024"
-description = "Reactive primitives for TermOxide — Couche 1 : Cœur réactif"
+description = "Reactive primitives for TermOxide — Signal system"
 license = "BSD-2-Clause"
 
 [dependencies]

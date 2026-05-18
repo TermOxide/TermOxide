@@ -1,29 +1,26 @@
-//! # Signal — thread-shareable reactive mutable state
+//! # Signal — reactive mutable state
 //!
-//! [`ArcRwSignal<T>`] is a thread-safe mutable state that automatically
+//! [`Signal<T>`] is a thread-safe mutable state that automatically
 //! notifies all its subscribers (memos, effects) on every mutation.
-//!
-//! Based on [`reactive_graph::signal::ArcRwSignal`].
 
 use reactive_graph::{
-    signal::ArcRwSignal as InnerSignal,
+    signal::RwSignal as InnerSignal,
     traits::{Get, GetUntracked, Read, ReadUntracked, Set, Update, UpdateUntracked, Write},
 };
 use std::fmt;
 
-/// Thread-shareable mutable state.
+/// Mutable state.
 ///
-/// Any read performed inside a reactive context (Effect, Memo)
-/// automatically creates a dependency: the context will be re-run
-/// when the signal changes.
+/// Any read automatically creates a dependency:
+/// the context will be re-run when the signal changes.
 ///
 /// # Example
 ///
 /// ```no_run
-/// use termoxide_reactive::{ArcRwSignal, runtime::with_owner};
+/// use termoxide_reactive::{Signal, runtime::with_owner};
 ///
 /// with_owner(|| {
-///     let count = ArcRwSignal::new(0i32);
+///     let count = Signal::new(0i32);
 ///
 ///     count.set(42);
 ///     assert_eq!(count.get(), 42);
@@ -32,10 +29,16 @@ use std::fmt;
 ///     assert_eq!(count.get(), 43);
 /// });
 /// ```
-#[derive(Clone)]
-pub struct ArcRwSignal<T: Send + Sync + 'static>(pub(crate) InnerSignal<T>);
+pub struct Signal<T: Send + Sync + 'static>(pub(crate) InnerSignal<T>);
 
-impl<T: Send + Sync + 'static> ArcRwSignal<T> {
+impl<T: Send + Sync + 'static> Copy for Signal<T> {}
+impl<T: Send + Sync + 'static> Clone for Signal<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T: Send + Sync + 'static> Signal<T> {
     /// Create a new signal with the initial value `value`.
     pub fn new(value: T) -> Self {
         Self(InnerSignal::new(value))
@@ -69,8 +72,6 @@ impl<T: Send + Sync + 'static> ArcRwSignal<T> {
     }
 
     /// Modifies the value **without notifying** subscribers.
-    ///
-    /// Useful for internal mutations that should not trigger re-renders.
     pub fn update_untracked(&self, f: impl FnOnce(&mut T)) {
         self.0.update_untracked(f);
     }
@@ -94,20 +95,19 @@ impl<T: Send + Sync + 'static> ArcRwSignal<T> {
         self.0.write()
     }
 
-    /// Direct access to the inner `reactive_graph` signal for advanced usages.
     pub fn inner(&self) -> &InnerSignal<T> {
         &self.0
     }
 }
 
-impl<T: fmt::Debug + Send + Sync + 'static> fmt::Debug for ArcRwSignal<T> {
+impl<T: fmt::Debug + Send + Sync + 'static> fmt::Debug for Signal<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let val = self.0.read_untracked();
-        f.debug_tuple("ArcRwSignal").field(&*val).finish()
+        f.debug_tuple("Signal").field(&*val).finish()
     }
 }
 
-impl<T: fmt::Display + Clone + Send + Sync + 'static> fmt::Display for ArcRwSignal<T> {
+impl<T: fmt::Display + Clone + Send + Sync + 'static> fmt::Display for Signal<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.get_untracked())
     }

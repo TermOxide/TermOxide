@@ -1,16 +1,14 @@
-//! # termoxide_reactive — Layer 1: Reactive heart of TermOxide
+//! # termoxide_reactive: Reactive heart of TermOxide
 //!
-//! This crate exposes TermOxide's fine-grained reactivity primitives.
-//! It wraps the [`reactive_graph`](https://crates.io/crates/reactive_graph)
-//! crate (Leptos ecosystem) to provide an idiomatic API consistent with
-//! the rest of the framework.
+//! This crate exposes TermOxide's reactivity primitives,
+//! modelled after React / SolidJS.
 //!
 //! ## Overview of primitives
 //!
 //! | Type | Role |
 //! |------|------|
-//! | [`ArcRwSignal<T>`] | Thread-safe mutable state with automatic notifications |
-//! | [`ArcMemo<T>`] | Derived value computed lazily |
+//! | [`Signal<T>`] | Mutable reactive state with automatic notifications |
+//! | [`Memo<T>`] | Derived value computed lazily, recomputed on dependency change |
 //! | [`Effect`] | Reactive side-effect re-run when dependencies change |
 //! | [`Resource<T>`] | Asynchronous loading integrated into the reactive graph |
 //! | [`Trigger`] | Manual trigger without an associated value |
@@ -18,28 +16,20 @@
 //! ## Quickstart
 //!
 //! ```no_run
-//! use termoxide_reactive::{ArcRwSignal, ArcMemo, Effect, Trigger, runtime::with_owner};
+//! use termoxide_reactive::{Signal, Memo, Effect, Trigger, runtime::with_owner};
 //!
 //! with_owner(|| {
-//!     // 1. Signal — mutable state
-//!     let count = ArcRwSignal::new(0i32);
+//!     let count = Signal::new(0i32);
+//!     let doubled = Memo::new(move |_| count.get() * 2);
 //!
-//!     // 2. Memo — derived value
-//!     let doubled = ArcMemo::new({
-//!         let c = count.clone();
-//!         move |_| c.get() * 2
-//!     });
-//!
-//!     // 3. Effect — reactive side-effect
-//!     let _fx = Effect::new({
-//!         let doubled = doubled.clone();
-//!         move |_| println!("doubled = {}", doubled.get())
-//!     });
-//!
-//!     // 4. Trigger — manual invalidation
 //!     let trigger = Trigger::new();
+//!     Effect::new(move |_| {
+//!         trigger.track();
+//!         println!("doubled = {}", doubled.get());
+//!     });
 //!
 //!     count.set(5);
+//!     trigger.notify();
 //!     assert_eq!(doubled.get(), 10);
 //! });
 //! ```
@@ -64,8 +54,8 @@ pub mod trigger;
 // ── Re-exports publics ──────────────────────────────────────────────────────
 
 pub use effect::Effect;
-pub use memo::ArcMemo;
+pub use memo::Memo;
 pub use resource::{Resource, ResourceState};
 pub use runtime::{Owner, with_owner};
-pub use signal::ArcRwSignal;
+pub use signal::Signal;
 pub use trigger::Trigger;
