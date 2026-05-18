@@ -8,12 +8,14 @@ license = "BSD-2-Clause"
 [dependencies]
 # Fine-grained reactive graph (Leptos ecosystem)
 reactive_graph = { version = "0.2", features = ["effects"] }
-any_spawner = { version = "0.3", features = ["tokio"] }
+# Runtime-agnostic task spawner; the consuming application picks the executor.
+any_spawner = { version = "0.3" }
 
-# Async runtime for Resource<T>
+[dev-dependencies]
+# Tests drive the reactive graph from a Tokio current-thread runtime.
+any_spawner = { version = "0.3", features = ["tokio"] }
 tokio = { version = "1", features = [
     "rt",
-    "rt-multi-thread",
     "sync",
     "macros",
     "time",

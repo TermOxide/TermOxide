@@ -35,7 +35,6 @@ impl<T> ResourceState<T> {
 
 /// Asynchronous data loading.
 ///
-/// The `fetcher` function is executed once on the Tokio runtime.
 /// Reactive contexts that read [`Resource::state`] or [`Resource::get`]
 /// are automatically notified when the loading completes.
 ///
@@ -84,9 +83,9 @@ impl<T: Clone + Send + Sync + 'static> Resource<T> {
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = T> + Send + 'static,
     {
-        tokio::spawn(async move {
         let state: Signal<ResourceState<T>> = Signal::new(ResourceState::Loading);
 
+        any_spawner::Executor::spawn(async move {
             let result = fetcher().await;
             state.set(ResourceState::Ready(result));
         });
@@ -103,9 +102,9 @@ impl<T: Clone + Send + Sync + 'static> Resource<T> {
         Fut: Future<Output = Result<T, E>> + Send + 'static,
         E: fmt::Display + Send + 'static,
     {
-        tokio::spawn(async move {
         let state: Signal<ResourceState<T>> = Signal::new(ResourceState::Loading);
 
+        any_spawner::Executor::spawn(async move {
             match fetcher().await {
                 Ok(val) => state.set(ResourceState::Ready(val)),
                 Err(e) => state.set(ResourceState::Error(e.to_string())),

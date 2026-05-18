@@ -40,9 +40,6 @@
 //! [`runtime::Owner`]. Use [`runtime::with_owner`] for tests and small examples,
 //! or [`runtime::Owner::new`] + [`runtime::Owner::set`] for long-running
 //! applications.
-//!
-//! For [`Resource<T>`], a Tokio runtime must be available on the current
-//! thread (for example via `#[tokio::main]` or `tokio::runtime::Runtime::new()`).
 
 pub mod effect;
 pub mod memo;
