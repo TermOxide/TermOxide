@@ -12,6 +12,10 @@
 //! | [`Effect`] | Reactive side-effect re-run when dependencies change |
 //! | [`Resource<T>`] | Asynchronous loading integrated into the reactive graph |
 //! | [`Trigger`] | Manual trigger without an associated value |
+//! | [`StoredValue<T>`] | Non-reactive, owner-scoped `Copy` storage |
+//!
+//! All handles ([`Signal`], [`Memo`], [`Trigger`], [`Resource`],
+//! [`StoredValue`]) storage is tied to the enclosing [`runtime::Owner`].
 //!
 //! ## Quickstart
 //!
@@ -46,6 +50,7 @@ pub mod memo;
 pub mod resource;
 pub mod runtime;
 pub mod signal;
+pub mod stored;
 pub mod trigger;
 
 // ── Re-exports publics ──────────────────────────────────────────────────────
@@ -55,4 +60,5 @@ pub use memo::Memo;
 pub use resource::{Resource, ResourceState};
 pub use runtime::{Owner, with_owner};
 pub use signal::Signal;
+pub use stored::StoredValue;
 pub use trigger::Trigger;
