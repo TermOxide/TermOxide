@@ -9,7 +9,7 @@
 //! across renders — timers, RAII guards, mutable scratch buffers,
 //! non-reactive component state.
 
-use reactive_graph::owner::StoredValue as InnerStoredValue;
+use reactive_graph::owner::{LocalStorage, StoredValue as InnerStoredValue};
 use reactive_graph::traits::{ReadValue, WriteValue};
 use std::fmt;
 
@@ -37,19 +37,19 @@ use std::fmt;
 ///     assert_eq!(counter.get_value(), 2);
 /// });
 /// ```
-pub struct StoredValue<T: Send + Sync + 'static>(InnerStoredValue<T>);
+pub struct StoredValue<T: 'static>(InnerStoredValue<T, LocalStorage>);
 
-impl<T: Send + Sync + 'static> Copy for StoredValue<T> {}
-impl<T: Send + Sync + 'static> Clone for StoredValue<T> {
+impl<T: 'static> Copy for StoredValue<T> {}
+impl<T: 'static> Clone for StoredValue<T> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T: Send + Sync + 'static> StoredValue<T> {
+impl<T: 'static> StoredValue<T> {
     /// Store `value` in the current reactive owner's arena.
     pub fn new(value: T) -> Self {
-        Self(InnerStoredValue::new(value))
+        Self(InnerStoredValue::new_local(value))
     }
 
     /// Read the value via a closure (no cloning required).
@@ -82,12 +82,12 @@ impl<T: Send + Sync + 'static> StoredValue<T> {
         self.with_value(|v| v.clone())
     }
 
-    pub fn inner(&self) -> &InnerStoredValue<T> {
+    pub fn inner(&self) -> &InnerStoredValue<T, LocalStorage> {
         &self.0
     }
 }
 
-impl<T: fmt::Debug + Send + Sync + 'static> fmt::Debug for StoredValue<T> {
+impl<T: fmt::Debug + 'static> fmt::Debug for StoredValue<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.with_value(|v| f.debug_tuple("StoredValue").field(v).finish())
     }

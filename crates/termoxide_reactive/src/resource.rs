@@ -59,18 +59,18 @@ impl<T> ResourceState<T> {
 ///     });
 /// });
 /// ```
-pub struct Resource<T: Clone + Send + Sync + 'static> {
+pub struct Resource<T: Clone + 'static> {
     state: Signal<ResourceState<T>>,
 }
 
-impl<T: Clone + Send + Sync + 'static> Copy for Resource<T> {}
-impl<T: Clone + Send + Sync + 'static> Clone for Resource<T> {
+impl<T: Clone + 'static> Copy for Resource<T> {}
+impl<T: Clone + 'static> Clone for Resource<T> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T: Clone + Send + Sync + 'static> Resource<T> {
+impl<T: Clone + 'static> Resource<T> {
     /// Create a new asynchronous resource.
     ///
     /// `fetcher` is a closure invoked immediately.
@@ -80,12 +80,12 @@ impl<T: Clone + Send + Sync + 'static> Resource<T> {
     /// For a version that unwrap the error, see ['Resource::new_fallible'].
     pub fn new<F, Fut>(fetcher: F) -> Self
     where
-        F: FnOnce() -> Fut + Send + 'static,
-        Fut: Future<Output = T> + Send + 'static,
+        F: FnOnce() -> Fut + 'static,
+        Fut: Future<Output = T> + 'static,
     {
         let state: Signal<ResourceState<T>> = Signal::new(ResourceState::Loading);
 
-        any_spawner::Executor::spawn(async move {
+        any_spawner::Executor::spawn_local(async move {
             let result = fetcher().await;
             state.set(ResourceState::Ready(result));
         });
@@ -98,13 +98,13 @@ impl<T: Clone + Send + Sync + 'static> Resource<T> {
     /// On error, the state becomes [`ResourceState::Error`].
     pub fn new_fallible<F, Fut, E>(fetcher: F) -> Self
     where
-        F: FnOnce() -> Fut + Send + 'static,
-        Fut: Future<Output = Result<T, E>> + Send + 'static,
-        E: fmt::Display + Send + 'static,
+        F: FnOnce() -> Fut + 'static,
+        Fut: Future<Output = Result<T, E>> + 'static,
+        E: fmt::Display + 'static,
     {
         let state: Signal<ResourceState<T>> = Signal::new(ResourceState::Loading);
 
-        any_spawner::Executor::spawn(async move {
+        any_spawner::Executor::spawn_local(async move {
             match fetcher().await {
                 Ok(val) => state.set(ResourceState::Ready(val)),
                 Err(e) => state.set(ResourceState::Error(e.to_string())),
@@ -156,7 +156,7 @@ impl<T: Clone + Send + Sync + 'static> Resource<T> {
     }
 }
 
-impl<T: fmt::Debug + Clone + Send + Sync + 'static> fmt::Debug for Resource<T> {
+impl<T: fmt::Debug + Clone + 'static> fmt::Debug for Resource<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Resource")
             .field("state", &self.state.get_untracked())

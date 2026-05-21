@@ -4,7 +4,7 @@
 //! signal it depends on changes.
 
 use reactive_graph::effect::Effect as InnerEffect;
-use reactive_graph::owner::{LocalStorage, SyncStorage};
+use reactive_graph::owner::LocalStorage;
 
 /// Side-effect that re-executes when its dependencies change.
 ///
@@ -34,8 +34,6 @@ impl Effect {
     ///
     /// The closure is executed immediately, and then whenever any signals
     /// it read during its previous execution change.
-    ///
-    /// For a thread-safe variant, use [`Effect::new_sync`].
     pub fn new<F, T>(f: F) -> Self
     where
         F: Fn(Option<T>) -> T + 'static,
@@ -43,22 +41,4 @@ impl Effect {
     {
         Self(InnerEffect::new(f))
     }
-
-    /// Create a new reactive effect that can be shared across threads.
-    ///
-    /// Prefer [`Effect::new`] for effects that don't need to cross thread
-    /// boundaries.
-    pub fn new_sync<F, T>(f: F) -> SyncEffect
-    where
-        F: Fn(Option<T>) -> T + Send + Sync + 'static,
-        T: Send + Sync + 'static,
-    {
-        SyncEffect(InnerEffect::new_sync(f))
-    }
 }
-
-/// Thread-safe variant of [`Effect`].
-///
-/// Created via [`Effect::new_sync`].
-#[allow(dead_code)]
-pub struct SyncEffect(InnerEffect<SyncStorage>);

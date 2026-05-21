@@ -31,6 +31,13 @@ use std::fmt;
 ///     assert_eq!(total.get(), 50.0);
 /// });
 /// ```
+///
+/// Unlike [`Signal`](crate::signal::Signal) and
+/// [`StoredValue`](crate::stored::StoredValue), `Memo<T>` requires
+/// `T: Send + Sync`. This is imposed by the underlying `reactive_graph`
+/// crate: memos hold their subscriber as `Weak<dyn Subscriber + Send + Sync>`
+/// and the recompute closure is bounded by `Send + Sync` — there is no
+/// thread-local memo variant to opt out of.
 pub struct Memo<T: Send + Sync + 'static>(pub(crate) InnerMemo<T>);
 
 impl<T: Send + Sync + 'static> Copy for Memo<T> {}

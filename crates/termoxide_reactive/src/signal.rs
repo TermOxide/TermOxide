@@ -1,9 +1,10 @@
 //! # Signal — reactive mutable state
 //!
-//! [`Signal<T>`] is a thread-safe mutable state that automatically
+//! [`Signal<T>`] is a single-threaded mutable state that automatically
 //! notifies all its subscribers (memos, effects) on every mutation.
 
 use reactive_graph::{
+    owner::LocalStorage,
     signal::RwSignal as InnerSignal,
     traits::{Get, GetUntracked, Read, ReadUntracked, Set, Update, UpdateUntracked, Write},
 };
@@ -29,23 +30,22 @@ use std::fmt;
 ///     assert_eq!(count.get(), 43);
 /// });
 /// ```
-pub struct Signal<T: Send + Sync + 'static>(pub(crate) InnerSignal<T>);
+pub struct Signal<T: 'static>(pub(crate) InnerSignal<T, LocalStorage>);
 
-impl<T: Send + Sync + 'static> Copy for Signal<T> {}
-impl<T: Send + Sync + 'static> Clone for Signal<T> {
+impl<T: 'static> Copy for Signal<T> {}
+impl<T: 'static> Clone for Signal<T> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T: Send + Sync + 'static> Signal<T> {
+impl<T: 'static> Signal<T> {
     /// Create a new signal with the initial value `value`.
     pub fn new(value: T) -> Self {
-        Self(InnerSignal::new(value))
+        Self(InnerSignal::new_local(value))
     }
 
     /// Returns a cloned copy of the value **registering a dependency**
-    /// in the current reactive context.
     pub fn get(&self) -> T
     where
         T: Clone,
@@ -76,7 +76,7 @@ impl<T: Send + Sync + 'static> Signal<T> {
         self.0.update_untracked(f);
     }
 
-    /// Returns a read guard (acquires a shared lock).
+    /// Returns a read guard.
     ///
     /// Registers a dependency in the current reactive context.
     pub fn read(&self) -> impl std::ops::Deref<Target = T> + '_ {
@@ -88,26 +88,26 @@ impl<T: Send + Sync + 'static> Signal<T> {
         self.0.read_untracked()
     }
 
-    /// Returns a write guard (acquires an exclusive lock).
+    /// Returns a write guard.
     ///
     /// Subscribers are notified when the guard is released.
     pub fn write(&self) -> impl std::ops::DerefMut<Target = T> + '_ {
         self.0.write()
     }
 
-    pub fn inner(&self) -> &InnerSignal<T> {
+    pub fn inner(&self) -> &InnerSignal<T, LocalStorage> {
         &self.0
     }
 }
 
-impl<T: fmt::Debug + Send + Sync + 'static> fmt::Debug for Signal<T> {
+impl<T: fmt::Debug + 'static> fmt::Debug for Signal<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let val = self.0.read_untracked();
         f.debug_tuple("Signal").field(&*val).finish()
     }
 }
 
-impl<T: fmt::Display + Clone + Send + Sync + 'static> fmt::Display for Signal<T> {
+impl<T: fmt::Display + Clone + 'static> fmt::Display for Signal<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.get_untracked())
     }
