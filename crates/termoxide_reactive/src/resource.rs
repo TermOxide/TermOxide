@@ -1,7 +1,7 @@
 //! # Resource — reactive asynchronous loading
 //!
 //! [`Resource<T>`] integrates asynchronous data loading.
-//! The result is then exposed via an internal [`Signal`](crate::signal::Signal).
+//! The result is then exposed via an internal [`Signal`].
 
 use crate::signal::Signal;
 use std::fmt;
@@ -77,7 +77,14 @@ impl<T: Clone + 'static> Resource<T> {
     /// The resulting data is available via [`state`](Resource::state)
     /// or [`get`](Resource::get) once the `Future` resolves.
     ///
-    /// For a version that unwrap the error, see ['Resource::new_fallible'].
+    /// For a version that unwrap the error, see [`Resource::new_fallible`].
+    ///
+    /// # Panics
+    ///
+    /// Panics via [`any_spawner::Executor::spawn_local`] if no global
+    /// `any_spawner` executor has been initialized, or if there is no local
+    /// task context available (e.g. not running on a Tokio current-thread
+    /// runtime / `LocalSet`).
     pub fn new<F, Fut>(fetcher: F) -> Self
     where
         F: FnOnce() -> Fut + 'static,
@@ -96,6 +103,13 @@ impl<T: Clone + 'static> Resource<T> {
     /// Create an asynchronous resource whose fetcher may fail.
     ///
     /// On error, the state becomes [`ResourceState::Error`].
+    ///
+    /// # Panics
+    ///
+    /// Panics via [`any_spawner::Executor::spawn_local`] if no global
+    /// `any_spawner` executor has been initialized, or if there is no local
+    /// task context available (e.g. not running on a Tokio current-thread
+    /// runtime / `LocalSet`).
     pub fn new_fallible<F, Fut, E>(fetcher: F) -> Self
     where
         F: FnOnce() -> Fut + 'static,
@@ -141,12 +155,12 @@ impl<T: Clone + 'static> Resource<T> {
         }
     }
 
-    /// Return the error message if available, or `node`otherwise.
+    /// Return the error message if available, or `None` otherwise.
     ///
     /// Registers a reactive dependency.
     pub fn error(&self) -> Option<String> {
         match self.state() {
-            ResourceState::Error(msg) => Some(msg.clone()),
+            ResourceState::Error(msg) => Some(msg),
             _ => None,
         }
     }

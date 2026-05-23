@@ -26,8 +26,7 @@ use reactive_graph::owner::LocalStorage;
 ///     name.set(String::from("Bob")); // prints "Hello, Bob!"
 /// });
 /// ```
-#[allow(dead_code)]
-pub struct Effect(InnerEffect<LocalStorage>);
+pub struct Effect(pub(crate) InnerEffect<LocalStorage>);
 
 impl Effect {
     /// Create a new reactive effect from a closure.
@@ -40,5 +39,9 @@ impl Effect {
         T: 'static,
     {
         Self(InnerEffect::new(f))
+    }
+
+    pub fn inner(&self) -> &InnerEffect<LocalStorage> {
+        &self.0
     }
 }

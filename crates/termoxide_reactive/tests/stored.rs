@@ -33,7 +33,6 @@ fn update_mutates_in_place() {
 
 #[test]
 fn with_value_avoids_clone() {
-    // Use a non-Clone type to verify access without cloning.
     struct NoClone(i32);
     with_owner(|| {
         let v = StoredValue::new(NoClone(7));
@@ -63,33 +62,36 @@ fn debug_uses_inner_value() {
 #[tokio::test(flavor = "current_thread")]
 async fn update_does_not_trigger_reactive_effects() {
     // The whole point of StoredValue: writes are not reactive.
-    common::init_executor();
-    let local = tokio::task::LocalSet::new();
-    local
-        .run_until(async {
-            let owner = Owner::new();
-            owner.set();
-            let stored = StoredValue::new(0u32);
-            let trg = Trigger::new();
-            Effect::new(move |_: Option<()>| {
-                trg.track();
-                stored.update(|n| *n += 1);
-            });
-            common::flush_effects().await;
-            // Initial run incremented.
-            let after_initial = stored.get_value();
-            assert_eq!(after_initial, 1);
-            // Updating the stored value should NOT trigger another effect run.
-            stored.update(|n| *n += 10);
-            common::flush_effects().await;
-            assert_eq!(stored.get_value(), 11);
-            // Sanity: explicit trigger does cause a rerun.
-            trg.notify();
-            common::flush_effects().await;
-            assert_eq!(stored.get_value(), 12);
-            drop(owner);
-        })
-        .await;
+    common::run_reactive(async {
+        let stored = StoredValue::new(0u32);
+        let trg = Trigger::new();
+        Effect::new(move |_: Option<()>| {
+            trg.track();
+            stored.update(|n| *n += 1);
+        });
+        common::flush_effects().await;
+        // Initial run incremented.
+        let after_initial = stored.get_value();
+        assert_eq!(after_initial, 1);
+        // Updating the stored value should NOT trigger another effect run.
+        stored.update(|n| *n += 10);
+        common::flush_effects().await;
+        assert_eq!(stored.get_value(), 11);
+        // Sanity: explicit trigger does cause a rerun.
+        trg.notify();
+        common::flush_effects().await;
+        assert_eq!(stored.get_value(), 12);
+    })
+    .await;
+}
+
+#[test]
+fn debug_after_owner_dropped_does_not_panic() {
+    // Debug must remain infallible even after disposal — it's relied on
+    // by logging, panic formatters, and `dbg!`.
+    let stored = termoxide_reactive::runtime::with_owner(|| StoredValue::new(42i32));
+    let s = format!("{:?}", stored);
+    assert!(s.contains("<disposed>"), "got {s:?}");
 }
 
 #[test]

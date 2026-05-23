@@ -89,6 +89,11 @@ impl<T: 'static> StoredValue<T> {
 
 impl<T: fmt::Debug + 'static> fmt::Debug for StoredValue<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.with_value(|v| f.debug_tuple("StoredValue").field(v).finish())
+        // `Debug` must never panic — fall back to a placeholder if the
+        // backing storage has already been disposed.
+        match self.0.try_read_value() {
+            Some(g) => f.debug_tuple("StoredValue").field(&*g).finish(),
+            None => f.debug_tuple("StoredValue").field(&"<disposed>").finish(),
+        }
     }
 }

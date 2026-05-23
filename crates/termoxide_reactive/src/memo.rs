@@ -17,7 +17,7 @@ use std::fmt;
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```
 /// use termoxide_reactive::{Signal, Memo, runtime::with_owner};
 ///
 /// with_owner(|| {
@@ -90,8 +90,9 @@ impl<T: fmt::Debug + Clone + Send + Sync + PartialEq + 'static> fmt::Debug for M
     }
 }
 
-impl<T: fmt::Display + Clone + Send + Sync + PartialEq + 'static> fmt::Display for Memo<T> {
+impl<T: fmt::Display + Send + Sync + 'static> fmt::Display for Memo<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.get_untracked())
+        let val = self.0.read_untracked();
+        write!(f, "{}", &*val)
     }
 }

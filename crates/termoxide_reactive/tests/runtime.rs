@@ -50,12 +50,8 @@ fn default_constructs_a_usable_owner() {
 #[test]
 #[should_panic(expected = "disposed")]
 fn dropping_owner_disposes_stored_values() {
-    let stored;
-    {
-        let owner = Owner::new();
-        owner.set();
-        stored = StoredValue::new(1i32);
-        drop(owner);
-    }
+    // `with_owner` disposes its Owner on return, so the StoredValue we
+    // let escape is backed by storage that's already gone.
+    let stored = with_owner(|| StoredValue::new(1i32));
     let _ = stored.get_value();
 }

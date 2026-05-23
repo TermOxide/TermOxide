@@ -4,7 +4,6 @@ mod common;
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use termoxide_reactive::runtime::Owner;
 use termoxide_reactive::{Effect, Signal, runtime::with_owner};
 
 #[test]
@@ -70,114 +69,111 @@ fn read_guard_exposes_value() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn effect_reruns_when_signal_changes_through_set() {
-    common::init_executor();
-    let local = tokio::task::LocalSet::new();
-    local
-        .run_until(async {
-            let owner = Owner::new();
-            owner.set();
-            let runs = Rc::new(RefCell::new(0u32));
-            let s = Signal::new(0u32);
-            let runs_c = runs.clone();
-            Effect::new(move |_: Option<()>| {
+    common::run_reactive(async {
+        let runs = Rc::new(RefCell::new(0u32));
+        let s = Signal::new(0u32);
+        Effect::new({
+            let runs = runs.clone();
+            move |_: Option<()>| {
                 s.get();
-                *runs_c.borrow_mut() += 1;
-            });
-            common::flush_effects().await;
-            assert_eq!(*runs.borrow(), 1, "initial run");
+                *runs.borrow_mut() += 1;
+            }
+        });
+        common::flush_effects().await;
+        assert_eq!(*runs.borrow(), 1, "initial run");
 
-            s.set(1);
-            common::flush_effects().await;
-            s.set(2);
-            common::flush_effects().await;
+        s.set(1);
+        common::flush_effects().await;
+        s.set(2);
+        common::flush_effects().await;
 
-            assert_eq!(*runs.borrow(), 3);
-            drop(owner);
-        })
-        .await;
+        assert_eq!(*runs.borrow(), 3);
+    })
+    .await;
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn write_guard_notifies_when_dropped() {
-    common::init_executor();
-    let local = tokio::task::LocalSet::new();
-    local
-        .run_until(async {
-            let owner = Owner::new();
-            owner.set();
-            let s = Signal::new(0u32);
-            let runs = Rc::new(RefCell::new(0u32));
-            let runs_c = runs.clone();
-            Effect::new(move |_: Option<()>| {
+    common::run_reactive(async {
+        let s = Signal::new(0u32);
+        let runs = Rc::new(RefCell::new(0u32));
+        Effect::new({
+            let runs = runs.clone();
+            move |_: Option<()>| {
                 s.get();
-                *runs_c.borrow_mut() += 1;
-            });
-            common::flush_effects().await;
-            let initial = *runs.borrow();
-            {
-                let mut g = s.write();
-                *g = 7;
+                *runs.borrow_mut() += 1;
             }
-            common::flush_effects().await;
-            assert_eq!(s.get_untracked(), 7);
-            assert!(*runs.borrow() > initial, "write guard should notify");
-            drop(owner);
-        })
-        .await;
+        });
+        common::flush_effects().await;
+        let initial = *runs.borrow();
+
+        let mut g = s.write();
+        *g = 7;
+        // Mutation via DerefMut alone must not schedule the subscriber.
+        common::flush_effects().await;
+        assert_eq!(
+            *runs.borrow(),
+            initial,
+            "guard must defer notification until drop"
+        );
+        *g = 8;
+        drop(g);
+
+        common::flush_effects().await;
+        assert_eq!(s.get_untracked(), 8);
+        assert_eq!(
+            *runs.borrow(),
+            initial + 1,
+            "drop fires exactly one notification, regardless of mutation count"
+        );
+    })
+    .await;
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn update_untracked_does_not_notify_subscribers() {
-    common::init_executor();
-    let local = tokio::task::LocalSet::new();
-    local
-        .run_until(async {
-            let owner = Owner::new();
-            owner.set();
-            let runs = Rc::new(RefCell::new(0u32));
-            let s = Signal::new(0i32);
-            let runs_c = runs.clone();
-            Effect::new(move |_: Option<()>| {
+    common::run_reactive(async {
+        let runs = Rc::new(RefCell::new(0u32));
+        let s = Signal::new(0i32);
+        Effect::new({
+            let runs = runs.clone();
+            move |_: Option<()>| {
                 s.get();
-                *runs_c.borrow_mut() += 1;
-            });
-            common::flush_effects().await;
-            let initial = *runs.borrow();
-            assert_eq!(initial, 1, "initial run should have fired");
+                *runs.borrow_mut() += 1;
+            }
+        });
+        common::flush_effects().await;
+        let initial = *runs.borrow();
+        assert_eq!(initial, 1, "initial run should have fired");
 
-            s.update_untracked(|v| *v = 99);
-            common::flush_effects().await;
+        s.update_untracked(|v| *v = 99);
+        common::flush_effects().await;
 
-            assert_eq!(*runs.borrow(), initial);
-            assert_eq!(s.get_untracked(), 99);
-            drop(owner);
-        })
-        .await;
+        assert_eq!(*runs.borrow(), initial);
+        assert_eq!(s.get_untracked(), 99);
+    })
+    .await;
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn get_untracked_does_not_create_dependency() {
-    common::init_executor();
-    let local = tokio::task::LocalSet::new();
-    local
-        .run_until(async {
-            let owner = Owner::new();
-            owner.set();
-            let runs = Rc::new(RefCell::new(0u32));
-            let s = Signal::new(0i32);
-            let runs_c = runs.clone();
-            Effect::new(move |_: Option<()>| {
+    common::run_reactive(async {
+        let runs = Rc::new(RefCell::new(0u32));
+        let s = Signal::new(0i32);
+        Effect::new({
+            let runs = runs.clone();
+            move |_: Option<()>| {
                 let _ = s.get_untracked();
-                *runs_c.borrow_mut() += 1;
-            });
-            common::flush_effects().await;
-            let initial = *runs.borrow();
-            assert_eq!(initial, 1);
+                *runs.borrow_mut() += 1;
+            }
+        });
+        common::flush_effects().await;
+        let initial = *runs.borrow();
+        assert_eq!(initial, 1);
 
-            s.set(123);
-            common::flush_effects().await;
-            assert_eq!(*runs.borrow(), initial);
-            drop(owner);
-        })
-        .await;
+        s.set(123);
+        common::flush_effects().await;
+        assert_eq!(*runs.borrow(), initial);
+    })
+    .await;
 }

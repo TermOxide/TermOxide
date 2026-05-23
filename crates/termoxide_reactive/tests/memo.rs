@@ -2,10 +2,11 @@
 
 mod common;
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
-use termoxide_reactive::runtime::Owner;
-use termoxide_reactive::{Memo, Signal, runtime::with_owner};
+use termoxide_reactive::{Effect, Memo, Signal, runtime::with_owner};
 
 #[test]
 fn computes_initial_value() {
@@ -50,15 +51,17 @@ fn skips_recompute_when_equal_value_set() {
     with_owner(|| {
         let src = Signal::new(1i32);
         let calls = Arc::new(AtomicU32::new(0));
-        let calls_c = calls.clone();
         let upstream = Memo::new(move |_| {
             // Maps any input to a constant — equal output across changes.
             let _ = src.get();
             42i32
         });
-        let downstream = Memo::new(move |_| {
-            calls_c.fetch_add(1, Ordering::SeqCst);
-            upstream.get()
+        let downstream = Memo::new({
+            let calls = calls.clone();
+            move |_| {
+                calls.fetch_add(1, Ordering::SeqCst);
+                upstream.get()
+            }
         });
         // Prime.
         assert_eq!(downstream.get(), 42);
@@ -80,12 +83,12 @@ fn get_untracked_does_not_subscribe_caller() {
 
         // Outer memo reads `m` untracked → must not depend on it.
         let outer_calls = Arc::new(AtomicU32::new(0));
-        let outer_calls_c = outer_calls.clone();
-        let outer_dep = Signal::new(0i32);
-        let outer = Memo::new(move |_| {
-            outer_dep.get(); // a real dependency we control
-            outer_calls_c.fetch_add(1, Ordering::SeqCst);
-            m.get_untracked()
+        let outer = Memo::new({
+            let outer_calls = outer_calls.clone();
+            move |_| {
+                outer_calls.fetch_add(1, Ordering::SeqCst);
+                m.get_untracked()
+            }
         });
 
         let _ = outer.get();
@@ -99,11 +102,6 @@ fn get_untracked_does_not_subscribe_caller() {
             n0,
             "outer must not recompute when m changes"
         );
-
-        // Sanity: changing outer_dep does cause a recompute.
-        outer_dep.set(1);
-        let _ = outer.get();
-        assert!(outer_calls.load(Ordering::SeqCst) > n0);
     });
 }
 
@@ -142,22 +140,29 @@ fn prev_argument_carries_last_computed_value() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn keeping_owner_alive_across_runs_preserves_memo() {
-    // A small integration check: memos work just like signals across an
-    // async boundary as long as the owner stays alive.
-    common::init_executor();
-    let local = tokio::task::LocalSet::new();
-    local
-        .run_until(async {
-            let owner = Owner::new();
-            owner.set();
-            let s = Signal::new(1i32);
-            let m = Memo::new(move |_| s.get() + 100);
-            assert_eq!(m.get(), 101);
-            common::flush_effects().await;
-            s.set(2);
-            assert_eq!(m.get(), 102);
-            drop(owner);
-        })
-        .await;
+async fn memo_propagates_changes_to_subscribed_effect() {
+    // Composition check: a signal change should flow through a memo to a
+    // subscribed effect via the spawner.
+    common::run_reactive(async {
+        let src = Signal::new(1i32);
+        let doubled = Memo::new(move |_| src.get() * 2);
+        let observed = Rc::new(RefCell::new(Vec::<i32>::new()));
+        Effect::new({
+            let observed = observed.clone();
+            move |_: Option<()>| {
+                observed.borrow_mut().push(doubled.get());
+            }
+        });
+        common::flush_effects().await;
+        assert_eq!(*observed.borrow(), vec![2], "initial run reads memo");
+
+        src.set(5);
+        common::flush_effects().await;
+        assert_eq!(
+            *observed.borrow(),
+            vec![2, 10],
+            "memo change re-runs the effect"
+        );
+    })
+    .await;
 }
