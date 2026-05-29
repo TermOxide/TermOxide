@@ -4,12 +4,10 @@ on:
   workflow_call:
     inputs:
       crates:
-        required: true
         default: "[]"
         type: string
         description: "JSON array of crate names to build (e.g. [\"crate1\", \"crate2\"])"
       actions:
-        required: true
         default: "[]"
         type: string
         description: "JSON array of cargo actions to run for each crate (e.g. [\"test\", \"build --release\"])"
@@ -38,6 +36,7 @@ jobs:
 
   run-builder:
     name: "${{ matrix.crate }} · cargo ${{ matrix.action }}"
+    needs: setup-builder
     runs-on: ubuntu-latest
     if: inputs.crates != '[]' && inputs.actions != '[]'
     strategy:

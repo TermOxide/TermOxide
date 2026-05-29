@@ -14,7 +14,9 @@ fn main() -> Result<()> {
     // Get the --since argument from the command line
     let since = env::args()
         .nth(1)
-        .context("Usage: cargo run <since_commit_or_tag>")?;
+        .context(
+            "Usage: cargo run -p cargo-extract -- <since_commit_or_tag>\n   or: cargo-extract <since_commit_or_tag>",
+        )?;
 
     // Run `cargo workspaces changed --since <since>`
     let output = Command::new("cargo")
@@ -41,12 +43,22 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let metadata = CargoMetadata::parse_json(&String::from_utf8(
-        Command::new("cargo")
-            .args(["metadata", "--format-version", "1"])
-            .output()?
-            .stdout,
-    )?)?;
+    let metadata_output = Command::new("cargo")
+        .args(["metadata", "--format-version", "1"])
+        .output()
+        .context("failed to run cargo metadata")?;
+
+    if !metadata_output.status.success() {
+        let stderr = String::from_utf8_lossy(&metadata_output.stderr);
+        anyhow::bail!(
+            "cargo metadata failed ({}): {}",
+            metadata_output.status,
+            stderr
+        );
+    }
+
+    let metadata =
+        CargoMetadata::parse_json(&String::from_utf8(metadata_output.stdout)?)?;
 
     let graph = PackageGraph::from_metadata(metadata)?;
 

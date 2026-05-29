@@ -106,7 +106,7 @@ jobs:
           if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$DISPATCH_CRATES" ]]; then
             # Normalise: strip whitespace around commas so "crate1, crate2" works
             NORMALISED=$(echo "$DISPATCH_CRATES" | tr ',' '\n' | xargs | tr ' ' ',')
-            CRATE_COUNT=$(echo "$NORMALISED" | tr ',' '\n' | wc -l)
+            CRATE_COUNT=$(echo "$NORMALISED" | tr ',' '\n' | grep -c .)
             if [[ "$CRATE_COUNT" -eq 1 ]]; then
               FORCE_ARG="--force ${NORMALISED}"
             else
@@ -198,6 +198,7 @@ jobs:
           # Tag each bumped crate (format: crate-name@x.y.z)
           # Matches cargo-workspaces default individual tag format (%n@%v)
           echo "$BUMPED_CRATES" | while read -r crate; do
+            [[ -z "$crate" ]] && continue # Skip empty lines
             version=$(cargo metadata --no-deps --format-version 1 \
               | jq -r --arg name "$crate" \
                 '.packages[] | select(.name == $name) | .version')
