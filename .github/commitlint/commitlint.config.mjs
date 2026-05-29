@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   parserPreset: {
     parserOpts: {
       headerPattern: /^([^:]+):\s(.+)$/,
@@ -8,11 +8,11 @@ module.exports = {
   plugins: [
     {
       rules: {
-        'subject-lowercase': (parsed) => {
+        'subject-start-lowercase': (parsed) => {
           const { subject } = parsed;
           if (!subject) return [false, 'Subject is required'];
-          if (subject !== subject.toLowerCase())
-            return [false, 'Subject must be lowercase'];
+          if (!/^[a-z]/.test(subject))
+            return [false, 'Subject must start with a lowercase letter'];
           return [true, ''];
         },
         'subject-no-trailing-period': (parsed) => {
@@ -28,7 +28,7 @@ module.exports = {
   rules: {
     'scope-empty': [2, 'never'],
     'header-max-length': [2, 'always', 72],
-    'subject-lowercase': [2, 'always'],
+    'subject-start-lowercase': [2, 'always'],
     'subject-no-trailing-period': [2, 'always'],
   },
 };

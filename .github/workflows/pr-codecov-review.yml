@@ -1,0 +1,142 @@
+name: Update PR Codecov Review
+
+on:
+  workflow_run:
+    workflows: ["pr-validator"]
+    types: [completed]
+
+jobs:
+  update-codecov-section:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      checks: read
+    steps:
+      - name: Update Codecov section and re-post review
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+
+            const run = context.payload.workflow_run;
+            const sha = run.head_sha;
+
+            const MARKER        = '<!-- pr-quality-bot -->';
+            const CODECOV_START = '<!-- codecov-section-start -->';
+            const CODECOV_END   = '<!-- codecov-section-end -->';
+            const CODECOV_CTXS  = ['codecov/project', 'codecov/patch'];
+
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner,
+              repo,
+              commit_sha: sha,
+            });
+
+            const pr = prs.find(p => p.state === 'open');
+
+            if (!pr) {
+              core.info(`No open PR for SHA ${sha}`);
+              return;
+            }
+
+            const pull_number = pr.number;
+
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner,
+              repo,
+              pull_number,
+            });
+
+            const existing = reviews
+              .filter(r => r.user.type === 'Bot' && r.body?.includes(MARKER))
+              .reverse()[0];
+
+            if (!existing) {
+              core.info("No bot review found");
+              return;
+            }
+
+            const { data: checks } = await github.rest.checks.listForRef({
+              owner,
+              repo,
+              ref: sha,
+            });
+
+            const codecov = checks.check_runs.filter(c =>
+              CODECOV_CTXS.includes(c.name)
+            );
+
+            if (!codecov.length) {
+              core.info("No Codecov check runs found yet");
+              return;
+            }
+
+            const fmt = name => {
+              const c = codecov.find(x => x.name === name);
+              if (!c) return `⚠️ \`${name}\``;
+
+              const icon =
+                c.conclusion === 'success' ? '✅' :
+                c.conclusion === 'failure' ? '❌' :
+                '⏳';
+
+              return `${icon} \`${name}\``;
+            };
+
+            const errors = codecov
+              .filter(c => c.conclusion === 'failure')
+              .map(c => `- \`${c.name}\`: ${c.output?.summary || 'Failed'}`)
+              .join('\n');
+
+            const newSection = [
+              CODECOV_START,
+              '## 📊 Codecov',
+              '',
+              '### Requirements',
+              '',
+              fmt('codecov/project'),
+              fmt('codecov/patch'),
+              '',
+              '### Errors',
+              '',
+              errors || '_No errors_',
+              CODECOV_END,
+            ].join('\n');
+
+            const start = existing.body.indexOf(CODECOV_START);
+            const end   = existing.body.indexOf(CODECOV_END);
+
+            if (start === -1 || end === -1) {
+              core.warning("Codecov section not found");
+              return;
+            }
+
+            const pending = codecov.some(c => c.status !== 'completed');
+            if (pending) {
+              core.info('Codecov checks still running; will re-evaluate later.');
+              return;
+            }
+
+            const updated =
+              existing.body.slice(0, start) +
+              newSection +
+              existing.body.slice(end + CODECOV_END.length);
+
+            const bodyText = updated.replace(/<!--[\s\S]*?-->/g, '');
+            const ok = !bodyText.includes('❌');
+
+            const finalBody = updated.replace(
+              /^# [⏳✅❌] PR Validation Status/m,
+              `# ${ok ? '✅' : '❌'} PR Validation Status`
+            );
+
+            const event = ok ? 'APPROVE' : 'REQUEST_CHANGES';
+
+            await github.rest.pulls.createReview({
+              owner,
+              repo,
+              pull_number,
+              body: finalBody,
+              event
+            });
