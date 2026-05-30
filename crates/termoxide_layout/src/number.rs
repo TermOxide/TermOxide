@@ -193,3 +193,78 @@ impl Mul for Float {
         Self(self.0 * rhs.0)
     }
 }
+
+// ---------------------------------------------------------------------------
+//  Opacity
+// ---------------------------------------------------------------------------
+
+/// A self-validating opacity value bound to the CSS-legal interval
+/// `[0.0, 1.0]`.
+///
+/// CSS `opacity` accepts `<number>` or `<percentage>`. The computed value
+/// is always clamped to the unit interval; values outside that range have
+/// no effect. We enforce the clamp at *construction time* so an `Opacity`
+/// value is, by type, always within `[0.0, 1.0]`.
+///
+/// # Invariant
+///
+/// The inner [`Float`] is private and is guaranteed to satisfy
+/// `0.0 <= v <= 1.0` and to be a finite number (never `NaN`, never
+/// infinite). `f32::clamp` *propagates* NaN, so the constructor screens
+/// for NaN first and maps it to `0.0` before clamping.
+///
+/// # Examples
+///
+/// ```rust
+/// use termoxide_layout::number::Opacity;
+///
+/// assert_eq!(Opacity::new(1.5).get(), 1.0); // clamped down
+/// assert_eq!(Opacity::new(-0.2).get(), 0.0); // clamped up
+/// assert_eq!(Opacity::new(0.5).get(), 0.5); // pass-through
+/// assert_eq!(Opacity::new(f32::NAN).get(), 0.0); // NaN → 0
+///
+/// // Const constants for the two endpoints.
+/// assert_eq!(Opacity::OPAQUE.get(), 1.0);
+/// assert_eq!(Opacity::TRANSPARENT.get(), 0.0);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct Opacity(Float);
+
+impl Opacity {
+    /// Fully transparent (`opacity: 0`).
+    pub const TRANSPARENT: Self = Self(Float::ZERO);
+    /// Fully opaque (`opacity: 1`).
+    pub const OPAQUE: Self = Self(Float::ONE);
+
+    /// Construct from a raw `f32`, normalising into `[0.0, 1.0]`.
+    ///
+    /// `NaN` resolves to `0.0` (CSS treats invalid opacity as the initial
+    /// value, but we choose the closer of the two endpoints), so the
+    /// result is always a finite value inside the unit interval.
+    pub fn new(v: f32) -> Self {
+        let normalised = if v.is_nan() { 0.0 } else { v.clamp(0.0, 1.0) };
+        Self(Float::new(normalised))
+    }
+
+    /// Extract the inner `f32` (guaranteed to satisfy `0.0 <= v <= 1.0`).
+    pub const fn get(self) -> f32 {
+        self.0.0
+    }
+
+    /// Borrow the underlying [`Float`] (guaranteed clamped).
+    pub const fn as_float(self) -> Float {
+        self.0
+    }
+}
+
+impl From<f32> for Opacity {
+    fn from(v: f32) -> Self {
+        Self::new(v)
+    }
+}
+
+impl From<Float> for Opacity {
+    fn from(v: Float) -> Self {
+        Self::new(v.0)
+    }
+}
