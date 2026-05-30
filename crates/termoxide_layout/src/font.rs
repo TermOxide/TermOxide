@@ -47,6 +47,9 @@ impl FontStyle {
     /// Blinking text. Terminal: `\x1b[5m`.
     ///
     /// Many modern terminals disable blink for accessibility. Use sparingly.
+    ///
+    /// Beyond the Rdmp1 scope: gated by `feature = "future"`.
+    #[cfg(feature = "future")]
     pub const BLINK: Self = Self(0b0000_1000);
 
     /// Strikethrough / line-through. Terminal: `\x1b[9m`.
@@ -56,6 +59,9 @@ impl FontStyle {
     ///
     /// Useful for de-emphasized text (disabled items, secondary info).
     /// Exact rendering is terminal-dependent.
+    ///
+    /// Beyond the Rdmp1 scope: gated by `feature = "future"`.
+    #[cfg(feature = "future")]
     pub const DIM: Self = Self(0b0010_0000);
 
     /// Return a new `FontStyle` with the flags from `other` added.

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::Style;
 
-/// A small named registry for `oxidui_style::Style` values.
+/// A small named registry for [`Style`] values.
 ///
 /// `StyleSheet` stores named `Style` entries so components can share
 /// and reuse style declarations by name (themes, component presets, …).

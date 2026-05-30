@@ -4,7 +4,7 @@
 //! It wraps a `TaffyTree<()>` and provides an ergonomic API to:
 //!
 //! 1. **Build** a tree of nodes (leaves and containers) from either raw
-//!    [`taffy::Style`] values or from [`oxidui_style::Style`] values via
+//!    [`taffy::Style`] values or from [`crate::Style`] values via
 //!    the built-in conversion helper.
 //!
 //! 2. **Build recursively** using the [`LayoutNode`] or [`UiLayoutNode`]
@@ -141,7 +141,7 @@ pub enum LayoutNode {
     },
 }
 
-/// How a [`UiLayoutNode`] obtains its [`oxidui_style::Style`].
+/// How a [`UiLayoutNode`] obtains its [`crate::Style`].
 ///
 /// Either supply a style value directly ([`Inline`][Self::Inline]) or name a
 /// style that is looked up inside an owned [`StyleSheet`]
@@ -196,9 +196,9 @@ fn resolve_ui_style(source: UiStyleSource) -> Style {
     }
 }
 
-/// A recursive description of a layout tree using [`oxidui_style::Style`] values.
+/// A recursive description of a layout tree using [`crate::Style`] values.
 ///
-/// This is the [`oxidui_style::Style`]-based counterpart of [`LayoutNode`].
+/// This is the [`crate::Style`]-based counterpart of [`LayoutNode`].
 /// Styles are converted via [`LayoutEngine::from_ui_style`] when the tree is
 /// built by [`LayoutEngine::build_ui_tree`].
 ///
@@ -329,7 +329,7 @@ impl LayoutEngine {
     }
 
     /// Insert a **leaf node** whose style is converted from an
-    /// [`oxidui_style::Style`].
+    /// [`crate::Style`].
     ///
     /// Only layout-relevant fields are forwarded — visual properties such as
     /// `color`, `background`, and `font_style` are ignored by taffy.
@@ -343,7 +343,7 @@ impl LayoutEngine {
     }
 
     /// Insert a **container node** whose style is converted from an
-    /// [`oxidui_style::Style`].
+    /// [`crate::Style`].
     ///
     /// # Errors
     ///
@@ -382,7 +382,7 @@ impl LayoutEngine {
     /// Build a subtree from a recursive [`UiLayoutNode`] description and
     /// return the root [`NodeId`].
     ///
-    /// This is the [`oxidui_style::Style`]-based counterpart of
+    /// This is the [`crate::Style`]-based counterpart of
     /// [`build_tree`][Self::build_tree].
     ///
     /// # Errors
@@ -424,7 +424,7 @@ impl LayoutEngine {
         self.tree.set_style(node, style)
     }
 
-    /// Replace the taffy style of a node converted from an [`oxidui_style::Style`].
+    /// Replace the taffy style of a node converted from an [`crate::Style`].
     ///
     /// # Errors
     ///
@@ -560,10 +560,10 @@ impl LayoutEngine {
     }
 
     // ─────────────────────────────────────────────────────── //
-    //  Style conversion (oxidui_style → taffy)
+    //  Style conversion (termoxide_layout → taffy)
     // ─────────────────────────────────────────────────────── //
 
-    /// Convert an [`oxidui_style::Style`] into the equivalent `taffy::Style`.
+    /// Convert an [`crate::Style`] into the equivalent `taffy::Style`.
     ///
     /// Only layout-relevant fields are translated.  Visual properties
     /// (`color`, `background`, `border` appearance, `font_style`, `opacity`,
@@ -573,23 +573,23 @@ impl LayoutEngine {
     /// The table below lists every mapped field and the conversion rules for
     /// each [`Unit`] variant:
     ///
-    /// | oxidui field       | taffy field           | Unit mapping                                              |
-    /// |--------------------|-----------------------|-----------------------------------------------------------|
-    /// | `display`          | `display`             | `Block → Block`, `Flex → Flex`, `None → None`             |
-    /// | `flex_direction`   | `flex_direction`      | direct enum mapping                                       |
-    /// | `flex_grow`        | `flex_grow`           | `Float.0`                                                 |
-    /// | `flex_shrink`      | `flex_shrink`         | `Float.0`                                                 |
-    /// | `align_items`      | `align_items`         | direct enum mapping (wrapped in `Some`)                   |
-    /// | `justify_content`  | `justify_content`     | direct enum mapping (wrapped in `Some`)                   |
-    /// | `width`            | `size.width`          | `Cells(n) → length(n)`, `Percent(p) → percent(p/100)`, else `AUTO` |
-    /// | `height`           | `size.height`         | same as width                                             |
-    /// | `min_width`        | `min_size.width`      | same as width                                             |
-    /// | `min_height`       | `min_size.height`     | same as width                                             |
-    /// | `max_width`        | `max_size.width`      | same as width                                             |
-    /// | `max_height`       | `max_size.height`     | same as width                                             |
-    /// | `padding.*`        | `padding.*`           | `Cells(n) → length(n)`, `Percent(p) → percent(p/100)`, else `ZERO` |
-    /// | `margin.*`         | `margin.*`            | `Cells(n) → length(n)`, `Percent(p) → percent(p/100)`, else `AUTO` |
-    /// | `gap`              | `gap` (both axes)     | same as padding; `Fill`/`Auto`/`Unset → ZERO`             |
+    /// | Style field                  | taffy field         | Unit mapping                                              |
+    /// |------------------------------|---------------------|-----------------------------------------------------------|
+    /// | `display`                    | `display`           | `Block → Block`, `Flex → Flex`, `None → None`             |
+    /// | `flex_direction`             | `flex_direction`    | direct enum mapping                                       |
+    /// | `flex_grow`                  | `flex_grow`         | `Float.0`                                                 |
+    /// | `flex_shrink`                | `flex_shrink`       | `Float.0`                                                 |
+    /// | `align_items`                | `align_items`       | direct enum mapping (wrapped in `Some`)                   |
+    /// | `justify_content`            | `justify_content`   | direct enum mapping (wrapped in `Some`)                   |
+    /// | `dimensions.width`           | `size.width`        | `Cells(n) → length(n)`, `Percent(p) → percent(p/100)`, else `AUTO` |
+    /// | `dimensions.height`          | `size.height`       | same as width                                             |
+    /// | `dimensions.min_width`       | `min_size.width`    | same as width                                             |
+    /// | `dimensions.min_height`      | `min_size.height`   | same as width                                             |
+    /// | `dimensions.max_width`       | `max_size.width`    | same as width                                             |
+    /// | `dimensions.max_height`      | `max_size.height`   | same as width                                             |
+    /// | `padding` (via `.edges()`)   | `padding.*`         | `Cells(n) → length(n)`, `Percent(p) → percent(p/100)`, else `ZERO` |
+    /// | `margin` (via `.edges()`)    | `margin.*`          | `Cells(n) → length(n)`, `Percent(p) → percent(p/100)`, else `AUTO` |
+    /// | `gap`                        | `gap` (both axes)   | same as padding; `Fill`/`Auto → ZERO`                     |
     ///
     /// `Unit::Fill(w)` is not directly representable as a taffy `Dimension`; when
     /// used on `width` or `height` it converts to `AUTO`.  If you need fill
@@ -645,48 +645,51 @@ impl LayoutEngine {
         });
 
         // ── size ─────────────────────────────────────────────────────────── //
+        let d = &s.dimensions;
         t.size = Size {
-            width: unit_to_dimension(s.width.unwrap_or(Unit::Auto)),
-            height: unit_to_dimension(s.height.unwrap_or(Unit::Auto)),
+            width: unit_to_dimension(d.width().unwrap_or(Unit::Auto)),
+            height: unit_to_dimension(d.height().unwrap_or(Unit::Auto)),
         };
 
         // ── min_size ─────────────────────────────────────────────────────── //
         t.min_size = Size {
-            width: unit_to_dimension(s.min_width.unwrap_or(Unit::Auto)),
-            height: unit_to_dimension(s.min_height.unwrap_or(Unit::Auto)),
+            width: unit_to_dimension(d.min_width().unwrap_or(Unit::Auto)),
+            height: unit_to_dimension(d.min_height().unwrap_or(Unit::Auto)),
         };
 
         // ── max_size ─────────────────────────────────────────────────────── //
         t.max_size = Size {
-            width: unit_to_dimension(s.max_width.unwrap_or(Unit::Auto)),
-            height: unit_to_dimension(s.max_height.unwrap_or(Unit::Auto)),
+            width: unit_to_dimension(d.max_width().unwrap_or(Unit::Auto)),
+            height: unit_to_dimension(d.max_height().unwrap_or(Unit::Auto)),
         };
 
         // ── padding ──────────────────────────────────────────────────────── //
         if let Some(p) = s.padding {
+            let e = p.edges();
             t.padding = Rect {
-                left: unit_to_length_percentage(p.left),
-                right: unit_to_length_percentage(p.right),
-                top: unit_to_length_percentage(p.top),
-                bottom: unit_to_length_percentage(p.bottom),
+                left: unit_to_length_percentage(e.left),
+                right: unit_to_length_percentage(e.right),
+                top: unit_to_length_percentage(e.top),
+                bottom: unit_to_length_percentage(e.bottom),
             };
         }
 
         // ── margin ───────────────────────────────────────────────────────── //
         if let Some(m) = s.margin {
+            let e = m.edges();
             t.margin = Rect {
-                left: unit_to_length_percentage_auto(m.left),
-                right: unit_to_length_percentage_auto(m.right),
-                top: unit_to_length_percentage_auto(m.top),
-                bottom: unit_to_length_percentage_auto(m.bottom),
+                left: unit_to_length_percentage_auto(e.left),
+                right: unit_to_length_percentage_auto(e.right),
+                top: unit_to_length_percentage_auto(e.top),
+                bottom: unit_to_length_percentage_auto(e.bottom),
             };
         }
 
         // ── gap ──────────────────────────────────────────────────────────── //
-        // oxidui_style defines a single scalar `gap`; we broadcast it to both
+        // `Style::gap` is a single scalar; we broadcast it to both
         // the column (width) and row (height) axes.
         if let Some(g) = s.gap {
-            let lp = unit_to_length_percentage(g);
+            let lp = unit_to_length_percentage(g.unit());
             t.gap = Size {
                 width: lp,
                 height: lp,
@@ -716,7 +719,7 @@ impl Default for LayoutEngine {
 /// | `Cells(n)`        | `length(n as f32)`                  |
 /// | `Percent(p)`      | `percent(p as f32 / 100.0)`         |
 /// | `Fill(_)`         | `auto()` — set `flex_grow` instead  |
-/// | `Auto` / `Unset`  | `auto()`                            |
+/// | `Auto`            | `auto()`                            |
 fn unit_to_dimension(u: Unit) -> Dimension {
     match u {
         Unit::Cells(n) => Dimension::length(n as f32),
@@ -733,7 +736,7 @@ fn unit_to_dimension(u: Unit) -> Dimension {
 /// |-------------------|-------------------------------------|
 /// | `Cells(n)`        | `length(max(n, 0) as f32)`          |
 /// | `Percent(p)`      | `percent(p as f32 / 100.0)`         |
-/// | `Fill` / `Auto` / `Unset` | `length(0.0)` (zero)        |
+/// | `Fill` / `Auto`   | `length(0.0)` (zero)                |
 fn unit_to_length_percentage(u: Unit) -> LengthPercentage {
     match u {
         Unit::Cells(n) => LengthPercentage::length(n.max(0) as f32),
@@ -750,7 +753,7 @@ fn unit_to_length_percentage(u: Unit) -> LengthPercentage {
 /// |-------------------|-------------------------------------|
 /// | `Cells(n)`        | `length(n as f32)`                  |
 /// | `Percent(p)`      | `percent(p as f32 / 100.0)`         |
-/// | `Auto` / `Fill` / `Unset` | `auto()`                    |
+/// | `Auto` / `Fill`   | `auto()`                            |
 fn unit_to_length_percentage_auto(u: Unit) -> LengthPercentageAuto {
     match u {
         Unit::Cells(n) => LengthPercentageAuto::length(n as f32),
@@ -1030,7 +1033,7 @@ mod tests {
     }
 
     /// Verify that [`from_ui_style`][LayoutEngine::from_ui_style] correctly
-    /// maps a basic [`oxidui_style::Style`] into a taffy [`Style`].
+    /// maps a basic [`crate::Style`] into a taffy [`Style`].
     #[test]
     fn from_ui_style_display_flex() {
         let ui = Style::new()
