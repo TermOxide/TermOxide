@@ -165,6 +165,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ needs.resolve-inputs.outputs.ref }}
+          persist-credentials: false
 
       - name: Setup Rust & push cache
         id: rust-cache
@@ -249,6 +250,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

@@ -17,7 +17,7 @@ inputs:
 outputs:
   cache-hit:
     description: "Whether the cache was hit"
-    value: ${{ steps.cache-push.outputs.cache-hit }}
+    value: ${{ steps.cache-push.outputs.cache-hit || steps.cache-pull.outputs.cache-hit }}
 
 runs:
   using: "composite"
@@ -44,6 +44,7 @@ runs:
 
     - name: Restore cargo cache
       if: inputs.action == 'pull'
+      id: cache-pull
       uses: actions/cache/restore@v5
       with:
         path: |
