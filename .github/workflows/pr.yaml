@@ -8,6 +8,9 @@ on:
       base_ref:
         description: "Base branch/commit to compare changes against"
         required: false
+      pull_number:
+        description: "PR number to update the comment and post the indicator review"
+        required: false
       tags:
         description: 'JSON array of tags (e.g. ["03.release: patch"])'
         required: false
@@ -21,6 +24,7 @@ jobs:
       base_ref: ${{ steps.base-ref.outputs.base_ref }}
       tags: ${{ steps.tags.outputs.tags }}
       ref: ${{ steps.ref.outputs.ref }}
+      pull_number: ${{ steps.pull-number.outputs.pull_number }}
     steps:
       - name: Determine base ref
         id: base-ref
@@ -64,6 +68,19 @@ jobs:
             echo "ref=$PR_HEAD_REF" >> "$GITHUB_OUTPUT"
           else
             echo "ref=$DISPATCH_REF" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine pull number
+        id: pull-number
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          INPUT_NUMBER: ${{ inputs.pull_number }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "pull_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          else
+            echo "pull_number=${INPUT_NUMBER:-}" >> "$GITHUB_OUTPUT"
           fi
 
   detect:
@@ -340,23 +357,26 @@ jobs:
           path: /tmp/section-metadata.md
           retention-days: 1
 
-  # Download all section artifacts, assemble the full review, and post it.
+  # Download all section artifacts, assemble the full comment, update it in-place,
+  # then post a lightweight indicator review (no body) to signal pass/fail.
   post-review:
     name: Post Review
-    needs: [verify-code-guidelines, verify-code-coverage, verify-pr-metadata]
+    needs: [resolve-inputs, verify-code-guidelines, verify-code-coverage, verify-pr-metadata]
     if: always()
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
+      issues: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v8
         with:
           path: /tmp/artifacts
 
-      - name: Assemble and post review
+      - name: Assemble comment and post indicator review
         uses: actions/github-script@v9
         env:
+          PULL_NUMBER: ${{ needs.resolve-inputs.outputs.pull_number }}
           COVERAGE_RESULT: ${{ needs.verify-code-coverage.result }}
           METADATA_RESULT: ${{ needs.verify-pr-metadata.result }}
         with:
@@ -364,14 +384,18 @@ jobs:
             const fs   = require('fs');
             const path = require('path');
 
-            const owner       = context.repo.owner;
-            const repo        = context.repo.repo;
-            const pr          = context.payload.pull_request;
-            const pull_number = pr.number;
-            const runUrl      = `${process.env.GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const pull_number = parseInt(process.env.PULL_NUMBER, 10);
+
+            if (!pull_number) {
+              core.warning('No pull_number available; skipping comment and indicator review.');
+              return;
+            }
+
+            const owner  = context.repo.owner;
+            const repo   = context.repo.repo;
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${context.runId}`;
 
             const MARKER        = '<!-- pr-quality-bot -->';
-            const SHA_MARKER    = `<!-- pr-sha: ${pr.head.sha} -->`;
             const CODECOV_START = '<!-- codecov-section-start -->';
             const CODECOV_END   = '<!-- codecov-section-end -->';
 
@@ -451,10 +475,9 @@ jobs:
 
             const headerIcon = hasNonCodecovErrors ? '❌' : '⏳';
 
-            // -- Assemble full review body ------------------------------------
-            const message = [
+            // -- Assemble full comment body ------------------------------------
+            const body = [
               MARKER,
-              SHA_MARKER,
               '',
               `# ${headerIcon} PR Validation Status`,
               '',
@@ -467,23 +490,77 @@ jobs:
               codecovSection,
             ].join('\n');
 
-            // -- Dismiss previous bot review if any ---------------------------
-            const { data: reviews } = await github.rest.pulls.listReviews({ owner, repo, pull_number });
-            const previous = reviews
-              .filter(r => r.user.type === 'Bot' && r.body?.includes(MARKER))
+            // -- Find existing comment or create it ---------------------
+            const { data: comments } = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number: pull_number,
+            });
+
+            const existing = comments
+              .filter(c => c.user.type === 'Bot' && c.body?.includes(MARKER))
               .reverse()[0];
 
-            if (previous && ['APPROVED', 'CHANGES_REQUESTED'].includes(previous.state)) {
-              await github.rest.pulls.dismissReview({
-                owner, repo, pull_number,
-                review_id: previous.id,
-                message: 'Superseded by a new quality check.',
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
               });
+              core.info(`Updated existing comment #${existing.id}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pull_number,
+                body,
+              });
+              core.info('Created new comment');
             }
 
-            // -- Post review --------------------------------------------------
-            const event = hasNonCodecovErrors ? 'REQUEST_CHANGES' : 'COMMENT';
-            await github.rest.pulls.createReview({ owner, repo, pull_number, body: message, event });
+            // -- Dismiss previous indicator review if any ---------------------
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner,
+              repo,
+              pull_number,
+            });
+
+            const previousReview = reviews
+              .filter(r =>
+                r.user.type === 'Bot' &&
+                (r.state === 'APPROVED' || r.state === 'CHANGES_REQUESTED')
+              )
+              .reverse()[0];
+
+            if (previousReview) {
+              await github.rest.pulls.dismissReview({
+                owner,
+                repo,
+                pull_number,
+                review_id: previousReview.id,
+                message: 'Superseded by a new quality check.',
+              });
+              core.info(`Dismissed previous indicator review #${previousReview.id}`);
+            }
+
+            // -- Post new indicator review (lightweight, minimal body) ---------
+            const event = hasNonCodecovErrors ? 'REQUEST_CHANGES' : 'APPROVE';
+
+            const reviewParams = {
+              owner,
+              repo,
+              pull_number,
+              event,
+            };
+
+            // body is optional for APPROVE but required for REQUEST_CHANGES
+            if (event === 'REQUEST_CHANGES') {
+              reviewParams.body = 'See quality comment for details.';
+            }
+
+            await github.rest.pulls.createReview(reviewParams);
+            core.info(`Posted indicator review: ${event}`);
 
             if (hasNonCodecovErrors) {
               core.setFailed('PR quality checks failed');

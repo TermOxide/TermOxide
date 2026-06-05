@@ -10,9 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
+      issues: write
       checks: read
     steps:
-      - name: Update Codecov section and re-post review
+      - name: Update Codecov section and post indicator review
         uses: actions/github-script@v9
         with:
           script: |
@@ -27,6 +28,7 @@ jobs:
             const CODECOV_END   = '<!-- codecov-section-end -->';
             const CODECOV_CTXS  = ['codecov/project', 'codecov/patch'];
 
+            // -- Find the open PR for this SHA ---------------------------------
             const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
               owner,
               repo,
@@ -42,21 +44,23 @@ jobs:
 
             const pull_number = pr.number;
 
-            const { data: reviews } = await github.rest.pulls.listReviews({
+            // -- Find the comment ---------------------------------------
+            const { data: comments } = await github.rest.issues.listComments({
               owner,
               repo,
-              pull_number,
+              issue_number: pull_number,
             });
 
-            const existing = reviews
-              .filter(r => r.user.type === 'Bot' && r.body?.includes(MARKER))
+            const existing = comments
+              .filter(c => c.user.type === 'Bot' && c.body?.includes(MARKER))
               .reverse()[0];
 
             if (!existing) {
-              core.info("No bot review found");
+              core.info('No bot comment found; skipping Codecov update.');
               return;
             }
 
+            // -- Fetch Codecov check runs -------------------------------------
             const { data: checks } = await github.rest.checks.listForRef({
               owner,
               repo,
@@ -68,10 +72,17 @@ jobs:
             );
 
             if (!codecov.length) {
-              core.info("No Codecov check runs found yet");
+              core.info('No Codecov check runs found yet');
               return;
             }
 
+            const pending = codecov.some(c => c.status !== 'completed');
+            if (pending) {
+              core.info('Codecov checks still running; will re-evaluate later.');
+              return;
+            }
+
+            // -- Build updated Codecov section --------------------------------
             const fmt = name => {
               const c = codecov.find(x => x.name === name);
               if (!c) return `⚠️ \`${name}\``;
@@ -104,17 +115,12 @@ jobs:
               CODECOV_END,
             ].join('\n');
 
+            // -- Splice updated section into existing comment body ------------
             const start = existing.body.indexOf(CODECOV_START);
             const end   = existing.body.indexOf(CODECOV_END);
 
             if (start === -1 || end === -1) {
-              core.warning("Codecov section not found");
-              return;
-            }
-
-            const pending = codecov.some(c => c.status !== 'completed');
-            if (pending) {
-              core.info('Codecov checks still running; will re-evaluate later.');
+              core.warning('Codecov section markers not found in comment; skipping.');
               return;
             }
 
@@ -123,6 +129,8 @@ jobs:
               newSection +
               existing.body.slice(end + CODECOV_END.length);
 
+            // -- Recompute overall header icon --------------------------------
+            // Strip HTML comments before scanning for icons so markers don't interfere.
             const bodyText = updated.replace(/<!--[\s\S]*?-->/g, '');
             const ok = !bodyText.includes('❌');
 
@@ -131,12 +139,53 @@ jobs:
               `# ${ok ? '✅' : '❌'} PR Validation Status`
             );
 
-            const event = ok ? 'APPROVE' : 'REQUEST_CHANGES';
+            // -- Update comment in-place -------------------------------
+            await github.rest.issues.updateComment({
+              owner,
+              repo,
+              comment_id: existing.id,
+              body: finalBody,
+            });
+            core.info(`Updated comment #${existing.id} with Codecov results`);
 
-            await github.rest.pulls.createReview({
+            // -- Dismiss previous indicator review if any ---------------------
+            const { data: reviews } = await github.rest.pulls.listReviews({
               owner,
               repo,
               pull_number,
-              body: finalBody,
-              event
             });
+
+            const previousReview = reviews
+              .filter(r =>
+                r.user.type === 'Bot' &&
+                (r.state === 'APPROVED' || r.state === 'CHANGES_REQUESTED')
+              )
+              .reverse()[0];
+
+            if (previousReview) {
+              await github.rest.pulls.dismissReview({
+                owner,
+                repo,
+                pull_number,
+                review_id: previousReview.id,
+                message: 'Superseded by updated Codecov results.',
+              });
+              core.info(`Dismissed previous indicator review #${previousReview.id}`);
+            }
+
+            // -- Post new indicator review ------------------------------------
+            const event = ok ? 'APPROVE' : 'REQUEST_CHANGES';
+
+            const reviewParams = {
+              owner,
+              repo,
+              pull_number,
+              event,
+            };
+
+            if (event === 'REQUEST_CHANGES') {
+              reviewParams.body = 'See quality comment for details.';
+            }
+
+            await github.rest.pulls.createReview(reviewParams);
+            core.info(`Posted indicator review: ${event}`);
