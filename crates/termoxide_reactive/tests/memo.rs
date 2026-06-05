@@ -2,10 +2,15 @@
 
 mod common;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicU32, Ordering},
+    },
+};
+
 use termoxide_reactive::{Effect, Memo, Signal, runtime::with_owner};
 
 #[test]
@@ -66,11 +71,15 @@ fn skips_recompute_when_equal_value_set() {
         // Prime.
         assert_eq!(downstream.get(), 42);
         let before = calls.load(Ordering::SeqCst);
-        // Change source; upstream still yields 42 → downstream should not re-run.
+        // Change source; upstream still yields 42 → downstream should not
+        // re-run.
         src.set(2);
         let _ = downstream.get();
         let after = calls.load(Ordering::SeqCst);
-        assert_eq!(after, before, "downstream must not recompute on equal value");
+        assert_eq!(
+            after, before,
+            "downstream must not recompute on equal value"
+        );
     });
 }
 
@@ -130,7 +139,8 @@ fn prev_argument_carries_last_computed_value() {
     with_owner(|| {
         let src = Signal::new(1i32);
         // Sum-of-inputs accumulator: prev + current.
-        let acc = Memo::new(move |prev: Option<i32>| prev.unwrap_or(0) + src.get());
+        let acc =
+            Memo::new(move |prev: Option<i32>| prev.unwrap_or(0) + src.get());
         assert_eq!(acc.get(), 1); // None + 1
         src.set(2);
         assert_eq!(acc.get(), 3); // 1 + 2

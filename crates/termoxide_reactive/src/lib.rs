@@ -5,14 +5,14 @@
 //!
 //! ## Overview of primitives
 //!
-//! | Type | Role |
+//! |Type|Role|
 //! |------|------|
-//! | [`Signal<T>`] | Mutable reactive state with automatic notifications |
-//! | [`Memo<T>`] | Derived value computed lazily, recomputed on dependency change |
-//! | [`Effect`] | Reactive side-effect re-run when dependencies change |
-//! | [`Resource<T>`] | Asynchronous loading integrated into the reactive graph |
-//! | [`Trigger`] | Manual trigger without an associated value |
-//! | [`StoredValue<T>`] | Non-reactive, owner-scoped `Copy` storage |
+//! |[`Signal<T>`]|Mutable reactive state with automatic notifications|
+//! |[`Memo<T>`]|Derived value computed lazily, recomputed on dependency change|
+//! |[`Effect`]|Reactive side-effect re-run when dependencies change|
+//! |[`Resource<T>`]|Asynchronous loading integrated into the reactive graph|
+//! |[`Trigger`]|Manual trigger without an associated value|
+//! |[`StoredValue<T>`]|Non-reactive, owner-scoped `Copy` storage|
 //!
 //! All handles ([`Signal`], [`Memo`], [`Trigger`], [`Resource`],
 //! [`StoredValue`]) storage is tied to the enclosing [`runtime::Owner`].
@@ -20,7 +20,13 @@
 //! ## Quickstart
 //!
 //! ```no_run
-//! use termoxide_reactive::{Signal, Memo, Effect, Trigger, runtime::with_owner};
+//! use termoxide_reactive::{
+//!     Effect,
+//!     Memo,
+//!     Signal,
+//!     Trigger,
+//!     runtime::with_owner,
+//! };
 //!
 //! with_owner(|| {
 //!     let count = Signal::new(0i32);
@@ -41,9 +47,9 @@
 //! ## Runtime management
 //!
 //! All reactive primitives must be created within the scope of an active
-//! [`runtime::Owner`]. Use [`runtime::with_owner`] for tests and small examples,
-//! or [`runtime::Owner::new`] + [`runtime::Owner::set`] for long-running
-//! applications.
+//! [`runtime::Owner`]. Use [`runtime::with_owner`] for tests and small
+//! examples, or [`runtime::Owner::new`] + [`runtime::Owner::set`] for
+//! long-running applications.
 
 pub mod effect;
 pub mod memo;

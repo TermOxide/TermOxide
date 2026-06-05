@@ -1,6 +1,3 @@
-use std::fmt::{Display, Formatter, Result};
-use std::hash::{Hash, Hasher};
-use std::ops::{Add, Mul, Neg, Sub};
 use std::{
     fmt::{self, Display, Formatter, Result},
     hash::{Hash, Hasher},
@@ -50,27 +47,8 @@ impl Int {
     pub const ONE: Self = Self(1);
     /// Zero constant.
     pub const ZERO: Self = Self(0);
-    /// One — useful for `order: 1`, `column-count: 1`, etc.
-    pub const ONE: Self = Self(1);
 
     /// Construct from a raw `i32`.
-    pub const fn new(v: i32) -> Self {
-        Self(v)
-    }
-    /// Extract the underlying `i32`.
-    pub const fn get(self) -> i32 {
-        self.0
-    }
-    /// Returns `true` if the value is zero.
-    pub const fn is_zero(self) -> bool {
-        self.0 == 0
-    }
-    /// Returns `true` if the value is negative.
-    pub const fn is_negative(self) -> bool {
-        self.0 < 0
-    }
-
-    /// Construct from raw `i32`.
     pub const fn new(v: i32) -> Self { Self(v) }
 
     /// Extract inner value.
@@ -85,7 +63,7 @@ impl Int {
         s: &str,
         radix: u32,
     ) -> std::result::Result<Self, IntParseError> {
-        if (radix < 2) || (radix > 36) {
+        if !(2..=36).contains(&radix) {
             return Err(IntParseError::InvalidRadix);
         }
         i32::from_str_radix(s, radix)

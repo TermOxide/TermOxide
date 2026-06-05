@@ -9,7 +9,7 @@ use std::{borrow::Cow, hash::Hash};
 ///
 /// The inner `Cow<'static, str>` means proc_macro-generated code like:
 /// ```rust
-/// let font = Str::from_static("JetBrains Mono");
+/// let font = Str::from_static("JetBrains Mono"); 
 /// ```
 /// involves **zero heap allocation** — the slice lives in the binary's
 /// read-only data segment. Runtime-computed strings fall back to

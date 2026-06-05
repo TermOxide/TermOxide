@@ -4,11 +4,12 @@
 //! It is recomputed only when at least one of its dependencies changes,
 //! avoiding unnecessary recomputations (_memoization_).
 
+use std::fmt;
+
 use reactive_graph::{
     computed::Memo as InnerMemo,
     traits::{Get, GetUntracked, Read, ReadUntracked},
 };
-use std::fmt;
 
 /// Derived value recomputed lazily.
 ///
@@ -18,11 +19,11 @@ use std::fmt;
 /// # Example
 ///
 /// ```
-/// use termoxide_reactive::{Signal, Memo, runtime::with_owner};
+/// use termoxide_reactive::{Memo, Signal, runtime::with_owner};
 ///
 /// with_owner(|| {
-///     let price = Signal::new(10.0f64);
-///     let qty   = Signal::new(3u32);
+///     let price = Signal::new(10f64);
+///     let qty = Signal::new(3u32);
 ///
 ///     let total = Memo::new(move |_prev| price.get() * qty.get() as f64);
 ///
@@ -42,9 +43,7 @@ pub struct Memo<T: Send + Sync + 'static>(pub(crate) InnerMemo<T>);
 
 impl<T: Send + Sync + 'static> Copy for Memo<T> {}
 impl<T: Send + Sync + 'static> Clone for Memo<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
+    fn clone(&self) -> Self { *self }
 }
 
 impl<T: Clone + Send + Sync + PartialEq + 'static> Memo<T> {
@@ -58,14 +57,10 @@ impl<T: Clone + Send + Sync + PartialEq + 'static> Memo<T> {
 
     /// Returns a cloned copy of the computed value **registering
     /// a dependency** in the current reactive context.
-    pub fn get(&self) -> T {
-        self.0.get()
-    }
+    pub fn get(&self) -> T { self.0.get() }
 
     /// Returns a cloned copy **without creating a dependency**.
-    pub fn get_untracked(&self) -> T {
-        self.0.get_untracked()
-    }
+    pub fn get_untracked(&self) -> T { self.0.get_untracked() }
 
     /// Returns a read guard **registering a dependency**.
     pub fn read(&self) -> impl std::ops::Deref<Target = T> + '_ {
@@ -78,12 +73,12 @@ impl<T: Clone + Send + Sync + PartialEq + 'static> Memo<T> {
     }
 
     /// Direct access to the inner `reactive_graph` memo.
-    pub fn inner(&self) -> &InnerMemo<T> {
-        &self.0
-    }
+    pub fn inner(&self) -> &InnerMemo<T> { &self.0 }
 }
 
-impl<T: fmt::Debug + Clone + Send + Sync + PartialEq + 'static> fmt::Debug for Memo<T> {
+impl<T: fmt::Debug + Clone + Send + Sync + PartialEq + 'static> fmt::Debug
+    for Memo<T>
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let val = self.0.read_untracked();
         f.debug_tuple("Memo").field(&*val).finish()

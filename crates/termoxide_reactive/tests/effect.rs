@@ -2,10 +2,9 @@
 
 mod common;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-use termoxide_reactive::runtime::Owner;
-use termoxide_reactive::{Effect, Signal};
+use std::{cell::RefCell, rc::Rc};
+
+use termoxide_reactive::{Effect, Signal, runtime::Owner};
 
 #[tokio::test(flavor = "current_thread")]
 async fn runs_once_on_creation() {

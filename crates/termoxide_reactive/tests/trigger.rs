@@ -2,8 +2,8 @@
 
 mod common;
 
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
+
 use termoxide_reactive::{Effect, Trigger};
 
 #[tokio::test(flavor = "current_thread")]
@@ -123,7 +123,8 @@ async fn copies_share_underlying_trigger() {
         assert_eq!(
             *runs.borrow(),
             2,
-            "notify via the copy must wake the effect tracking via the original"
+            "notify via the copy must wake the effect tracking via the \
+             original"
         );
     })
     .await;

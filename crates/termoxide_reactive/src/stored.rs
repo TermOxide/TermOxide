@@ -9,9 +9,12 @@
 //! across renders — timers, RAII guards, mutable scratch buffers,
 //! non-reactive component state.
 
-use reactive_graph::owner::{LocalStorage, StoredValue as InnerStoredValue};
-use reactive_graph::traits::{ReadValue, WriteValue};
 use std::fmt;
+
+use reactive_graph::{
+    owner::{LocalStorage, StoredValue as InnerStoredValue},
+    traits::{ReadValue, WriteValue},
+};
 
 /// Non-reactive, owner-scoped storage.
 ///
@@ -20,7 +23,12 @@ use std::fmt;
 /// # Example
 ///
 /// ```no_run
-/// use termoxide_reactive::{StoredValue, Effect, Trigger, runtime::with_owner};
+/// use termoxide_reactive::{
+///     Effect,
+///     StoredValue,
+///     Trigger,
+///     runtime::with_owner,
+/// };
 ///
 /// with_owner(|| {
 ///     let counter = StoredValue::new(0u32);
@@ -41,16 +49,12 @@ pub struct StoredValue<T: 'static>(InnerStoredValue<T, LocalStorage>);
 
 impl<T: 'static> Copy for StoredValue<T> {}
 impl<T: 'static> Clone for StoredValue<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
+    fn clone(&self) -> Self { *self }
 }
 
 impl<T: 'static> StoredValue<T> {
     /// Store `value` in the current reactive owner's arena.
-    pub fn new(value: T) -> Self {
-        Self(InnerStoredValue::new_local(value))
-    }
+    pub fn new(value: T) -> Self { Self(InnerStoredValue::new_local(value)) }
 
     /// Read the value via a closure (no cloning required).
     pub fn with_value<R>(&self, f: impl FnOnce(&T) -> R) -> R {
@@ -70,9 +74,7 @@ impl<T: 'static> StoredValue<T> {
     }
 
     /// Replace the value.
-    pub fn set(&self, value: T) {
-        self.update(|slot| *slot = value);
-    }
+    pub fn set(&self, value: T) { self.update(|slot| *slot = value); }
 
     /// Return a clone of the value.
     pub fn get_value(&self) -> T
@@ -82,9 +84,7 @@ impl<T: 'static> StoredValue<T> {
         self.with_value(|v| v.clone())
     }
 
-    pub fn inner(&self) -> &InnerStoredValue<T, LocalStorage> {
-        &self.0
-    }
+    pub fn inner(&self) -> &InnerStoredValue<T, LocalStorage> { &self.0 }
 }
 
 impl<T: fmt::Debug + 'static> fmt::Debug for StoredValue<T> {

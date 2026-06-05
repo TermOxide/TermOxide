@@ -33,7 +33,7 @@
 /// let flex = Unit::fill(1); // take 1 share of remaining space
 /// let auto = Unit::AUTO; // size to content
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Unit {
     /// Absolute size in terminal character cells.
     ///
@@ -65,6 +65,7 @@ pub enum Unit {
     /// never emit `Unset` directly; the parser produces `None` at the
     /// `Style` field level instead. Exists for `Edges<Unit>` where a
     /// `Unit` must be present but is logically absent.
+    #[default]
     Unset,
 }
 
@@ -122,8 +123,4 @@ impl Unit {
             _ => None,
         }
     }
-}
-
-impl Default for Unit {
-    fn default() -> Self { Self::Unset }
 }
