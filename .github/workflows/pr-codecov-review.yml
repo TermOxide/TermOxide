@@ -157,7 +157,7 @@ jobs:
 
             const previousReview = reviews
               .filter(r =>
-                r.user.type === 'Bot' &&
+                r.user.login === 'github-actions[bot]' &&
                 (r.state === 'APPROVED' || r.state === 'CHANGES_REQUESTED')
               )
               .reverse()[0];

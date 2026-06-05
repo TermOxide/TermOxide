@@ -26,6 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref_name }}
+          persist-credentials: false
 
       - name: Setup Rust & push cache
         uses: ./.github/actions/rust-cache

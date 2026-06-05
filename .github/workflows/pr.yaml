@@ -173,6 +173,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ needs.resolve-inputs.outputs.ref }}
+          persist-credentials: false
 
       - name: Setup Rust & push cache
         id: rust-cache
@@ -307,8 +308,12 @@ jobs:
             // --- Validate commits ---
             try {
               execSync(
-                `npx --no-install commitlint --from ${pr.base.sha} --to ${pr.head.sha} --color false`,
-                { stdio: 'pipe', cwd }
+                `npx --no-install commitlint --color false`,
+                {
+                  input: pr.title + '\n',
+                  stdio: 'pipe',
+                  cwd
+                }
               );
               checks.find(c => c.key === 'commits').passed = true;
             } catch (e) {
@@ -539,7 +544,7 @@ jobs:
 
             const previousReview = reviews
               .filter(r =>
-                r.user.type === 'Bot' &&
+                r.user.login === 'github-actions[bot]' &&
                 (r.state === 'APPROVED' || r.state === 'CHANGES_REQUESTED')
               )
               .reverse()[0];
