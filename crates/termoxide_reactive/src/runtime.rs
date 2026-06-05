@@ -16,8 +16,7 @@ use reactive_graph::owner::Owner as InnerOwner;
 /// # Example
 ///
 /// ```rust
-/// use termoxide_reactive::runtime::Owner;
-/// use termoxide_reactive::Signal;
+/// use termoxide_reactive::{Signal, runtime::Owner};
 ///
 /// let owner = Owner::new();
 /// owner.set(); // activate the owner on the current thread
@@ -29,28 +28,20 @@ pub struct Owner(InnerOwner);
 
 impl Owner {
     /// Create a new reactive owner.
-    pub fn new() -> Self {
-        Self(InnerOwner::new())
-    }
+    pub fn new() -> Self { Self(InnerOwner::new()) }
 
     /// Activate this owner on the current thread.
     ///
     /// Prefer [`Owner::with`] or [`with_owner`] when the scope is
     /// well-defined — they restore the previous owner automatically.
-    pub fn set(&self) {
-        self.0.set();
-    }
+    pub fn set(&self) { self.0.set(); }
 
     /// Execute `f` within the scope of this owner.
-    pub fn with<R>(&self, f: impl FnOnce() -> R) -> R {
-        self.0.with(f)
-    }
+    pub fn with<R>(&self, f: impl FnOnce() -> R) -> R { self.0.with(f) }
 }
 
 impl Default for Owner {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
 
 /// Execute `f` in a new reactive scope.

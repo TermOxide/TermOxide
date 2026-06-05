@@ -3,12 +3,22 @@
 //! [`Signal<T>`] is a single-threaded mutable state that automatically
 //! notifies all its subscribers (memos, effects) on every mutation.
 
+use std::fmt;
+
 use reactive_graph::{
     owner::LocalStorage,
     signal::RwSignal as InnerSignal,
-    traits::{Get, GetUntracked, Read, ReadUntracked, Set, Update, UpdateUntracked, Write},
+    traits::{
+        Get,
+        GetUntracked,
+        Read,
+        ReadUntracked,
+        Set,
+        Update,
+        UpdateUntracked,
+        Write,
+    },
 };
-use std::fmt;
 
 /// Mutable state.
 ///
@@ -34,16 +44,12 @@ pub struct Signal<T: 'static>(pub(crate) InnerSignal<T, LocalStorage>);
 
 impl<T: 'static> Copy for Signal<T> {}
 impl<T: 'static> Clone for Signal<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
+    fn clone(&self) -> Self { *self }
 }
 
 impl<T: 'static> Signal<T> {
     /// Create a new signal with the initial value `value`.
-    pub fn new(value: T) -> Self {
-        Self(InnerSignal::new_local(value))
-    }
+    pub fn new(value: T) -> Self { Self(InnerSignal::new_local(value)) }
 
     /// Returns a cloned copy of the value **registering a dependency**
     pub fn get(&self) -> T
@@ -62,14 +68,10 @@ impl<T: 'static> Signal<T> {
     }
 
     /// Replaces the value and notifies all subscribers.
-    pub fn set(&self, value: T) {
-        self.0.set(value);
-    }
+    pub fn set(&self, value: T) { self.0.set(value); }
 
     /// Modifies the value in place using a closure, then notifies subscribers.
-    pub fn update(&self, f: impl FnOnce(&mut T)) {
-        self.0.update(f);
-    }
+    pub fn update(&self, f: impl FnOnce(&mut T)) { self.0.update(f); }
 
     /// Modifies the value **without notifying** subscribers.
     pub fn update_untracked(&self, f: impl FnOnce(&mut T)) {
@@ -95,9 +97,7 @@ impl<T: 'static> Signal<T> {
         self.0.write()
     }
 
-    pub fn inner(&self) -> &InnerSignal<T, LocalStorage> {
-        &self.0
-    }
+    pub fn inner(&self) -> &InnerSignal<T, LocalStorage> { &self.0 }
 }
 
 impl<T: fmt::Debug + 'static> fmt::Debug for Signal<T> {

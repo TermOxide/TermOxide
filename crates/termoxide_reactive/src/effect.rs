@@ -3,8 +3,7 @@
 //! An [`Effect`] is a closure that automatically re-executes whenever a
 //! signal it depends on changes.
 
-use reactive_graph::effect::Effect as InnerEffect;
-use reactive_graph::owner::LocalStorage;
+use reactive_graph::{effect::Effect as InnerEffect, owner::LocalStorage};
 
 /// Side-effect that re-executes when its dependencies change.
 ///
@@ -14,7 +13,7 @@ use reactive_graph::owner::LocalStorage;
 /// # Example
 ///
 /// ```no_run
-/// use termoxide_reactive::{Signal, Effect, runtime::with_owner};
+/// use termoxide_reactive::{Effect, Signal, runtime::with_owner};
 ///
 /// with_owner(|| {
 ///     let name = Signal::new(String::from("Alice"));
@@ -41,7 +40,5 @@ impl Effect {
         Self(InnerEffect::new(f))
     }
 
-    pub fn inner(&self) -> &InnerEffect<LocalStorage> {
-        &self.0
-    }
+    pub fn inner(&self) -> &InnerEffect<LocalStorage> { &self.0 }
 }

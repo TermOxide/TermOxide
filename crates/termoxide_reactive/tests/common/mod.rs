@@ -22,19 +22,19 @@
 //! Three constraints stack to force this shape:
 //!
 //! 1. **`Effect::new` takes `Fn + 'static`, not `FnMut`.** The effect may
-//!    re-run any number of times, so the closure is called through a
-//!    shared reference — it cannot mutate its captures directly. Interior
-//!    mutability is required to record observations from inside.
+//!    re-run any number of times, so the closure is called through a shared
+//!    reference — it cannot mutate its captures directly. Interior mutability
+//!    is required to record observations from inside.
 //!
-//! 2. **Effects run on the local set (`!Send`).** That makes `Rc` the
-//!    right reference-counted handle (no atomic overhead) and `RefCell`
-//!    the right cell (no locking). `Cell` would work for `Copy` types,
-//!    but `RefCell` handles `Vec`, `String`, etc. uniformly.
+//! 2. **Effects run on the local set (`!Send`).** That makes `Rc` the right
+//!    reference-counted handle (no atomic overhead) and `RefCell` the right
+//!    cell (no locking). `Cell` would work for `Copy` types, but `RefCell`
+//!    handles `Vec`, `String`, etc. uniformly.
 //!
-//! 3. **The test body needs to read the recorded value after the effect
-//!    has run.** Moving the value into the closure would leave nothing to
-//!    assert against, so we share ownership: one `Rc` stays with the test,
-//!    a clone is moved into the closure.
+//! 3. **The test body needs to read the recorded value after the effect has
+//!    run.** Moving the value into the closure would leave nothing to assert
+//!    against, so we share ownership: one `Rc` stays with the test, a clone is
+//!    moved into the closure.
 //!
 //! The clone is scoped to the closure with a block expression
 //! (`Effect::new({ let runs = runs.clone(); move |_| ... })`) so the
@@ -47,6 +47,7 @@
 #![allow(dead_code)]
 
 use std::future::Future;
+
 use termoxide_reactive::runtime::Owner;
 
 /// Install the tokio executor for `any_spawner` exactly once per process.
@@ -62,9 +63,7 @@ pub fn init_executor() {
 ///
 /// Delegates to [`any_spawner::Executor::tick`], which drains pending
 /// local tasks for the current frame.
-pub async fn flush_effects() {
-    any_spawner::Executor::tick().await;
-}
+pub async fn flush_effects() { any_spawner::Executor::tick().await; }
 
 /// Set up the executor and a `LocalSet`, then run `body` inside a fresh
 /// reactive [`Owner`] that is dropped on completion.

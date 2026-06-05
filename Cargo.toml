@@ -58,12 +58,12 @@ strip = true
 
 # Clippy lints configuration
 [lints.clippy]
-correctness = { level = "deny", priority = -1 }
-suspicious = { level = "deny", priority = -1 }
+correctness = { level = "deny", priority = -2 }
+suspicious = { level = "deny", priority = -2 }
 
-complexity = { level = "warn", priority = -1 }
-perf = { level = "warn", priority = -1 }
-style = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -2 }
+perf = { level = "warn", priority = -2 }
+style = { level = "warn", priority = -2 }
 
 unwrap_used = { level = "warn", priority = -1 }
 expect_used = { level = "warn", priority = -1 }

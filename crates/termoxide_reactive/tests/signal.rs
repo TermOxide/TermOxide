@@ -2,8 +2,8 @@
 
 mod common;
 
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
+
 use termoxide_reactive::{Effect, Signal, runtime::with_owner};
 
 #[test]

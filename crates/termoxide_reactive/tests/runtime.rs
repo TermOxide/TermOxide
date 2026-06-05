@@ -1,7 +1,10 @@
 //! Behavior tests for `Owner` and `with_owner`.
 
-use termoxide_reactive::runtime::{Owner, with_owner};
-use termoxide_reactive::{Signal, StoredValue};
+use termoxide_reactive::{
+    Signal,
+    StoredValue,
+    runtime::{Owner, with_owner},
+};
 
 #[test]
 fn with_owner_returns_inner_value() {

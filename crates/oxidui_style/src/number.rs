@@ -1,6 +1,3 @@
-use std::fmt::{Display, Formatter, Result};
-use std::hash::{Hash, Hasher};
-use std::ops::{Add, Mul, Neg, Sub};
 use std::{
     fmt::{self, Display, Formatter, Result},
     hash::{Hash, Hasher},
@@ -50,42 +47,31 @@ impl Int {
     pub const ONE: Self = Self(1);
     /// Zero constant.
     pub const ZERO: Self = Self(0);
-    /// One — useful for `order: 1`, `column-count: 1`, etc.
-    pub const ONE: Self = Self(1);
 
     /// Construct from a raw `i32`.
     pub const fn new(v: i32) -> Self {
         Self(v)
     }
-    /// Extract the underlying `i32`.
+
+    /// Extract inner value.
     pub const fn get(self) -> i32 {
         self.0
     }
-    /// Returns `true` if the value is zero.
+
     pub const fn is_zero(self) -> bool {
         self.0 == 0
     }
-    /// Returns `true` if the value is negative.
+
     pub const fn is_negative(self) -> bool {
         self.0 < 0
     }
-
-    /// Construct from raw `i32`.
-    pub const fn new(v: i32) -> Self { Self(v) }
-
-    /// Extract inner value.
-    pub const fn get(self) -> i32 { self.0 }
-
-    pub const fn is_zero(self) -> bool { self.0 == 0 }
-
-    pub const fn is_negative(self) -> bool { self.0 < 0 }
 
     /// Precise radix constructor (2–36).
     pub fn from_str_radix(
         s: &str,
         radix: u32,
     ) -> std::result::Result<Self, IntParseError> {
-        if (radix < 2) || (radix > 36) {
+        if !(2..=36).contains(&radix) {
             return Err(IntParseError::InvalidRadix);
         }
         i32::from_str_radix(s, radix)
@@ -94,16 +80,24 @@ impl Int {
     }
 
     /// Format as binary with `0b` prefix.
-    pub fn to_bin(self) -> String { format!("0b{:b}", self.0) }
+    pub fn to_bin(self) -> String {
+        format!("0b{:b}", self.0)
+    }
 
     /// Format as octal with `0o` prefix.
-    pub fn to_oct(self) -> String { format!("0o{:o}", self.0) }
+    pub fn to_oct(self) -> String {
+        format!("0o{:o}", self.0)
+    }
 
     /// Format as lowercase hex with `0x` prefix.
-    pub fn to_hex(self) -> String { format!("0x{:x}", self.0) }
+    pub fn to_hex(self) -> String {
+        format!("0x{:x}", self.0)
+    }
 
     /// Format as uppercase hex with `0X` prefix.
-    pub fn to_hex_upper(self) -> String { format!("0X{:X}", self.0) }
+    pub fn to_hex_upper(self) -> String {
+        format!("0X{:X}", self.0)
+    }
 }
 
 impl FromStr for Int {
@@ -136,30 +130,42 @@ impl FromStr for Int {
 }
 
 impl From<i32> for Int {
-    fn from(v: i32) -> Self { Self(v) }
+    fn from(v: i32) -> Self {
+        Self(v)
+    }
 }
 impl From<Int> for i32 {
-    fn from(v: Int) -> Self { v.0 }
+    fn from(v: Int) -> Self {
+        v.0
+    }
 }
 
 impl Display for Int {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result { write!(f, "{}", self.0) }
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 impl Add for Int {
     type Output = Self;
 
-    fn add(self, rhs: Self) -> Self { Self(self.0 + rhs.0) }
+    fn add(self, rhs: Self) -> Self {
+        Self(self.0 + rhs.0)
+    }
 }
 impl Sub for Int {
     type Output = Self;
 
-    fn sub(self, rhs: Self) -> Self { Self(self.0 - rhs.0) }
+    fn sub(self, rhs: Self) -> Self {
+        Self(self.0 - rhs.0)
+    }
 }
 impl Neg for Int {
     type Output = Self;
 
-    fn neg(self) -> Self { Self(-self.0) }
+    fn neg(self) -> Self {
+        Self(-self.0)
+    }
 }
 
 /// A CSS-like floating-point scalar value.
@@ -198,23 +204,33 @@ impl Float {
     pub const ZERO: Self = Self(0.0);
 
     /// Construct from a raw `f32`.
-    pub const fn new(v: f32) -> Self { Self(v) }
+    pub const fn new(v: f32) -> Self {
+        Self(v)
+    }
 
     /// Extract the underlying `f32`.
-    pub const fn get(self) -> f32 { self.0 }
+    pub const fn get(self) -> f32 {
+        self.0
+    }
 
     /// Clamp to `[0.0, 1.0]`.
     ///
     /// Useful for `opacity`, `flex-shrink`, or any unit-interval property.
-    pub fn clamp_unit(self) -> Self { Self(self.0.clamp(0.0, 1.0)) }
+    pub fn clamp_unit(self) -> Self {
+        Self(self.0.clamp(0.0, 1.0))
+    }
 
     /// Returns `true` if the value is exactly `0.0`.
-    pub fn is_zero(self) -> bool { self.0 == 0.0 }
+    pub fn is_zero(self) -> bool {
+        self.0 == 0.0
+    }
 }
 
 /// Bit-equality. See type-level docs for NaN rationale.
 impl PartialEq for Float {
-    fn eq(&self, other: &Self) -> bool { self.0.to_bits() == other.0.to_bits() }
+    fn eq(&self, other: &Self) -> bool {
+        self.0.to_bits() == other.0.to_bits()
+    }
 }
 
 /// Derived from bit-equality — see [`PartialEq`] impl.
@@ -222,7 +238,9 @@ impl Eq for Float {}
 
 /// Bit-pattern hash — consistent with the `PartialEq` implementation.
 impl Hash for Float {
-    fn hash<H: Hasher>(&self, state: &mut H) { self.0.to_bits().hash(state); }
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.to_bits().hash(state);
+    }
 }
 
 impl PartialOrd for Float {
@@ -232,23 +250,33 @@ impl PartialOrd for Float {
 }
 
 impl From<f32> for Float {
-    fn from(v: f32) -> Self { Self(v) }
+    fn from(v: f32) -> Self {
+        Self(v)
+    }
 }
 impl From<Float> for f32 {
-    fn from(v: Float) -> Self { v.0 }
+    fn from(v: Float) -> Self {
+        v.0
+    }
 }
 
 impl Display for Float {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result { write!(f, "{}", self.0) }
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 impl Add for Float {
     type Output = Self;
 
-    fn add(self, rhs: Self) -> Self { Self(self.0 + rhs.0) }
+    fn add(self, rhs: Self) -> Self {
+        Self(self.0 + rhs.0)
+    }
 }
 impl Mul for Float {
     type Output = Self;
 
-    fn mul(self, rhs: Self) -> Self { Self(self.0 * rhs.0) }
+    fn mul(self, rhs: Self) -> Self {
+        Self(self.0 * rhs.0)
+    }
 }

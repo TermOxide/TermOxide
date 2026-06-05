@@ -3,9 +3,9 @@
 //! [`Resource<T>`] integrates asynchronous data loading.
 //! The result is then exposed via an internal [`Signal`].
 
+use std::{fmt, future::Future};
+
 use crate::signal::Signal;
-use std::fmt;
-use std::future::Future;
 
 /// Loading state of a [`Resource`].
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -16,13 +16,9 @@ pub enum ResourceState<T> {
 }
 
 impl<T> ResourceState<T> {
-    pub fn is_loading(&self) -> bool {
-        matches!(self, ResourceState::Loading)
-    }
+    pub fn is_loading(&self) -> bool { matches!(self, ResourceState::Loading) }
 
-    pub fn is_ready(&self) -> bool {
-        matches!(self, ResourceState::Ready(_))
-    }
+    pub fn is_ready(&self) -> bool { matches!(self, ResourceState::Ready(_)) }
 
     pub fn value(&self) -> Option<&T> {
         if let ResourceState::Ready(v) = self {
@@ -41,12 +37,14 @@ impl<T> ResourceState<T> {
 /// # Example
 ///
 /// ```no_run
-/// use termoxide_reactive::{Resource, Effect, runtime::with_owner};
+/// use termoxide_reactive::{Effect, Resource, runtime::with_owner};
 ///
 /// with_owner(|| {
-///     let user = Resource::new(|| async {
-///         // perform the asynchronous work here
-///         String::from("Alice")
+///     let user = Resource::new(|| {
+///         async {
+///             // perform the asynchronous work here
+///             String::from("Alice")
+///         }
 ///     });
 ///
 ///     assert!(user.state_untracked().is_loading());
@@ -65,9 +63,7 @@ pub struct Resource<T: Clone + 'static> {
 
 impl<T: Clone + 'static> Copy for Resource<T> {}
 impl<T: Clone + 'static> Clone for Resource<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
+    fn clone(&self) -> Self { *self }
 }
 
 impl<T: Clone + 'static> Resource<T> {
@@ -90,7 +86,8 @@ impl<T: Clone + 'static> Resource<T> {
         F: FnOnce() -> Fut + 'static,
         Fut: Future<Output = T> + 'static,
     {
-        let state: Signal<ResourceState<T>> = Signal::new(ResourceState::Loading);
+        let state: Signal<ResourceState<T>> =
+            Signal::new(ResourceState::Loading);
 
         any_spawner::Executor::spawn_local(async move {
             let result = fetcher().await;
@@ -116,7 +113,8 @@ impl<T: Clone + 'static> Resource<T> {
         Fut: Future<Output = Result<T, E>> + 'static,
         E: fmt::Display + 'static,
     {
-        let state: Signal<ResourceState<T>> = Signal::new(ResourceState::Loading);
+        let state: Signal<ResourceState<T>> =
+            Signal::new(ResourceState::Loading);
 
         any_spawner::Executor::spawn_local(async move {
             match fetcher().await {
@@ -129,9 +127,7 @@ impl<T: Clone + 'static> Resource<T> {
     }
 
     /// Returns the current state **registering a reactive dependency**.
-    pub fn state(&self) -> ResourceState<T> {
-        self.state.get()
-    }
+    pub fn state(&self) -> ResourceState<T> { self.state.get() }
 
     /// Returns the current state **without creating a dependency**.
     pub fn state_untracked(&self) -> ResourceState<T> {
@@ -141,9 +137,7 @@ impl<T: Clone + 'static> Resource<T> {
     /// Returns `true` if loading is still in progress.
     ///
     /// Registers a reactive dependency.
-    pub fn is_loading(&self) -> bool {
-        self.state().is_loading()
-    }
+    pub fn is_loading(&self) -> bool { self.state().is_loading() }
 
     /// Returns the value if available, or `None` otherwise.
     ///
@@ -165,9 +159,7 @@ impl<T: Clone + 'static> Resource<T> {
         }
     }
 
-    pub fn as_signal(&self) -> &Signal<ResourceState<T>> {
-        &self.state
-    }
+    pub fn as_signal(&self) -> &Signal<ResourceState<T>> { &self.state }
 }
 
 impl<T: fmt::Debug + Clone + 'static> fmt::Debug for Resource<T> {
