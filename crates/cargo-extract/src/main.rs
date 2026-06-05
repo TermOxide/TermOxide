@@ -12,11 +12,10 @@ use guppy::{
 
 fn main() -> Result<()> {
     // Get the --since argument from the command line
-    let since = env::args()
-        .nth(1)
-        .context(
-            "Usage: cargo run -p cargo-extract -- <since_commit_or_tag>\n   or: cargo-extract <since_commit_or_tag>",
-        )?;
+    let since = env::args().nth(1).context(
+        "Usage: cargo run -p cargo-extract -- <since_commit_or_tag>\n   or: \
+         cargo-extract <since_commit_or_tag>",
+    )?;
 
     // Run `cargo workspaces changed --since <since>`
     let output = Command::new("cargo")
