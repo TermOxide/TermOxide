@@ -105,10 +105,16 @@ jobs:
         action:
           - name: lint
             command: "clippy"
+            toolchain: "stable"
+            components: ""
           - name: format
             command: "fmt --check"
+            toolchain: "nightly"
+            components: '["rustfmt"]'
           - name: build
             command: "build"
+            toolchain: "stable"
+            components: ""
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -117,10 +123,12 @@ jobs:
           ref: ${{ needs.resolve-inputs.outputs.ref }}
           persist-credentials: false
 
-      - name: Restore Rust cache
+      - name: Setup Rust & cache
         uses: ./.github/actions/rust-cache
         with:
-          action: pull
+          action: push
+          toolchain: ${{ matrix.action.toolchain }}
+          components: ${{ matrix.action.components }}
 
       - name: Run ${{ matrix.action.name }} on changed crates
         id: check
@@ -165,7 +173,6 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ needs.resolve-inputs.outputs.ref }}
-          persist-credentials: false
 
       - name: Setup Rust & push cache
         id: rust-cache
@@ -250,7 +257,6 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

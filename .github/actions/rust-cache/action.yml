@@ -5,6 +5,14 @@ inputs:
   action:
     description: "Cache action: 'push' (setup + build + save cache) or 'pull' (restore cache only)"
     required: true
+  toolchain:
+    description: "Rust toolchain to install (e.g. 'stable', 'nightly', '1.89.0', 'nightly-2025-01-01')"
+    required: false
+    default: "stable"
+  components:
+    description: 'JSON array of additional toolchain components to install (e.g. ''["rustfmt", "clippy"]'')'
+    required: false
+    default: "[]"
   packages:
     description: 'JSON array of crates.io packages to install (e.g. ''["cargo-workspaces"]'')'
     required: false
@@ -26,8 +34,14 @@ runs:
       id: cache-key
       shell: bash
       run: |
-        hash=$(echo '${{ inputs.packages }}${{ inputs.crates }}' | sha256sum | cut -d ' ' -f1)
-        echo "key=${{ runner.os }}-cargo-${hash}" >> "$GITHUB_OUTPUT"
+        hash=$(echo '${{ inputs.packages }}${{ inputs.crates }}${{ inputs.components }}' | sha256sum | cut -d ' ' -f1)
+        echo "key=${{ runner.os }}-cargo-${{ inputs.toolchain }}-${hash}" >> "$GITHUB_OUTPUT"
+
+    - name: Convert components to comma-separated string
+      id: components
+      shell: bash
+      run: |
+        echo "components=$(echo '${{ inputs.components }}' | jq -r 'join(",")')" >> "$GITHUB_OUTPUT"
 
     - name: Restore & save cargo cache
       if: inputs.action == 'push'
@@ -57,7 +71,10 @@ runs:
 
     - name: Setup Rust toolchain
       if: inputs.action == 'push' && steps.cache-push.outputs.cache-hit != 'true'
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # Pinned to avoid volatile tag, this is the latest commit as of 05/06/2026
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        components: ${{ steps.components.outputs.components }}
 
     - name: Install cargo packages
       if: inputs.action == 'push' && steps.cache-push.outputs.cache-hit != 'true'
