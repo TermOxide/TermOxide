@@ -509,6 +509,8 @@ jobs:
               .filter(c => c.user.type === 'Bot' && c.body?.includes(MARKER))
               .reverse()[0];
 
+            let commentUrl;
+
             if (existing) {
               await github.rest.issues.updateComment({
                 owner,
@@ -516,17 +518,18 @@ jobs:
                 comment_id: existing.id,
                 body,
               });
+              commentUrl = existing.html_url;
               core.info(`Updated existing comment #${existing.id}`);
             } else {
-              await github.rest.issues.createComment({
+              const { data: created } = await github.rest.issues.createComment({
                 owner,
                 repo,
                 issue_number: pull_number,
                 body,
               });
+              commentUrl = created.html_url;
               core.info('Created new comment');
             }
-
             // -- Dismiss previous indicator review if any ---------------------
             const { data: reviews } = await github.rest.pulls.listReviews({
               owner,
@@ -564,7 +567,7 @@ jobs:
 
             // body is optional for APPROVE but required for REQUEST_CHANGES
             if (event === 'REQUEST_CHANGES') {
-              reviewParams.body = 'See quality comment for details.';
+              reviewParams.body = `See the [quality report](${commentUrl}) for details.`;
             }
 
             await github.rest.pulls.createReview(reviewParams);

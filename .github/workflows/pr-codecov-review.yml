@@ -184,7 +184,7 @@ jobs:
             };
 
             if (event === 'REQUEST_CHANGES') {
-              reviewParams.body = 'See quality comment for details.';
+              reviewParams.body = `See the [quality report](${existing.html_url}) for details.`;
             }
 
             await github.rest.pulls.createReview(reviewParams);
