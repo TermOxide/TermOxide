@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env sh
 # Git pre-commit hook
 # Runs cargo fmt, check, and clippy on all Rust code
 

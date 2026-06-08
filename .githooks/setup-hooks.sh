@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env sh
 # Setup script for configuring Git hooks path
 # Usage: (root of the repo)/.githooks/setup-hooks.sh
 
