@@ -23,8 +23,8 @@ esac
 printf "${BLUE_BOLD}Running commit-msg checks...${RESET}\n"
 
 msg_file="$1"
-# Read first line and full message
-msg="$(head -n 1 "$msg_file")"
+# Read first line and full message (without CRLF)
+msg="$(head -n 1 "$msg_file" | tr -d '\r')"
 
 # Max length <= 72
 # We use POSIX compatible string length calculation
