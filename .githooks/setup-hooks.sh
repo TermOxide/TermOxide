@@ -11,9 +11,7 @@ if [ ! -d ".git" ]; then
 fi
 
 # Configure git to use the custom hooks directory
-git config core.hooksPath "$HOOKS_DIR"
-
-if [ $? -eq 0 ]; then
+if git config core.hooksPath "$HOOKS_DIR"; then
     echo "Git hooks configured successfully to use $HOOKS_DIR"
 else
     echo "Error: Failed to set core.hooksPath"
