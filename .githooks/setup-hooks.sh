@@ -4,9 +4,9 @@
 
 HOOKS_DIR=".githooks"
 
-# Verify we are in the root of the git repository
-if [ ! -d ".git" ]; then
-    echo "Error: This script must be run from the root of the repository."
+# Verify we are inside a git repository
+if ! git rev-parse --git-dir > /dev/null 2>&1; then
+    echo "Error: This script must be run from inside a git repository."
     exit 1
 fi
 

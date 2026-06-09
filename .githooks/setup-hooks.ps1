@@ -3,9 +3,10 @@
 
 $HooksDir = ".githooks"
 
-# Verify we are in the root of the git repository
-if (!(Test-Path -Path ".git")) {
-    Write-Host "Error: This script must be run from the root of the repository." -ForegroundColor Red
+# Verify we are inside a git repository
+git rev-parse --git-dir 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Error: This script must be run from inside a git repository." -ForegroundColor Red
     exit 1
 }
 
