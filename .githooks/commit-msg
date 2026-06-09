@@ -63,8 +63,9 @@ if printf "%s" "$first_word" | grep -q '[A-Z]'; then
     exit 1
 fi
 
-# Basic check for imperative mood (not ending in -ed, -ing, or -s)
-if printf "%s" "$first_word" | grep -Eq '(ed|ing|s)$' && ! printf "%s" "$first_word" | grep -Eq '^(pass|focus|bypass|alias|express)$'; then
+# Basic check for imperative mood (not ending in -ed, -ing, or third-person -s)
+# Uses es$|[^s]s$ to avoid rejecting imperatives that end in double-s (address, process, compress)
+if printf "%s" "$first_word" | grep -Eq '(ed|ing|es|[^s]s)$' && ! printf "%s" "$first_word" | grep -Eq '^(pass|focus|bypass|alias|express|bring|string|ring|spring|swing|sing)$'; then
     printf "${RED_BOLD}The first word of the subject ('%s') must be in the imperative mood (e.g., 'remove' instead of 'removed' or 'removes').${RESET}\n" "$first_word"
     exit 1
 fi
