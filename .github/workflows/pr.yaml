@@ -1,0 +1,593 @@
+name: pr-validator
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: "Base branch/commit to compare changes against"
+        required: false
+      pull_number:
+        description: "PR number to update the comment and post the indicator review"
+        required: false
+      tags:
+        description: 'JSON array of tags (e.g. ["03.release: patch"])'
+        required: false
+        default: "[]"
+
+jobs:
+  resolve-inputs:
+    name: Resolve inputs
+    runs-on: ubuntu-latest
+    outputs:
+      base_ref: ${{ steps.base-ref.outputs.base_ref }}
+      tags: ${{ steps.tags.outputs.tags }}
+      ref: ${{ steps.ref.outputs.ref }}
+      pull_number: ${{ steps.pull-number.outputs.pull_number }}
+    steps:
+      - name: Determine base ref
+        id: base-ref
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          INPUT_BASE_REF: ${{ inputs.base_ref }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "base_ref=$PR_BASE_REF" >> "$GITHUB_OUTPUT"
+          elif [[ -n "$INPUT_BASE_REF" ]]; then
+            echo "base_ref=$INPUT_BASE_REF" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::base_ref input is required for workflow_dispatch"
+            exit 1
+          fi
+
+      - name: Determine tags
+        id: tags
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          INPUT_TAGS: ${{ inputs.tags }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "tags=$(echo "$PR_LABELS" | jq -c '.')" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=$(echo "${INPUT_TAGS:-[]}" | jq -c '.')" >> "$GITHUB_OUTPUT"
+          fi
+
+      # For pull_request: use the head branch so we pick up bump commits.
+      # For workflow_dispatch: use the ref that triggered the dispatch.
+      - name: Determine checkout ref
+        id: ref
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "ref=$PR_HEAD_REF" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=$DISPATCH_REF" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine pull number
+        id: pull-number
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          INPUT_NUMBER: ${{ inputs.pull_number }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "pull_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          else
+            echo "pull_number=${INPUT_NUMBER:-}" >> "$GITHUB_OUTPUT"
+          fi
+
+  detect:
+    name: Detect changed crates
+    needs: resolve-inputs
+    uses: ./.github/workflows/crates-detector.yaml
+    with:
+      base_ref: ${{ needs.resolve-inputs.outputs.base_ref }}
+
+  # ---------------------------------------------------------------------------
+  # Run lint / format / build in parallel over changed crates.
+  # Each leg uploads a one-line artifact so post-review can show per-check status.
+  # ---------------------------------------------------------------------------
+  verify-code-guidelines:
+    name: "Guidelines · ${{ matrix.action.name }}"
+    needs: [resolve-inputs, detect]
+    if: always() && needs.detect.result == 'success'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        action:
+          - name: lint
+            command: "clippy"
+            toolchain: "stable"
+            components: ""
+          - name: format
+            command: "fmt --check"
+            toolchain: "nightly"
+            components: '["rustfmt"]'
+          - name: build
+            command: "build"
+            toolchain: "stable"
+            components: ""
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.resolve-inputs.outputs.ref }}
+          persist-credentials: false
+
+      - name: Setup Rust & cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: push
+          toolchain: ${{ matrix.action.toolchain }}
+          components: ${{ matrix.action.components }}
+
+      - name: Run ${{ matrix.action.name }} on changed crates
+        id: check
+        env:
+          CRATES: ${{ needs.detect.outputs.crates }}
+        run: |
+          crates=$(echo "$CRATES" | jq -r '.[]')
+          if [[ -z "$crates" ]]; then
+            echo "No changed crates detected, skipping."
+            exit 0
+          fi
+          failed=0
+          for crate in $crates; do
+            echo "::group::cargo ${{ matrix.action.command }} -p ${crate}"
+            cargo ${{ matrix.action.command }} -p "$crate" || failed=1
+            echo "::endgroup::"
+          done
+          exit $failed
+
+      - name: Save result
+        if: always()
+        run: echo "${{ steps.check.outcome }}" > /tmp/check-result.txt
+
+      - name: Upload result artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: guidelines-${{ matrix.action.name }}
+          path: /tmp/check-result.txt
+          retention-days: 1
+
+  # Run the test suite with coverage via cargo-tarpaulin and push to Codecov.
+  verify-code-coverage:
+    name: Tests & Coverage
+    needs: [resolve-inputs, detect]
+    if: always() && needs.detect.result == 'success'
+    environment: codecov
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.resolve-inputs.outputs.ref }}
+          persist-credentials: false
+
+      - name: Setup Rust & push cache
+        id: rust-cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: push
+          packages: '["cargo-tarpaulin"]'
+
+      # The push step above warms and saves the cache, but the steps below are
+      # what actually consume it. We pull it here, right before it's needed, so
+      # the cached toolchain and build artifacts are guaranteed to be in place
+      # for the test run that follows.
+      - name: Restore Rust cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: pull
+          packages: '["cargo-tarpaulin"]'
+
+      - name: Run tests with coverage
+        id: tests
+        env:
+          CRATES: ${{ needs.detect.outputs.crates }}
+        run: |
+          crates=$(echo "$CRATES" | jq -r '.[]')
+          if [[ -z "$crates" ]]; then
+            echo "No changed crates detected, skipping."
+            exit 0
+          fi
+          # Build -p flags for tarpaulin
+          pkg_args=""
+          for crate in $crates; do
+            pkg_args="$pkg_args -p $crate"
+          done
+          cargo tarpaulin $pkg_args --out Lcov --output-dir ./coverage
+
+      - name: Upload results to Codecov
+        if: always()
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/lcov.info
+
+      - name: Build section
+        if: always()
+        run: |
+          outcome="${{ steps.tests.outcome }}"
+          icon=$([ "$outcome" = "success" ] && echo "✅" || echo "❌")
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          {
+            echo "## 🧪 Tests"
+            echo ""
+            echo "### Requirements"
+            echo ""
+            echo "${icon} Test suite passes"
+            echo ""
+            echo "### Errors"
+            echo ""
+            if [ "$outcome" = "success" ]; then
+              echo "_No errors_"
+            else
+              echo "Test suite failed. Check the [CI logs](${run_url}) for details."
+            fi
+          } > /tmp/section-tests.md
+
+      - name: Upload section artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: section-tests
+          path: /tmp/section-tests.md
+          retention-days: 1
+
+  # Validate PR title, commits, and body via commitlint.
+  # Node.js is installed only for this job, config lives in .github/commitlint.
+  verify-pr-metadata:
+    name: PR Metadata
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./.github/commitlint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ./.github/commitlint/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate PR metadata and build section
+        id: validate
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            const fs  = require('fs');
+            const cwd = `${process.env.GITHUB_WORKSPACE}/.github/commitlint`;
+            const pr  = context.payload.pull_request;
+
+            if (!pr) {
+              core.info('No pull_request context (workflow_dispatch); skipping review post.');
+              return;
+            }
+
+            const checks = [
+              { key: 'title',   label: 'PR title follows commitlint convention',   passed: false },
+              { key: 'commits', label: 'All commits follow commitlint convention', passed: false },
+              { key: 'body',    label: 'PR body is at least 50 characters',        passed: false },
+            ];
+            const errors = [];
+
+            // --- Validate PR title ---
+            try {
+              execSync(
+                `npx --no-install commitlint --color false`,
+                {
+                  input: pr.title + '\n',
+                  stdio: 'pipe',
+                  cwd
+                }
+              );
+              checks.find(c => c.key === 'title').passed = true;
+            } catch (e) {
+              errors.push(
+                '**PR title does not follow commitlint convention**\n\n' +
+                '```\n' + (e.stdout?.toString().trim() || e.message) + '\n```'
+              );
+            }
+
+            // --- Validate commits ---
+            try {
+              execSync(
+                `npx --no-install commitlint --from ${pr.base.sha} --to ${pr.head.sha} --color false`,
+                {
+                  stdio: 'pipe',
+                  cwd
+                }
+              );
+              checks.find(c => c.key === 'commits').passed = true;
+            } catch (e) {
+              errors.push(
+                '**One or more commits do not follow commitlint convention**\n\n' +
+                '```\n' + (e.stdout?.toString().trim() || e.message) + '\n```'
+              );
+            }
+
+            // --- Validate PR body ---
+            const body      = (pr.body || '').trim();
+            const minLength = 50;
+
+            if (body.length >= minLength) {
+              checks.find(c => c.key === 'body').passed = true;
+            } else if (!body) {
+              errors.push('**PR body is required**');
+            } else {
+              errors.push(`**PR body is too short** (${body.length}/${minLength} characters)`);
+            }
+
+            // --- Build section ---
+            const requirements = checks
+              .map(c => `${c.passed ? '✅' : '❌'} ${c.label}`)
+              .join('\n');
+
+            const errorsBlock = errors.length > 0
+              ? errors.join('\n\n')
+              : '_No errors_';
+
+            const section = [
+              '## 📋 PR Metadata',
+              '',
+              '### Requirements',
+              '',
+              requirements,
+              '',
+              '### Errors',
+              '',
+              errorsBlock,
+            ].join('\n');
+
+            fs.writeFileSync('/tmp/section-metadata.md', section);
+
+            if (errors.length > 0) {
+              core.setFailed('PR metadata validation failed');
+            }
+
+      - name: Upload section artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: section-metadata
+          path: /tmp/section-metadata.md
+          retention-days: 1
+
+  # Download all section artifacts, assemble the full comment, update it in-place,
+  # then post a lightweight indicator review (no body) to signal pass/fail.
+  post-review:
+    name: Post Review
+    needs: [resolve-inputs, verify-code-guidelines, verify-code-coverage, verify-pr-metadata]
+    if: >
+      always() &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: /tmp/artifacts
+
+      - name: Assemble comment and post indicator review
+        uses: actions/github-script@v9
+        env:
+          PULL_NUMBER: ${{ needs.resolve-inputs.outputs.pull_number }}
+          COVERAGE_RESULT: ${{ needs.verify-code-coverage.result }}
+          METADATA_RESULT: ${{ needs.verify-pr-metadata.result }}
+        with:
+          script: |
+            const fs   = require('fs');
+            const path = require('path');
+
+            const pull_number = parseInt(process.env.PULL_NUMBER, 10);
+
+            if (!pull_number) {
+              core.warning('No pull_number available; skipping comment and indicator review.');
+              return;
+            }
+
+            const owner  = context.repo.owner;
+            const repo   = context.repo.repo;
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+            const MARKER        = '<!-- pr-quality-bot -->';
+            const CODECOV_START = '<!-- codecov-section-start -->';
+            const CODECOV_END   = '<!-- codecov-section-end -->';
+
+            const artifacts = '/tmp/artifacts';
+
+            const readArtifact = (artifactName, fileName) => {
+              try {
+                return fs.readFileSync(path.join(artifacts, artifactName, fileName), 'utf8').trim();
+              } catch {
+                return null;
+              }
+            };
+
+            // -- Code Guidelines section --------------------------------------
+            const guidelineChecks = ['lint', 'format', 'build'];
+
+            const guidelineResults = guidelineChecks.map(name => {
+              const raw = readArtifact(`guidelines-${name}`, 'check-result.txt');
+              return { name, passed: raw === 'success', available: raw !== null };
+            });
+
+            const guidelinesReq = guidelineResults
+              .map(({ name, passed, available }) =>
+                available
+                  ? `${passed ? '✅' : '❌'} \`${name}\``
+                  : `⚠️ \`${name}\` (result unavailable)`
+              )
+              .join('\n');
+
+            const guidelinesFailed = guidelineResults.some(r => !r.passed);
+
+            const guidelinesSection = [
+              '## 🔧 Code Guidelines',
+              '',
+              '### Requirements',
+              '',
+              guidelinesReq,
+              '',
+              '### Errors',
+              '',
+              guidelinesFailed
+                ? `One or more checks failed. Check the [CI logs](${runUrl}) for details.`
+                : '_No errors_',
+            ].join('\n');
+
+            // -- Tests section ------------------------------------------------
+            const testsSection =
+              readArtifact('section-tests', 'section-tests.md') ??
+              '## 🧪 Tests\n\n_Section unavailable — check [CI logs](' + runUrl + ')._';
+
+            // -- PR Metadata section ------------------------------------------
+            const metadataSection =
+              readArtifact('section-metadata', 'section-metadata.md') ??
+              '## 📋 PR Metadata\n\n_Section unavailable — check [CI logs](' + runUrl + ')._';
+
+            // -- Codecov placeholder ------------------------------------------
+            const codecovSection = [
+              CODECOV_START,
+              '## 📊 Codecov',
+              '',
+              '### Requirements',
+              '',
+              '⏳ `codecov/project`',
+              '⏳ `codecov/patch`',
+              '',
+              '### Errors',
+              '',
+              '_Awaiting Codecov report..._',
+              CODECOV_END,
+            ].join('\n');
+
+            // -- Overall header -----------------------------------------------
+            const hasNonCodecovErrors =
+              guidelinesFailed ||
+              process.env.COVERAGE_RESULT === 'failure' ||
+              process.env.METADATA_RESULT  === 'failure';
+
+            const headerIcon = hasNonCodecovErrors ? '❌' : '⏳';
+
+            // -- Assemble full comment body ------------------------------------
+            const body = [
+              MARKER,
+              '',
+              `# ${headerIcon} PR Validation Status`,
+              '',
+              guidelinesSection,
+              '',
+              testsSection,
+              '',
+              metadataSection,
+              '',
+              codecovSection,
+            ].join('\n');
+
+            // -- Find existing comment or create it ---------------------
+            const { data: comments } = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number: pull_number,
+            });
+
+            const existing = comments
+              .filter(c => c.user.type === 'Bot' && c.body?.includes(MARKER))
+              .reverse()[0];
+
+            let commentUrl;
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+              commentUrl = existing.html_url;
+              core.info(`Updated existing comment #${existing.id}`);
+            } else {
+              const { data: created } = await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pull_number,
+                body,
+              });
+              commentUrl = created.html_url;
+              core.info('Created new comment');
+            }
+            // -- Dismiss previous indicator review if any ---------------------
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner,
+              repo,
+              pull_number,
+            });
+
+            const previousReview = reviews
+              .filter(r =>
+                r.user.login === 'github-actions[bot]' &&
+                (r.state === 'APPROVED' || r.state === 'CHANGES_REQUESTED')
+              )
+              .reverse()[0];
+
+            if (previousReview) {
+              await github.rest.pulls.dismissReview({
+                owner,
+                repo,
+                pull_number,
+                review_id: previousReview.id,
+                message: 'Superseded by a new quality check.',
+              });
+              core.info(`Dismissed previous indicator review #${previousReview.id}`);
+            }
+
+            // -- Post new indicator review (lightweight, minimal body) ---------
+            const event = hasNonCodecovErrors ? 'REQUEST_CHANGES' : 'APPROVE';
+
+            const reviewParams = {
+              owner,
+              repo,
+              pull_number,
+              event,
+            };
+
+            // body is optional for APPROVE but required for REQUEST_CHANGES
+            if (event === 'REQUEST_CHANGES') {
+              reviewParams.body = `See the [quality report](${commentUrl}) for details.`;
+            }
+
+            await github.rest.pulls.createReview(reviewParams);
+            core.info(`Posted indicator review: ${event}`);
+
+            if (hasNonCodecovErrors) {
+              core.setFailed('PR quality checks failed');
+            }
