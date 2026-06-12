@@ -28,6 +28,7 @@ members = [
     "crates/oxidui_style",
     "crates/termoxide_macros",
     "crates/termoxide_reactive",
+    "crates/cargo-extract",
 ]
 
 [dependencies]

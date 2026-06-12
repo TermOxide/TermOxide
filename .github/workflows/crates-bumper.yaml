@@ -1,0 +1,213 @@
+name: Bump workspace crate versions
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [master, main]
+
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options: [major, minor, patch]
+      crates:
+        description: "Comma-separated crate names to force bump (e.g. crate1,crate2). Leave empty to auto-detect."
+        required: false
+        type: string
+
+jobs:
+  setup-bumper:
+    name: Setup Rust & Cache
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref_name }}
+          persist-credentials: false
+
+      - name: Setup Rust & push cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: push
+          packages: '["cargo-workspaces"]'
+
+  run-bumper:
+    name: Bump versions
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    needs: setup-bumper
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+          # For PR merge events, checkout the base branch (main/master) so:
+          #   - cargo workspaces can walk the tag history correctly for auto-detection
+          #   - the bump commit lands on the right branch
+          # For workflow_dispatch, github.ref_name is the dispatched branch.
+          ref: ${{ github.event.pull_request.base.ref || github.ref_name }}
+
+      - name: Restore Rust cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: pull
+          packages: '["cargo-workspaces"]'
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Resolve release type
+        id: release
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_RELEASE_TYPE: ${{ inputs.release_type }}
+          PR_LABELS_JSON: ${{ toJson(github.event.pull_request.labels) }}
+        run: |
+          RELEASE_TYPE=""
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            RELEASE_TYPE="$DISPATCH_RELEASE_TYPE"
+          else
+            while IFS= read -r label; do
+              if [[ "$label" =~ ^[0-9]+\.release:\ (major|minor|patch)$ ]]; then
+                RELEASE_TYPE="${BASH_REMATCH[1]}"
+                break
+              fi
+            done < <(echo "$PR_LABELS_JSON" | jq -r '.[].name')
+          fi
+
+          if [[ -z "$RELEASE_TYPE" ]]; then
+            echo "::notice::No release label found - skipping version bump"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "release_type=$RELEASE_TYPE" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve force pattern
+        id: force
+        if: steps.release.outputs.skip != 'true'
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_CRATES: ${{ inputs.crates }}
+        run: |
+          FORCE_ARG=""
+
+          # Only force on dispatch with explicit crates. PR events rely on
+          # `cargo workspaces version` own change detection (tag-based diff).
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$DISPATCH_CRATES" ]]; then
+            # Normalise: strip whitespace around commas so "crate1, crate2" works
+            NORMALISED=$(echo "$DISPATCH_CRATES" | tr ',' '\n' | xargs | tr ' ' ',')
+            CRATE_COUNT=$(echo "$NORMALISED" | tr ',' '\n' | grep -c .)
+            if [[ "$CRATE_COUNT" -eq 1 ]]; then
+              FORCE_ARG="--force ${NORMALISED}"
+            else
+              PATTERN=$(echo "$NORMALISED" | tr ',' '\n' | paste -sd',' | sed 's/.*/{&}/')
+              FORCE_ARG="--force ${PATTERN}"
+            fi
+          fi
+
+          echo "force_arg=$FORCE_ARG" >> "$GITHUB_OUTPUT"
+
+      - name: Snapshot workspace versions
+        id: snapshot
+        if: steps.release.outputs.skip != 'true'
+        run: |
+          versions=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | "\(.name)=\(.version)"' | sort)
+          {
+            echo "before<<EOF"
+            echo "$versions"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Bump versions
+        if: steps.release.outputs.skip != 'true'
+        shell: bash
+        env:
+          RELEASE_TYPE: ${{ steps.release.outputs.release_type }}
+          FORCE_ARG: ${{ steps.force.outputs.force_arg }}
+        run: |
+          # --allow-branch, --no-git-push and --no-*-tags are all incompatible with --no-git-commit
+          # since they are only relevant when letting cargo-workspaces handle git operations.
+          # We handle git ourselves to support commit conventions and individual tagging.
+          cargo workspaces version \
+            --no-git-commit \
+            --yes \
+            $FORCE_ARG \
+            "$RELEASE_TYPE"
+
+      - name: Resolve bumped crates
+        id: bumped
+        if: steps.release.outputs.skip != 'true'
+        shell: bash
+        env:
+          BEFORE: ${{ steps.snapshot.outputs.before }}
+        run: |
+          after=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | "\(.name)=\(.version)"' | sort)
+
+          # Lines present only in $after are packages whose version was bumped.
+          # comm -13 suppresses lines unique to file1 and lines common to both,
+          # leaving only lines unique to file2 (i.e. the new name=version entries).
+          crates=$(comm -13 <(echo "$BEFORE") <(echo "$after") | cut -d= -f1)
+
+          {
+            echo "crates<<EOF"
+            echo "$crates"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Commit, tag & push
+        if: steps.release.outputs.skip != 'true'
+        shell: bash
+        env:
+          BUMPED_CRATES: ${{ steps.bumped.outputs.crates }}
+        run: |
+          if git diff --quiet; then
+            echo "::notice::cargo workspaces reported no changed crates - nothing to commit"
+            exit 0
+          fi
+
+          if [[ -z "$BUMPED_CRATES" ]]; then
+            echo "::error::Cargo.toml files changed but BUMPED_CRATES is empty - version snapshot diff failed"
+            exit 1
+          fi
+
+          git add -A
+
+          # Build commit message with bumped crate list
+          {
+            echo "chore: bump workspace crate versions [skip ci]"
+            echo ""
+            echo "### Bumped crates"
+            echo ""
+            echo "$BUMPED_CRATES" | while read -r crate; do
+              echo "- \`$crate\`"
+            done
+          } | git commit -F -
+
+          # Tag each bumped crate (format: crate-name@x.y.z)
+          # Matches cargo-workspaces default individual tag format (%n@%v)
+          echo "$BUMPED_CRATES" | while read -r crate; do
+            [[ -z "$crate" ]] && continue # Skip empty lines
+            version=$(cargo metadata --no-deps --format-version 1 \
+              | jq -r --arg name "$crate" \
+                '.packages[] | select(.name == $name) | .version')
+            echo "Tagging ${crate}@${version}"
+            git tag "${crate}@${version}"
+          done
+
+          git push
+          git push origin --tags
