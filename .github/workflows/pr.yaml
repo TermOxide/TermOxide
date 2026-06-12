@@ -182,6 +182,10 @@ jobs:
           action: push
           packages: '["cargo-tarpaulin"]'
 
+      # The push step above warms and saves the cache, but the steps below are
+      # what actually consume it. We pull it here, right before it's needed, so
+      # the cached toolchain and build artifacts are guaranteed to be in place
+      # for the test run that follows.
       - name: Restore Rust cache
         uses: ./.github/actions/rust-cache
         with:
@@ -294,8 +298,12 @@ jobs:
             // --- Validate PR title ---
             try {
               execSync(
-                `echo ${JSON.stringify(pr.title)} | npx --no-install commitlint --color false`,
-                { stdio: 'pipe', cwd }
+                `npx --no-install commitlint --color false`,
+                {
+                  input: pr.title + '\n',
+                  stdio: 'pipe',
+                  cwd
+                }
               );
               checks.find(c => c.key === 'title').passed = true;
             } catch (e) {
@@ -308,9 +316,8 @@ jobs:
             // --- Validate commits ---
             try {
               execSync(
-                `npx --no-install commitlint --color false`,
+                `npx --no-install commitlint --from ${pr.base.sha} --to ${pr.head.sha} --color false`,
                 {
-                  input: pr.title + '\n',
                   stdio: 'pipe',
                   cwd
                 }
@@ -375,7 +382,10 @@ jobs:
   post-review:
     name: Post Review
     needs: [resolve-inputs, verify-code-guidelines, verify-code-coverage, verify-pr-metadata]
-    if: always()
+    if: >
+      always() &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write

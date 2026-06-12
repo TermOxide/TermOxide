@@ -1,6 +1,6 @@
 import { RuleConfigSeverity } from "@commitlint/types";
 
-const HEADER_MAX_LENGTH = 72; // Git/Github max lenght before truncation
+const HEADER_MAX_LENGTH = 72; // Git/Github max length before truncation
 
 export default {
   parserPreset: {

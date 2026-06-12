@@ -71,12 +71,13 @@ jobs:
           echo "raw_list=$changed" >> "$GITHUB_OUTPUT"
 
       - name: Generate JSON crates output
+        env:
+          RAW_LIST: ${{ steps.detect.outputs.raw_list }}
         id: generate
         run: |
-          raw_list="${{ steps.detect.outputs.raw_list }}"
-          if [ -z "$raw_list" ]; then
+          if [ -z "$RAW_LIST" ]; then
             echo "crates=[]" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          crates=$(jq -c -Rn --arg csv "$raw_list" '$csv | split(" ")')
+          crates=$(jq -c -Rn --arg csv "$RAW_LIST" '$csv | split(" ")')
           echo "crates=$crates" >> "$GITHUB_OUTPUT"

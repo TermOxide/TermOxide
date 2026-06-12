@@ -35,7 +35,9 @@ runs:
       shell: bash
       run: |
         hash=$(echo '${{ inputs.packages }}${{ inputs.crates }}${{ inputs.components }}' | sha256sum | cut -d ' ' -f1)
-        echo "key=${{ runner.os }}-cargo-${{ inputs.toolchain }}-${hash}" >> "$GITHUB_OUTPUT"
+        prefix="${{ runner.os }}-cargo-${{ inputs.toolchain }}-${hash}"
+        echo "prefix=${prefix}" >> "$GITHUB_OUTPUT"
+        echo "key=${prefix}-${{ hashFiles('**/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
 
     - name: Convert components to comma-separated string
       id: components
@@ -55,6 +57,8 @@ runs:
           ~/.rustup
           target/
         key: ${{ steps.cache-key.outputs.key }}
+        restore-keys: |
+          ${{ steps.cache-key.outputs.prefix }}-
 
     - name: Restore cargo cache
       if: inputs.action == 'pull'
@@ -68,6 +72,8 @@ runs:
           ~/.rustup
           target/
         key: ${{ steps.cache-key.outputs.key }}
+        restore-keys: |
+          ${{ steps.cache-key.outputs.prefix }}-
 
     - name: Setup Rust toolchain
       if: inputs.action == 'push' && steps.cache-push.outputs.cache-hit != 'true'

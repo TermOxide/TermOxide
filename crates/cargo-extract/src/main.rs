@@ -71,13 +71,13 @@ fn main() -> Result<()> {
     let mut queue: VecDeque<_> = changed.into_iter().collect();
 
     while let Some(pkg_name) = queue.pop_front() {
-        if !impacted.insert(pkg_name.clone()) {
-            continue;
-        }
-
         let Some(pkg_id) = name_to_id.get(&pkg_name) else {
             continue;
         };
+
+        if !impacted.insert(pkg_name.clone()) {
+            continue;
+        }
 
         let reverse =
             graph.query_reverse(std::slice::from_ref(pkg_id))?.resolve();

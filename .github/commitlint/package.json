@@ -4,7 +4,6 @@
   "private": true,
   "devDependencies": {
     "@commitlint/cli": "^21.0.2",
-    "@commitlint/core": "^21.0.2",
     "@commitlint/types": "^21.0.1"
   }
 }
