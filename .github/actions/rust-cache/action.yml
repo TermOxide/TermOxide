@@ -89,7 +89,7 @@ runs:
         packages='${{ inputs.packages }}'
         for pkg in $(echo "$packages" | jq -r '.[]'); do
           echo "::group::Installing ${pkg}"
-          cargo install "$pkg"
+          cargo install "$pkg" --locked
           echo "::endgroup::"
         done
 
