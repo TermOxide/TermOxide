@@ -3,7 +3,7 @@
 version = 4
 
 [[package]]
-name = "OxidUi"
+name = "TermOxide"
 version = "1.0.0-alpha"
 dependencies = [
  "crossbeam-channel",
