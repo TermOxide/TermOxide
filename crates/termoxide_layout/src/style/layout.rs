@@ -30,9 +30,10 @@ pub enum Display {
     None,
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Flex enums — beyond the Rdmp1 scope, gated by `feature = "future"`.
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  Flex enums — beyond the Rdmp1 scope, gated by `feature = "future"`.
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// Primary axis of a flex container. CSS `flex-direction`.
 #[cfg(feature = "future")]
@@ -55,10 +56,12 @@ impl FlexDirection {
     pub const fn is_horizontal(self) -> bool {
         matches!(self, Self::Row | Self::RowReverse)
     }
+
     /// `true` for `Column` or `ColumnReverse`.
     pub const fn is_vertical(self) -> bool {
         matches!(self, Self::Column | Self::ColumnReverse)
     }
+
     /// `true` if the order is reversed.
     pub const fn is_reversed(self) -> bool {
         matches!(self, Self::RowReverse | Self::ColumnReverse)

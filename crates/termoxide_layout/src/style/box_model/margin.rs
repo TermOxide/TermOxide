@@ -10,11 +10,11 @@
 //!
 //! - It **permits negative values** (unlike [`super::padding::Padding`]) so
 //!   elements can be pulled toward or overlap their neighbours.
-//! - It supports the **`auto` keyword** ([`Unit::Auto`]) which lets the
-//!   layout engine distribute remaining axis space.
+//! - It supports the **`auto` keyword** ([`Unit::Auto`]) which lets the layout
+//!   engine distribute remaining axis space.
 
 use super::edges::Edges;
-use crate::unit::Unit;
+use crate::style::unit::Unit;
 
 /// Outer spacing between the border and neighbours. CSS `margin`.
 ///
@@ -30,8 +30,7 @@ use crate::unit::Unit;
 /// # Examples
 ///
 /// ```rust
-/// use termoxide_layout::box_model::Margin;
-/// use termoxide_layout::unit::Unit;
+/// use termoxide_layout::style::{box_model::Margin, unit::Unit};
 ///
 /// // Overlap the parent's border by one cell.
 /// let m = Margin::all(Unit::cells(-1));
@@ -54,13 +53,10 @@ const fn css_margin_value(v: Unit) -> Unit {
 }
 
 impl Margin {
+    pub const AUTO: Self = Self(Edges::all(Unit::AUTO));
     pub const ZERO: Self = Self(Edges::all(Unit::ZERO));
 
-    pub const AUTO: Self = Self(Edges::all(Unit::AUTO));
-
-    pub const fn all(v: Unit) -> Self {
-        Self(Edges::all(css_margin_value(v)))
-    }
+    pub const fn all(v: Unit) -> Self { Self(Edges::all(css_margin_value(v))) }
 
     pub const fn symmetric(vertical: Unit, horizontal: Unit) -> Self {
         Self(Edges::symmetric(
@@ -84,19 +80,13 @@ impl Margin {
     }
 
     /// Borrow the underlying [`Edges`] for read access.
-    pub const fn edges(&self) -> &Edges {
-        &self.0
-    }
+    pub const fn edges(&self) -> &Edges { &self.0 }
 
     /// Consume the wrapper and return the underlying [`Edges`].
-    pub const fn into_edges(self) -> Edges {
-        self.0
-    }
+    pub const fn into_edges(self) -> Edges { self.0 }
 }
 
 impl From<Edges> for Margin {
     /// Lift a raw [`Edges`] into a `Margin`, normalising each side.
-    fn from(e: Edges) -> Self {
-        Self::new(e.top, e.right, e.bottom, e.left)
-    }
+    fn from(e: Edges) -> Self { Self::new(e.top, e.right, e.bottom, e.left) }
 }

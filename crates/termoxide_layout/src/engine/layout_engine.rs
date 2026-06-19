@@ -4,13 +4,13 @@
 //! It wraps a `TaffyTree<()>` and provides an ergonomic API to:
 //!
 //! 1. **Build** a tree of nodes (leaves and containers) from either raw
-//!    [`taffy::Style`] values or from [`crate::Style`] values via
-//!    the built-in conversion helper.
+//!    [`taffy::Style`] values or from [`crate::Style`] values via the built-in
+//!    conversion helper.
 //!
-//! 2. **Build recursively** using the [`LayoutNode`] or [`UiLayoutNode`]
-//!    enums, which describe an arbitrarily deep tree in a single value.
-//!    A container's `children` field is itself a `Vec<LayoutNode>`, so
-//!    sub-trees can be composed before being handed to the engine.
+//! 2. **Build recursively** using the [`LayoutNode`] or [`UiLayoutNode`] enums,
+//!    which describe an arbitrarily deep tree in a single value. A container's
+//!    `children` field is itself a `Vec<LayoutNode>`, so sub-trees can be
+//!    composed before being handed to the engine.
 //!
 //! 3. **Resolve** the Flexbox layout for a given viewport size by calling
 //!    [`LayoutEngine::compute`].
@@ -23,57 +23,88 @@
 //! ## Example
 //!
 //! ```rust
-//! use termoxide_layout::layout_engine::LayoutEngine;
-//! use taffy::{Style, Display, FlexDirection, geometry::Size, style::Dimension};
+//! use taffy::{
+//!     Display,
+//!     FlexDirection,
+//!     Style,
+//!     geometry::Size,
+//!     style::Dimension,
+//! };
+//! use termoxide_layout::engine::layout_engine::LayoutEngine;
 //!
 //! let mut engine = LayoutEngine::new();
 //!
 //! // A leaf node: 30 columns × 3 rows.
-//! let child = engine.new_leaf(Style {
-//!     size: Size {
-//!         width:  Dimension::length(30.0),
-//!         height: Dimension::length(3.0),
-//!     },
-//!     ..Style::DEFAULT
-//! }).unwrap();
+//! let child = engine
+//!     .new_leaf(Style {
+//!         size: Size {
+//!             width: Dimension::length(30.0),
+//!             height: Dimension::length(3.0),
+//!         },
+//!         ..Style::DEFAULT
+//!     })
+//!     .unwrap();
 //!
 //! // A root flex container that fills the whole viewport.
-//! let root = engine.new_container(Style {
-//!     display:        taffy::Display::Flex,
-//!     flex_direction: taffy::FlexDirection::Column,
-//!     ..Style::DEFAULT
-//! }, &[child]).unwrap();
+//! let root = engine
+//!     .new_container(
+//!         Style {
+//!             display: taffy::Display::Flex,
+//!             flex_direction: taffy::FlexDirection::Column,
+//!             ..Style::DEFAULT
+//!         },
+//!         &[child],
+//!     )
+//!     .unwrap();
 //!
 //! // Resolve layout for an 80 × 24 terminal.
 //! engine.compute(root, 80.0, 24.0).unwrap();
 //!
 //! // Inspect computed position and size.
 //! if let Some(layout) = engine.layout_of(child) {
-//!     println!("child → x={} y={} w={} h={}",
-//!         layout.location.x, layout.location.y,
-//!         layout.size.width,  layout.size.height);
+//!     println!(
+//!         "child → x={} y={} w={} h={}",
+//!         layout.location.x,
+//!         layout.location.y,
+//!         layout.size.width,
+//!         layout.size.height
+//!     );
 //! }
 //! ```
 
-use crate::stylesheet::StyleSheet;
-use crate::{
-    Style,
-    layout::{Align, Display as UiDisplay, FlexDirection as UiFlexDirection, Justify},
-    unit::Unit,
-};
 use taffy::{
-    TaffyError, TaffyTree,
+    TaffyError,
+    TaffyTree,
     geometry::{Rect, Size},
     prelude::TaffyMaxContent,
     style::{
-        AlignItems, AvailableSpace, Dimension, Display, FlexDirection, JustifyContent,
-        LengthPercentage, LengthPercentageAuto,
+        AlignItems,
+        AvailableSpace,
+        Dimension,
+        Display,
+        FlexDirection,
+        JustifyContent,
+        LengthPercentage,
+        LengthPercentageAuto,
     },
     tree::{Layout, NodeId},
 };
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Public type aliases
-// ─────────────────────────────────────────────────────────────────────────── //
+
+use crate::style::{
+    Style,
+    layout::{
+        Align,
+        Display as UiDisplay,
+        FlexDirection as UiFlexDirection,
+        Justify,
+    },
+    stylesheet::StyleSheet,
+    unit::Unit,
+};
+// ───────────────────────────────────────────────────────────────────────────
+// //  Public type aliases
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// Error type returned by all fallible [`LayoutEngine`] operations.
 ///
@@ -81,9 +112,10 @@ use taffy::{
 /// `taffy` as a direct dependency just to name the error type.
 pub type LayoutError = TaffyError;
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Recursive node descriptions
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  Recursive node descriptions
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// A recursive description of a layout tree using raw `taffy::Style` values.
 ///
@@ -96,8 +128,8 @@ pub type LayoutError = TaffyError;
 /// # Example
 ///
 /// ```rust
-/// use termoxide_layout::layout_engine::{LayoutEngine, LayoutNode};
 /// use taffy::{Display, FlexDirection, geometry::Size, style::Dimension};
+/// use termoxide_layout::engine::layout_engine::{LayoutEngine, LayoutNode};
 ///
 /// let tree = LayoutNode::Container {
 ///     style: taffy::Style {
@@ -108,14 +140,17 @@ pub type LayoutError = TaffyError;
 ///     children: vec![
 ///         LayoutNode::Leaf(taffy::Style {
 ///             size: Size {
-///                 width:  Dimension::length(80.0),
+///                 width: Dimension::length(80.0),
 ///                 height: Dimension::length(3.0),
 ///             },
 ///             ..taffy::Style::DEFAULT
 ///         }),
 ///         // Nested sub-tree:
 ///         LayoutNode::Container {
-///             style: taffy::Style { display: Display::Flex, ..taffy::Style::DEFAULT },
+///             style: taffy::Style {
+///                 display: Display::Flex,
+///                 ..taffy::Style::DEFAULT
+///             },
 ///             children: vec![
 ///                 LayoutNode::Leaf(taffy::Style::DEFAULT),
 ///                 LayoutNode::Leaf(taffy::Style::DEFAULT),
@@ -154,9 +189,14 @@ pub enum LayoutNode {
 /// expected.
 ///
 /// ```rust
-/// use termoxide_layout::layout_engine::{UiStyleSource};
-/// use termoxide_layout::stylesheet::StyleSheet;
-/// use termoxide_layout::{Style, unit::Unit};
+/// use termoxide_layout::{
+///     engine::layout_engine::UiStyleSource,
+///     style::{
+///         Style,
+///         stylesheet::StyleSheet,
+///         unit::Unit,
+///     }
+/// };
 ///
 /// // Inline:
 /// let src1 = UiStyleSource::Inline(Style::new().with_width(Unit::cells(40)));
@@ -166,7 +206,10 @@ pub enum LayoutNode {
 /// // Named (looks up "header" in the sheet at build time):
 /// let mut sheet = StyleSheet::new();
 /// sheet.register("header", Style::new().with_height(Unit::cells(3)));
-/// let src3 = UiStyleSource::Named { sheet, name: "header".into() };
+/// let src3 = UiStyleSource::Named {
+///     sheet,
+///     name: "header".into(),
+/// };
 /// ```
 #[derive(Debug, Clone)]
 pub enum UiStyleSource {
@@ -183,16 +226,16 @@ pub enum UiStyleSource {
 }
 
 impl From<Style> for UiStyleSource {
-    fn from(s: Style) -> Self {
-        Self::Inline(s)
-    }
+    fn from(s: Style) -> Self { Self::Inline(s) }
 }
 
 /// Resolve a [`UiStyleSource`] into a concrete [`Style`].
 fn resolve_ui_style(source: UiStyleSource) -> Style {
     match source {
         UiStyleSource::Inline(s) => s,
-        UiStyleSource::Named { sheet, name } => sheet.get(&name).cloned().unwrap_or_default(),
+        UiStyleSource::Named { sheet, name } => {
+            sheet.get(&name).cloned().unwrap_or_default()
+        },
     }
 }
 
@@ -208,13 +251,24 @@ fn resolve_ui_style(source: UiStyleSource) -> Style {
 /// # Example
 ///
 /// ```rust
-/// use termoxide_layout::layout_engine::{LayoutEngine, UiLayoutNode, UiStyleSource};
-/// use termoxide_layout::stylesheet::StyleSheet;
-/// use termoxide_layout::{Style, layout::Display as UiDisplay, unit::Unit};
+/// use termoxide_layout::{
+///     engine::layout_engine::{LayoutEngine, UiLayoutNode, UiStyleSource},
+///     style::{
+///         Style,
+///         layout::Display as UiDisplay,
+///         stylesheet::StyleSheet,
+///         unit::Unit,
+///     }
+/// };
 ///
 /// // Build a stylesheet and register a named style.
 /// let mut sheet = StyleSheet::new();
-/// sheet.register("sidebar", Style::new().with_width(Unit::cells(20)).with_height(Unit::cells(21)));
+/// sheet.register(
+///     "sidebar",
+///     Style::new()
+///         .with_width(Unit::cells(20))
+///         .with_height(Unit::cells(21)),
+/// );
 ///
 /// let tree = UiLayoutNode::Container {
 ///     style: Style::new().with_display(UiDisplay::Flex).into(),
@@ -222,7 +276,10 @@ fn resolve_ui_style(source: UiStyleSource) -> Style {
 ///         // Inline style:
 ///         UiLayoutNode::Leaf(Style::new().with_width(Unit::cells(40)).into()),
 ///         // Named style from a stylesheet:
-///         UiLayoutNode::Leaf(UiStyleSource::Named { sheet, name: "sidebar".into() }),
+///         UiLayoutNode::Leaf(UiStyleSource::Named {
+///             sheet,
+///             name: "sidebar".into(),
+///         }),
 ///     ],
 /// };
 ///
@@ -243,18 +300,19 @@ pub enum UiLayoutNode {
     },
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  LayoutEngine
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  LayoutEngine
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// Incremental Flexbox layout engine backed by `taffy::TaffyTree`.
 ///
 /// # Lifecycle
 ///
 /// 1. Create an engine with [`LayoutEngine::new`].
-/// 2. Insert nodes in bottom-up order (leaves first, then their parents)
-///    with [`new_leaf`][Self::new_leaf] / [`new_container`][Self::new_container]
-///    or the `insert_ui_*` convenience methods.
+/// 2. Insert nodes in bottom-up order (leaves first, then their parents) with
+///    [`new_leaf`][Self::new_leaf] / [`new_container`][Self::new_container] or
+///    the `insert_ui_*` convenience methods.
 /// 3. Call [`compute`][Self::compute] with the terminal viewport dimensions.
 /// 4. Read results with [`layout_of`][Self::layout_of].
 ///
@@ -305,7 +363,10 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Returns [`LayoutError`] if the internal arena is exhausted.
-    pub fn new_leaf(&mut self, style: taffy::Style) -> Result<NodeId, LayoutError> {
+    pub fn new_leaf(
+        &mut self,
+        style: taffy::Style,
+    ) -> Result<NodeId, LayoutError> {
         self.tree.new_leaf(style)
     }
 
@@ -338,7 +399,10 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Propagates any [`LayoutError`] from the underlying tree insertion.
-    pub fn insert_ui_leaf(&mut self, style: &Style) -> Result<NodeId, LayoutError> {
+    pub fn insert_ui_leaf(
+        &mut self,
+        style: &Style,
+    ) -> Result<NodeId, LayoutError> {
         self.tree.new_leaf(Self::from_ui_style(style))
     }
 
@@ -366,7 +430,10 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Returns [`LayoutError`] if any node insertion fails.
-    pub fn build_tree(&mut self, node: LayoutNode) -> Result<NodeId, LayoutError> {
+    pub fn build_tree(
+        &mut self,
+        node: LayoutNode,
+    ) -> Result<NodeId, LayoutError> {
         match node {
             LayoutNode::Leaf(style) => self.new_leaf(style),
             LayoutNode::Container { style, children } => {
@@ -375,7 +442,7 @@ impl LayoutEngine {
                     .map(|child| self.build_tree(child))
                     .collect();
                 self.new_container(style, &child_ids?)
-            }
+            },
         }
     }
 
@@ -388,12 +455,15 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Returns [`LayoutError`] if any node insertion fails.
-    pub fn build_ui_tree(&mut self, node: UiLayoutNode) -> Result<NodeId, LayoutError> {
+    pub fn build_ui_tree(
+        &mut self,
+        node: UiLayoutNode,
+    ) -> Result<NodeId, LayoutError> {
         match node {
             UiLayoutNode::Leaf(source) => {
                 let style = resolve_ui_style(source);
                 self.insert_ui_leaf(&style)
-            }
+            },
             UiLayoutNode::Container {
                 style: source,
                 children,
@@ -404,7 +474,7 @@ impl LayoutEngine {
                     .map(|child| self.build_ui_tree(child))
                     .collect();
                 self.insert_ui_container(&style, &child_ids?)
-            }
+            },
         }
     }
 
@@ -420,7 +490,11 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Returns [`LayoutError`] if `node` is not known to this engine.
-    pub fn set_style(&mut self, node: NodeId, style: taffy::Style) -> Result<(), LayoutError> {
+    pub fn set_style(
+        &mut self,
+        node: NodeId,
+        style: taffy::Style,
+    ) -> Result<(), LayoutError> {
         self.tree.set_style(node, style)
     }
 
@@ -429,7 +503,11 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Returns [`LayoutError`] if `node` is not known to this engine.
-    pub fn set_ui_style(&mut self, node: NodeId, style: &Style) -> Result<(), LayoutError> {
+    pub fn set_ui_style(
+        &mut self,
+        node: NodeId,
+        style: &Style,
+    ) -> Result<(), LayoutError> {
         self.tree.set_style(node, Self::from_ui_style(style))
     }
 
@@ -454,7 +532,7 @@ impl LayoutEngine {
     /// # Example
     ///
     /// ```rust
-    /// # use termoxide_layout::layout_engine::LayoutEngine;
+    /// # use termoxide_layout::engine::layout_engine::LayoutEngine;
     /// # let mut engine = LayoutEngine::new();
     /// # let root = engine.new_leaf(taffy::Style::DEFAULT).unwrap();
     /// // 80-column, 24-row terminal viewport.
@@ -466,13 +544,10 @@ impl LayoutEngine {
         available_width: f32,
         available_height: f32,
     ) -> Result<(), LayoutError> {
-        self.tree.compute_layout(
-            root,
-            Size {
-                width: AvailableSpace::Definite(available_width),
-                height: AvailableSpace::Definite(available_height),
-            },
-        )
+        self.tree.compute_layout(root, Size {
+            width: AvailableSpace::Definite(available_width),
+            height: AvailableSpace::Definite(available_height),
+        })
     }
 
     /// Resolve the layout for `root` against an **unbounded** available space
@@ -485,7 +560,10 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Returns [`LayoutError`] if `root` is not a known node.
-    pub fn compute_unbounded(&mut self, root: NodeId) -> Result<(), LayoutError> {
+    pub fn compute_unbounded(
+        &mut self,
+        root: NodeId,
+    ) -> Result<(), LayoutError> {
         self.tree.compute_layout(root, Size::MAX_CONTENT)
     }
 
@@ -519,8 +597,8 @@ impl LayoutEngine {
     /// Mark `node` and all its ancestors as requiring a layout recompute.
     ///
     /// Call this when external state (e.g. text content length) changes the
-    /// ideal size of a node but you have not called [`set_style`][Self::set_style]
-    /// (which marks dirty automatically).
+    /// ideal size of a node but you have not called
+    /// [`set_style`][Self::set_style] (which marks dirty automatically).
     ///
     /// # Errors
     ///
@@ -550,14 +628,10 @@ impl LayoutEngine {
     }
 
     /// Remove all nodes from the tree, resetting it to an empty state.
-    pub fn clear(&mut self) {
-        self.tree.clear();
-    }
+    pub fn clear(&mut self) { self.tree.clear(); }
 
     /// Return the total number of nodes currently in the tree.
-    pub fn node_count(&self) -> usize {
-        self.tree.total_node_count()
-    }
+    pub fn node_count(&self) -> usize { self.tree.total_node_count() }
 
     // ─────────────────────────────────────────────────────── //
     //  Style conversion (termoxide_layout → taffy)
@@ -591,13 +665,14 @@ impl LayoutEngine {
     /// | `margin` (via `.edges()`)    | `margin.*`          | `Cells(n) → length(n)`, `Percent(p) → percent(p/100)`, else `AUTO` |
     /// | `gap`                        | `gap` (both axes)   | same as padding; `Fill`/`Auto → ZERO`                     |
     ///
-    /// `Unit::Fill(w)` is not directly representable as a taffy `Dimension`; when
-    /// used on `width` or `height` it converts to `AUTO`.  If you need fill
-    /// semantics, set `flex_grow` instead.
+    /// `Unit::Fill(w)` is not directly representable as a taffy `Dimension`;
+    /// when used on `width` or `height` it converts to `AUTO`.  If you need
+    /// fill semantics, set `flex_grow` instead.
     pub fn from_ui_style(s: &Style) -> taffy::Style {
         let mut t = taffy::Style::DEFAULT;
 
-        // ── display ──────────────────────────────────────────────────────── //
+        // ── display ────────────────────────────────────────────────────────
+        // //
         if let Some(d) = s.display {
             t.display = match d {
                 UiDisplay::Block => Display::Block,
@@ -606,7 +681,8 @@ impl LayoutEngine {
             };
         }
 
-        // ── flex_direction ───────────────────────────────────────────────── //
+        // ── flex_direction ─────────────────────────────────────────────────
+        // //
         if let Some(fd) = s.flex_direction {
             t.flex_direction = match fd {
                 UiFlexDirection::Row => FlexDirection::Row,
@@ -616,7 +692,8 @@ impl LayoutEngine {
             };
         }
 
-        // ── flex_grow / flex_shrink ──────────────────────────────────────── //
+        // ── flex_grow / flex_shrink ────────────────────────────────────────
+        // //
         if let Some(grow) = s.flex_grow {
             // Float.0 is a pub f32 field
             t.flex_grow = grow.0;
@@ -625,45 +702,55 @@ impl LayoutEngine {
             t.flex_shrink = shrink.0;
         }
 
-        // ── align_items ──────────────────────────────────────────────────── //
-        t.align_items = s.align_items.map(|a| match a {
-            Align::Start => AlignItems::Start,
-            Align::End => AlignItems::End,
-            Align::Center => AlignItems::Center,
-            Align::Baseline => AlignItems::Baseline,
-            Align::Stretch => AlignItems::Stretch,
+        // ── align_items ────────────────────────────────────────────────────
+        // //
+        t.align_items = s.align_items.map(|a| {
+            match a {
+                Align::Start => AlignItems::Start,
+                Align::End => AlignItems::End,
+                Align::Center => AlignItems::Center,
+                Align::Baseline => AlignItems::Baseline,
+                Align::Stretch => AlignItems::Stretch,
+            }
         });
 
-        // ── justify_content ──────────────────────────────────────────────── //
-        t.justify_content = s.justify_content.map(|j| match j {
-            Justify::Start => JustifyContent::Start,
-            Justify::End => JustifyContent::End,
-            Justify::Center => JustifyContent::Center,
-            Justify::SpaceBetween => JustifyContent::SpaceBetween,
-            Justify::SpaceAround => JustifyContent::SpaceAround,
-            Justify::SpaceEvenly => JustifyContent::SpaceEvenly,
+        // ── justify_content ────────────────────────────────────────────────
+        // //
+        t.justify_content = s.justify_content.map(|j| {
+            match j {
+                Justify::Start => JustifyContent::Start,
+                Justify::End => JustifyContent::End,
+                Justify::Center => JustifyContent::Center,
+                Justify::SpaceBetween => JustifyContent::SpaceBetween,
+                Justify::SpaceAround => JustifyContent::SpaceAround,
+                Justify::SpaceEvenly => JustifyContent::SpaceEvenly,
+            }
         });
 
-        // ── size ─────────────────────────────────────────────────────────── //
+        // ── size ───────────────────────────────────────────────────────────
+        // //
         let d = &s.dimensions;
         t.size = Size {
             width: unit_to_dimension(d.width().unwrap_or(Unit::Auto)),
             height: unit_to_dimension(d.height().unwrap_or(Unit::Auto)),
         };
 
-        // ── min_size ─────────────────────────────────────────────────────── //
+        // ── min_size ───────────────────────────────────────────────────────
+        // //
         t.min_size = Size {
             width: unit_to_dimension(d.min_width().unwrap_or(Unit::Auto)),
             height: unit_to_dimension(d.min_height().unwrap_or(Unit::Auto)),
         };
 
-        // ── max_size ─────────────────────────────────────────────────────── //
+        // ── max_size ───────────────────────────────────────────────────────
+        // //
         t.max_size = Size {
             width: unit_to_dimension(d.max_width().unwrap_or(Unit::Auto)),
             height: unit_to_dimension(d.max_height().unwrap_or(Unit::Auto)),
         };
 
-        // ── padding ──────────────────────────────────────────────────────── //
+        // ── padding ────────────────────────────────────────────────────────
+        // //
         if let Some(p) = s.padding {
             let e = p.edges();
             t.padding = Rect {
@@ -674,7 +761,8 @@ impl LayoutEngine {
             };
         }
 
-        // ── margin ───────────────────────────────────────────────────────── //
+        // ── margin ─────────────────────────────────────────────────────────
+        // //
         if let Some(m) = s.margin {
             let e = m.edges();
             t.margin = Rect {
@@ -685,8 +773,8 @@ impl LayoutEngine {
             };
         }
 
-        // ── gap ──────────────────────────────────────────────────────────── //
-        // `Style::gap` is a single scalar; we broadcast it to both
+        // ── gap ────────────────────────────────────────────────────────────
+        // // `Style::gap` is a single scalar; we broadcast it to both
         // the column (width) and row (height) axes.
         if let Some(g) = s.gap {
             let lp = unit_to_length_percentage(g.unit());
@@ -701,14 +789,13 @@ impl LayoutEngine {
 }
 
 impl Default for LayoutEngine {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Private unit/dimension conversion helpers
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  Private unit/dimension conversion helpers
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// Convert a [`Unit`] to a taffy [`Dimension`].
 ///
@@ -762,19 +849,21 @@ fn unit_to_length_percentage_auto(u: Unit) -> LengthPercentageAuto {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Tests
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  Tests
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 #[cfg(test)]
 mod tests {
+    use taffy::Display;
+
     use super::*;
-    use crate::{
+    use crate::style::{
         Style,
         layout::{Display as UiDisplay, FlexDirection as UiFlexDirection},
         unit::Unit,
     };
-    use taffy::Display;
 
     /// Build a tree using [`LayoutNode`] with a nested sub-tree and verify
     /// that every node reports the expected computed size.
@@ -907,7 +996,7 @@ mod tests {
     /// via [`UiStyleSource::Named`].
     #[test]
     fn build_ui_tree_with_stylesheet() {
-        use crate::stylesheet::StyleSheet;
+        use crate::style::stylesheet::StyleSheet;
 
         let mut sheet = StyleSheet::new();
         sheet.register(

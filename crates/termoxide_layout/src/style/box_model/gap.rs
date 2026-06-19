@@ -7,7 +7,7 @@
 //! non-negative `<length-percentage>` (or the `normal` keyword, which we
 //! collapse to `Cells(0)` for now).
 
-use crate::unit::Unit;
+use crate::style::unit::Unit;
 
 /// Inter-child spacing inside a flex or grid container.
 /// CSS `gap`.
@@ -25,8 +25,7 @@ use crate::unit::Unit;
 /// # Examples
 ///
 /// ```rust
-/// use termoxide_layout::box_model::Gap;
-/// use termoxide_layout::unit::Unit;
+/// use termoxide_layout::style::{box_model::Gap, unit::Unit};
 ///
 /// let g = Gap::cells(2);
 /// assert_eq!(g.unit(), Unit::cells(2));
@@ -43,7 +42,7 @@ const fn css_gap_value(v: Unit) -> Unit {
             } else {
                 Unit::Cells(n)
             }
-        }
+        },
         Unit::Percent(_) => v,
         // CSS `gap: normal`resolves to
         // `0` for flex containers — that's what we model here too.
@@ -54,27 +53,17 @@ const fn css_gap_value(v: Unit) -> Unit {
 impl Gap {
     pub const ZERO: Self = Self(Unit::ZERO);
 
-    pub const fn new(v: Unit) -> Self {
-        Self(css_gap_value(v))
-    }
+    pub const fn new(v: Unit) -> Self { Self(css_gap_value(v)) }
 
-    pub const fn cells(n: i32) -> Self {
-        Self::new(Unit::Cells(n))
-    }
+    pub const fn cells(n: i32) -> Self { Self::new(Unit::Cells(n)) }
 
-    pub const fn percent(p: u8) -> Self {
-        Self(Unit::Percent(p))
-    }
+    pub const fn percent(p: u8) -> Self { Self(Unit::Percent(p)) }
 
     /// Borrow the underlying [`Unit`].
-    pub const fn unit(self) -> Unit {
-        self.0
-    }
+    pub const fn unit(self) -> Unit { self.0 }
 }
 
 impl From<Unit> for Gap {
     /// Lift a raw [`Unit`] into a `Gap`, normalising the input.
-    fn from(v: Unit) -> Self {
-        Self::new(v)
-    }
+    fn from(v: Unit) -> Self { Self::new(v) }
 }

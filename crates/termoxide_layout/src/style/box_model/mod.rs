@@ -37,8 +37,7 @@ pub mod gap;
 pub use border::{Border, BorderStyle, Borders};
 pub use content::{BoxSizing, Dimensions, Overflow};
 pub use edges::Edges;
-pub use margin::Margin;
-pub use padding::Padding;
-
 #[cfg(feature = "future")]
 pub use gap::Gap;
+pub use margin::Margin;
+pub use padding::Padding;
