@@ -1,0 +1,44 @@
+[package]
+name = "TermOxide"
+description = "Framework for TUI applications in Rust"
+version = "1.0.0-alpha"
+
+keywords = ["tui", "terminal", "user interface", "rust", "framework"]
+categories = ["development-tools", "rendering::engine"]
+
+repository = "https://github.com/TermOxide/TermOxide"
+
+readme = "README.md"
+license = "BSD-2-Clause"
+
+edition = "2024"
+default-run = "TermOxide"
+
+[package.metadata.bundle]
+name = "TermOxide"
+identifier = "com.termoxide.termoxide"
+icon = ["assets/icon.png"]
+version = "1.0.0-alpha"
+copyright = "Copyright (c) 2026 TermOxide"
+category = "Developer Tool"
+long_description = "TermOxide is a framework for building terminal user interfaces (TUIs) in Rust. It provides a set of tools and components to create interactive and visually appealing TUIs, making it easier for developers to build command-line applications with rich user interfaces."
+
+[dependencies]
+termoxide_macros = { path = "../termoxide_macros" }
+oxidui_style = { path = "../oxidui_style", default-features = true }
+termoxide_reactive = { path = "../termoxide_reactive" }
+
+# Path handling
+walkdir = "2.5"
+dirs = "6.0"
+
+# Watcher
+notify = "8.2"
+crossbeam-channel = "0.5"
+
+# utilities
+enum_cycling = "0.2.1"
+
+[features]
+default = ["ratatui"]
+ratatui = ["oxidui_style/ratatui"]
