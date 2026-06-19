@@ -12,7 +12,7 @@ permissions:
 jobs:
   regression-label:
     runs-on: ubuntu-latest
-    if: contains(github.event.issue.labels.*.name, '1.type: bug')
+    if: "${{ contains(github.event.issue.labels.*.name, '1.type: bug') }}"
     steps:
       # Needed so the parser can read the form template
       # and the labeler can read the policy config file.
@@ -35,7 +35,7 @@ jobs:
           config-path: .github/advanced-issue-labeler.yml
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Remove "1.type: bug" if regression was applied
+      - name: 'Remove "1.type: bug" if regression was applied'
         if: steps.labeler.outputs.labels != '[]'
         uses: actions/github-script@v8
         with:
