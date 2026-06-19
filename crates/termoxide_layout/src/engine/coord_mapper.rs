@@ -1,4 +1,5 @@
-//! Coordinate mapping from floating-point layout values to integer terminal cells.
+//! Coordinate mapping from floating-point layout values to integer terminal
+//! cells.
 //!
 //! taffy resolves layouts in `f32` space.  Terminals address characters with
 //! integer column/row coordinates.  This module bridges the gap by converting
@@ -7,9 +8,10 @@
 
 use taffy::tree::Layout;
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  MappedRect
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  MappedRect
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// A layout rectangle expressed in integer terminal cell coordinates.
 ///
@@ -22,8 +24,8 @@ use taffy::tree::Layout;
 /// # Example
 ///
 /// ```rust
-/// use termoxide_layout::coord_mapper::{CoordMapper, MappedRect};
 /// use taffy::tree::Layout;
+/// use termoxide_layout::engine::coord_mapper::{CoordMapper, MappedRect};
 ///
 /// // Suppose taffy computed: x=0.0, y=5.0, w=80.0, h=3.5
 /// let layout = Layout::new(); // placeholder
@@ -44,9 +46,7 @@ pub struct MappedRect {
 
 impl MappedRect {
     /// `true` if both `width` and `height` are zero.
-    pub fn is_empty(self) -> bool {
-        self.width == 0 || self.height == 0
-    }
+    pub fn is_empty(self) -> bool { self.width == 0 || self.height == 0 }
 
     /// Apply a `(dx, dy)` offset and return a new `MappedRect`.
     ///
@@ -65,9 +65,10 @@ impl MappedRect {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  CoordMapper
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  CoordMapper
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// Converts a [`taffy::tree::Layout`] (floating-point) to a [`MappedRect`]
 /// (integer terminal cells).
@@ -78,7 +79,7 @@ impl MappedRect {
 /// |---------|-------------------------------------------------------------|
 /// | `x`     | **floor** — snap the left edge inward                       |
 /// | `y`     | **floor** — snap the top edge inward                        |
-/// | `width` | **round** — nearest integer avoids systematic under/over-sizing |
+/// | `width` | **round** — nearest integer avoids under/over-sizing        |
 /// | `height`| **round** — same as width                                   |
 ///
 /// All results are clamped to `[0, u16::MAX]`. Negative positions (which
@@ -95,10 +96,11 @@ impl CoordMapper {
     /// # Example
     ///
     /// ```rust
-    /// use termoxide_layout::coord_mapper::CoordMapper;
     /// use taffy::tree::Layout;
+    /// use termoxide_layout::engine::coord_mapper::CoordMapper;
     ///
-    /// let layout = Layout::new(); // placeholder; populated after LayoutEngine::compute
+    /// // placeholder; populated after LayoutEngine::compute
+    /// let layout = Layout::new();
     /// let rect = CoordMapper::map(&layout);
     /// assert_eq!(rect.x, 0);
     /// ```
@@ -109,8 +111,10 @@ impl CoordMapper {
         let y = layout.location.y.floor().max(0.0).min(u16::MAX as f32) as u16;
 
         // Round sizes: this minimises the average error across elements.
-        let width = layout.size.width.max(0.0).min(u16::MAX as f32).round() as u16;
-        let height = layout.size.height.max(0.0).min(u16::MAX as f32).round() as u16;
+        let width =
+            layout.size.width.max(0.0).min(u16::MAX as f32).round() as u16;
+        let height =
+            layout.size.height.max(0.0).min(u16::MAX as f32).round() as u16;
 
         MappedRect {
             x,
@@ -125,22 +129,27 @@ impl CoordMapper {
     ///
     /// Call this with the cumulative parent origin while walking the render
     /// tree top-down.
-    pub fn map_absolute(layout: &Layout, parent_origin: (u16, u16)) -> MappedRect {
+    pub fn map_absolute(
+        layout: &Layout,
+        parent_origin: (u16, u16),
+    ) -> MappedRect {
         Self::map(layout).offset(parent_origin.0, parent_origin.1)
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Tests
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  Tests
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use taffy::{
         geometry::{Point, Size},
         tree::Layout,
     };
+
+    use super::*;
 
     fn make_layout(x: f32, y: f32, w: f32, h: f32) -> Layout {
         let mut l = Layout::new();
@@ -156,15 +165,12 @@ mod tests {
     fn whole_numbers_pass_through() {
         let l = make_layout(10.0, 5.0, 80.0, 24.0);
         let r = CoordMapper::map(&l);
-        assert_eq!(
-            r,
-            MappedRect {
-                x: 10,
-                y: 5,
-                width: 80,
-                height: 24
-            }
-        );
+        assert_eq!(r, MappedRect {
+            x: 10,
+            y: 5,
+            width: 80,
+            height: 24
+        });
     }
 
     #[test]
@@ -210,14 +216,11 @@ mod tests {
             height: 10,
         };
         let shifted = base.offset(10, 4);
-        assert_eq!(
-            shifted,
-            MappedRect {
-                x: 15,
-                y: 7,
-                width: 40,
-                height: 10
-            }
-        );
+        assert_eq!(shifted, MappedRect {
+            x: 15,
+            y: 7,
+            width: 40,
+            height: 10
+        });
     }
 }

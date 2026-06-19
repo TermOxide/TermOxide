@@ -6,11 +6,11 @@
 //!   [`Color`]) instead of a spatial [`Unit`](crate::unit::Unit).
 //! - In a TUI the **width** is binary — one character cell or nothing — so
 //!   there is no `border-width` analogue.
-//! - The colour falls back to the element's foreground (via
-//!   [`Color::Inherit`] semantics) when left unset.
+//! - The colour falls back to the element's foreground (via [`Color::Inherit`]
+//!   semantics) when left unset.
 
 use super::edges::Edges;
-use crate::color::Color;
+use crate::style::color::Color;
 
 /// A single side's border appearance — line style and optional colour.
 ///
@@ -21,8 +21,10 @@ use crate::color::Color;
 /// # Examples
 ///
 /// ```rust
-/// use termoxide_layout::box_model::Border;
-/// use termoxide_layout::color::{Color, NamedColor};
+/// use termoxide_layout::style::{
+///     box_model::Border,
+///     color::{Color, NamedColor},
+/// };
 /// let b = Border::ROUNDED.with_color(Color::Named(NamedColor::Cyan));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -37,16 +39,16 @@ pub struct Border {
 }
 
 impl Border {
-    pub const SOLID: Self = Self {
-        style: BorderStyle::Solid,
+    pub const NONE: Self = Self {
+        style: BorderStyle::None,
         color: None,
     };
     pub const ROUNDED: Self = Self {
         style: BorderStyle::Rounded,
         color: None,
     };
-    pub const NONE: Self = Self {
-        style: BorderStyle::None,
+    pub const SOLID: Self = Self {
+        style: BorderStyle::Solid,
         color: None,
     };
 
@@ -93,8 +95,10 @@ pub enum BorderStyle {
 /// # Examples
 ///
 /// ```rust
-/// use termoxide_layout::box_model::{Border, Borders};
-/// use termoxide_layout::color::{Color, NamedColor};
+/// use termoxide_layout::style::{
+///     box_model::{Border, Borders},
+///     color::{Color, NamedColor},
+/// };
 ///
 /// // Uniform border on all four sides.
 /// let b = Borders::all(Border::ROUNDED);
@@ -109,11 +113,7 @@ pub struct Borders(Edges<Border>);
 
 /// Normalise a [`Border`] to a canonical per-side value.
 const fn css_border_value(v: Border) -> Border {
-    if v.is_none() {
-        Border::NONE
-    } else {
-        v
-    }
+    if v.is_none() { Border::NONE } else { v }
 }
 
 impl Borders {
@@ -130,7 +130,12 @@ impl Borders {
         ))
     }
 
-    pub const fn new(top: Border, right: Border, bottom: Border, left: Border) -> Self {
+    pub const fn new(
+        top: Border,
+        right: Border,
+        bottom: Border,
+        left: Border,
+    ) -> Self {
         Self(Edges::new(
             css_border_value(top),
             css_border_value(right),
@@ -140,14 +145,10 @@ impl Borders {
     }
 
     /// Borrow the underlying [`Edges`] for read access.
-    pub const fn edges(&self) -> &Edges<Border> {
-        &self.0
-    }
+    pub const fn edges(&self) -> &Edges<Border> { &self.0 }
 
     /// Consume the wrapper and return the underlying [`Edges`].
-    pub const fn into_edges(self) -> Edges<Border> {
-        self.0
-    }
+    pub const fn into_edges(self) -> Edges<Border> { self.0 }
 
     /// `true` if every side is [`Border::NONE`] — nothing is drawn anywhere.
     pub const fn is_none(&self) -> bool {

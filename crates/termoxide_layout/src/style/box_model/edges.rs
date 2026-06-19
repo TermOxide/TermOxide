@@ -10,7 +10,7 @@
 //! but they all reuse this shape via newtype wrappers.
 
 use super::border::Border;
-use crate::unit::Unit;
+use crate::style::unit::Unit;
 
 /// The set of value types permitted in the four sides of an [`Edges`].
 pub trait EdgeValue: sealed::Sealed + Copy {}
@@ -36,15 +36,14 @@ impl EdgeValue for Border {}
 /// # Examples
 ///
 /// ```rust
-/// use termoxide_layout::box_model::Edges;
-/// use termoxide_layout::unit::Unit;
+/// use termoxide_layout::style::{box_model::Edges, unit::Unit};
 ///
 /// let p = Edges::all(Unit::cells(1));
 /// let p = Edges::symmetric(Unit::cells(2), Unit::cells(4));
 /// let p = Edges::new(Unit::cells(1), Unit::ZERO, Unit::cells(1), Unit::ZERO);
 /// assert_eq!(p.top, Unit::cells(1));
 ///
-/// use termoxide_layout::box_model::border::Border;
+/// use termoxide_layout::style::box_model::border::Border;
 /// let b = Edges::<Border>::all(Border::SOLID);
 /// assert_eq!(b.left, Border::SOLID);
 /// ```

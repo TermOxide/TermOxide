@@ -26,13 +26,15 @@
 /// # Examples
 ///
 /// ```rust
-/// use termoxide_layout::unit::Unit;
+/// use termoxide_layout::style::unit::Unit;
 ///
-/// let w    = Unit::cells(40);    // exactly 40 columns
-/// let h    = Unit::percent(50);  // 50% of parent height
-/// let auto = Unit::AUTO;         // size to content
+/// let w = Unit::cells(40); // exactly 40 columns
+/// let h = Unit::percent(50); // 50% of parent height
+/// let auto = Unit::AUTO; // size to content
+/// //
 /// # #[cfg(feature = "future")] {
-/// let flex = Unit::fill(1);      // take 1 share of remaining space
+/// let flex = Unit::fill(1); // take 1 share of remaining space
+/// //
 /// # }
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -61,24 +63,18 @@ pub enum Unit {
 
 impl Unit {
     pub const AUTO: Self = Self::Auto;
+    #[cfg(feature = "future")]
+    pub const FILL: Self = Self::Fill(1);
     pub const FULL: Self = Self::Percent(100);
     pub const HALF: Self = Self::Percent(50);
     pub const ZERO: Self = Self::Cells(0);
-    #[cfg(feature = "future")]
-    pub const FILL: Self = Self::Fill(1);
 
-    pub const fn cells(n: i32) -> Self {
-        Self::Cells(n)
-    }
+    pub const fn cells(n: i32) -> Self { Self::Cells(n) }
 
-    pub const fn percent(n: u8) -> Self {
-        Self::Percent(n)
-    }
+    pub const fn percent(n: u8) -> Self { Self::Percent(n) }
 
     #[cfg(feature = "future")]
-    pub const fn fill(w: u16) -> Self {
-        Self::Fill(w)
-    }
+    pub const fn fill(w: u16) -> Self { Self::Fill(w) }
 
     /// `true` if the value is concrete and calculable without layout context
     /// (i.e. `Cells` or `Percent`).
@@ -119,7 +115,5 @@ impl Default for Unit {
     /// it is used as a *side value* in [`super::box_model::Edges`], which
     /// in turn drives the derived defaults of [`super::box_model::Padding`]
     /// and [`super::box_model::Margin`].
-    fn default() -> Self {
-        Self::ZERO
-    }
+    fn default() -> Self { Self::ZERO }
 }

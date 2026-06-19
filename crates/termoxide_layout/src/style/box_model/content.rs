@@ -5,12 +5,11 @@
 //!
 //! - **Dimensions** — explicit and bounded sizes (`width`, `height`,
 //!   `min/max-*`).
-//! - **Box sizing** — whether `width`/`height` include the padding and
-//!   border (CSS `box-sizing: border-box`) or just the content
-//!   (`content-box`).
+//! - **Box sizing** — whether `width`/`height` include the padding and border
+//!   (CSS `box-sizing: border-box`) or just the content (`content-box`).
 //! - **Overflow** — what happens when content is larger than its bounds.
 
-use crate::unit::Unit;
+use crate::style::unit::Unit;
 
 /// Explicit and bounded sizes of the content box.
 ///
@@ -30,8 +29,7 @@ use crate::unit::Unit;
 /// # Examples
 ///
 /// ```rust
-/// use termoxide_layout::box_model::Dimensions;
-/// use termoxide_layout::unit::Unit;
+/// use termoxide_layout::style::{box_model::Dimensions, unit::Unit};
 ///
 /// let d = Dimensions::new()
 ///     .with_width(Unit::cells(40))
@@ -57,7 +55,7 @@ const fn css_dimension_value(v: Unit) -> Unit {
             } else {
                 Unit::Cells(n)
             }
-        }
+        },
         _ => v,
     }
 }
@@ -86,45 +84,43 @@ impl Dimensions {
         self.width = Some(css_dimension_value(v));
         self
     }
+
     pub const fn with_height(mut self, v: Unit) -> Self {
         self.height = Some(css_dimension_value(v));
         self
     }
+
     pub const fn with_min_width(mut self, v: Unit) -> Self {
         self.min_width = Some(css_dimension_value(v));
         self
     }
+
     pub const fn with_min_height(mut self, v: Unit) -> Self {
         self.min_height = Some(css_dimension_value(v));
         self
     }
+
     pub const fn with_max_width(mut self, v: Unit) -> Self {
         self.max_width = Some(css_dimension_value(v));
         self
     }
+
     pub const fn with_max_height(mut self, v: Unit) -> Self {
         self.max_height = Some(css_dimension_value(v));
         self
     }
 
-    pub const fn width(&self) -> Option<Unit> {
-        self.width
-    }
-    pub const fn height(&self) -> Option<Unit> {
-        self.height
-    }
-    pub const fn min_width(&self) -> Option<Unit> {
-        self.min_width
-    }
-    pub const fn min_height(&self) -> Option<Unit> {
-        self.min_height
-    }
-    pub const fn max_width(&self) -> Option<Unit> {
-        self.max_width
-    }
-    pub const fn max_height(&self) -> Option<Unit> {
-        self.max_height
-    }
+    pub const fn width(&self) -> Option<Unit> { self.width }
+
+    pub const fn height(&self) -> Option<Unit> { self.height }
+
+    pub const fn min_width(&self) -> Option<Unit> { self.min_width }
+
+    pub const fn min_height(&self) -> Option<Unit> { self.min_height }
+
+    pub const fn max_width(&self) -> Option<Unit> { self.max_width }
+
+    pub const fn max_height(&self) -> Option<Unit> { self.max_height }
 
     /// `true` if no sub-field is declared.
     pub const fn is_empty(&self) -> bool {
