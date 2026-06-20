@@ -7,15 +7,13 @@
 //! - error propagation
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-use ratatui::Terminal;
-use ratatui::backend::TestBackend;
-use ratatui::layout::Rect;
-use ratatui::style::Style;
-
-use termoxide_rendering::event_router::EventRouter;
-use termoxide_rendering::render_loop::App;
-use termoxide_rendering::renderer::Renderer;
-use termoxide_rendering::view_node::{ComponentId, ViewNode};
+use ratatui::{Terminal, backend::TestBackend, layout::Rect, style::Style};
+use termoxide_rendering::{
+    event_router::EventRouter,
+    render_loop::App,
+    renderer::Renderer,
+    view_node::{ComponentId, ViewNode},
+};
 
 // ─────────────────────────────────────────────────────────────────────────── //
 //  Test App
@@ -28,12 +26,7 @@ struct CounterApp {
 }
 
 impl CounterApp {
-    fn new() -> Self {
-        Self {
-            count: 0,
-            last_event: None,
-        }
-    }
+    fn new() -> Self { Self { count: 0, last_event: None } }
 }
 
 impl App for CounterApp {
@@ -52,7 +45,7 @@ impl App for CounterApp {
             }) => {
                 self.last_event = Some("quit".to_string());
                 true
-            }
+            },
             Event::Key(KeyEvent {
                 code: KeyCode::Char('c'),
                 modifiers: KeyModifiers::CONTROL,
@@ -61,25 +54,17 @@ impl App for CounterApp {
             }) => {
                 self.last_event = Some("ctrl-c".to_string());
                 true
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('+'),
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            },
+            Event::Key(KeyEvent { code: KeyCode::Char('+'), kind: KeyEventKind::Press, .. }) => {
                 self.count += 1;
                 self.last_event = Some("increment".to_string());
                 false
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('-'),
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            },
+            Event::Key(KeyEvent { code: KeyCode::Char('-'), kind: KeyEventKind::Press, .. }) => {
                 self.count = self.count.saturating_sub(1);
                 self.last_event = Some("decrement".to_string());
                 false
-            }
+            },
             _ => false,
         }
     }
@@ -264,31 +249,20 @@ struct MultiComponentApp {
 }
 
 impl MultiComponentApp {
-    fn new() -> Self {
-        Self {
-            focused_id: Some(1),
-            events_received: Vec::new(),
-        }
-    }
+    fn new() -> Self { Self { focused_id: Some(1), events_received: Vec::new() } }
 }
 
 impl App for MultiComponentApp {
     fn build_view(&mut self, viewport: Rect) -> ViewNode {
-        let left =
-            ViewNode::text(Rect::new(0, 0, 40, 24), "Left Panel", Style::default()).with_id(1);
+        let left = ViewNode::text(Rect::new(0, 0, 40, 24), "Left Panel", Style::default()).with_id(1);
 
-        let right =
-            ViewNode::text(Rect::new(40, 0, 40, 24), "Right Panel", Style::default()).with_id(2);
+        let right = ViewNode::text(Rect::new(40, 0, 40, 24), "Right Panel", Style::default()).with_id(2);
 
         ViewNode::container(viewport, vec![left, right])
     }
 
     fn handle_event(&mut self, id: Option<ComponentId>, event: Event) -> bool {
-        if let Event::Key(KeyEvent {
-            code: KeyCode::Char('q'),
-            ..
-        }) = event
-        {
+        if let Event::Key(KeyEvent { code: KeyCode::Char('q'), .. }) = event {
             return true;
         }
 

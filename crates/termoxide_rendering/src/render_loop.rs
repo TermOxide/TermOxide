@@ -48,11 +48,7 @@
 //!
 //! impl App for Counter {
 //!     fn build_view(&mut self, viewport: Rect) -> ViewNode {
-//!         ViewNode::text(
-//!             viewport,
-//!             format!("count: {}", self.value),
-//!             ratatui::style::Style::default(),
-//!         )
+//!         ViewNode::text(viewport, format!("count: {}", self.value), ratatui::style::Style::default())
 //!     }
 //!
 //!     fn handle_event(
@@ -68,8 +64,7 @@
 //! ## Shutdown
 //!
 //! The loop terminates when:
-//! - [`App::handle_event`] returns `true` for a
-//!   [`crossterm::event::Event::Key`] with code `Char('q')` or `Esc` (the
+//! - [`App::handle_event`] returns `true` for a [`crossterm::event::Event::Key`] with code `Char('q')` or `Esc` (the
 //!   application controls this), **or**
 //! - [`RenderLoop::quit`] sender is used from another thread.
 
@@ -119,9 +114,10 @@ pub trait App {
     fn handle_event(&mut self, id: Option<ComponentId>, event: Event) -> bool;
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  RenderLoop
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  RenderLoop
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// Main application loop.
 ///
@@ -133,12 +129,11 @@ pub trait App {
 ///
 /// ```rust,no_run
 /// use std::io::stdout;
-/// use ratatui::{Terminal, backend::CrosstermBackend};
-/// use termoxide_rendering::render_loop::RenderLoop;
-/// use termoxide_rendering::renderer::Renderer;
-/// use termoxide_rendering::event_router::EventRouter;
 ///
-/// let backend  = CrosstermBackend::new(stdout());
+/// use ratatui::{Terminal, backend::CrosstermBackend};
+/// use termoxide_rendering::{event_router::EventRouter, render_loop::RenderLoop, renderer::Renderer};
+///
+/// let backend = CrosstermBackend::new(stdout());
 /// let terminal = Terminal::new(backend).unwrap();
 /// let renderer = Renderer::new(terminal).unwrap();
 ///
@@ -157,14 +152,9 @@ impl<B: Backend> RenderLoop<B> {
     /// Create a new render loop.
     ///
     /// - `renderer` — the configured [`Renderer`] to paint frames.
-    /// - `event_router` — the [`EventRouter`] that maps raw crossterm events
-    ///   to component ids.
+    /// - `event_router` — the [`EventRouter`] that maps raw crossterm events to component ids.
     pub fn new(renderer: Renderer<B>, event_router: EventRouter) -> Self {
-        Self {
-            renderer,
-            event_router,
-            event_reader: None,
-        }
+        Self { renderer, event_router, event_reader: None }
     }
 
     /// Enter the blocking event loop.
@@ -243,15 +233,8 @@ impl<B: Backend> RenderLoop<B> {
         use crossterm::event::{Event::Key, KeyCode::Char, KeyEvent};
         matches!(
             ev,
-            Key(KeyEvent {
-                code: Char('c'),
-                modifiers: KeyModifiers::CONTROL,
-                ..
-            }) | Key(KeyEvent {
-                code: Char('d'),
-                modifiers: KeyModifiers::CONTROL,
-                ..
-            })
+            Key(KeyEvent { code: Char('c'), modifiers: KeyModifiers::CONTROL, .. })
+                | Key(KeyEvent { code: Char('d'), modifiers: KeyModifiers::CONTROL, .. })
         )
     }
 
@@ -302,15 +285,15 @@ impl From<std::io::Error> for RenderLoopError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::collections::VecDeque;
-    use std::io::{Error, ErrorKind};
+    use std::{
+        collections::VecDeque,
+        io::{Error, ErrorKind},
+    };
 
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-    use ratatui::layout::Rect;
-    use ratatui::style::Style;
+    use ratatui::{Terminal, backend::TestBackend, layout::Rect, style::Style};
+
+    use super::*;
 
     struct CountingApp {
         build_count: usize,
@@ -318,12 +301,7 @@ mod tests {
     }
 
     impl CountingApp {
-        fn new() -> Self {
-            Self {
-                build_count: 0,
-                handle_count: 0,
-            }
-        }
+        fn new() -> Self { Self { build_count: 0, handle_count: 0 } }
     }
 
     impl App for CountingApp {
@@ -334,23 +312,12 @@ mod tests {
 
         fn handle_event(&mut self, _id: Option<ComponentId>, event: Event) -> bool {
             self.handle_count += 1;
-            matches!(
-                event,
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char('x'),
-                    ..
-                })
-            )
+            matches!(event, Event::Key(KeyEvent { code: KeyCode::Char('x'), .. }))
         }
     }
 
     fn make_key_event(code: KeyCode, modifiers: KeyModifiers) -> Event {
-        Event::Key(KeyEvent {
-            code,
-            modifiers,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        })
+        Event::Key(KeyEvent { code, modifiers, kind: KeyEventKind::Press, state: KeyEventState::NONE })
     }
 
     fn event_reader(events: Vec<Event>) -> Box<dyn FnMut() -> std::io::Result<Event>> {
@@ -370,10 +337,7 @@ mod tests {
         let event_router = EventRouter::new();
         let mut render_loop = RenderLoop::new(renderer, event_router);
 
-        render_loop.event_reader = Some(event_reader(vec![make_key_event(
-            KeyCode::Char('c'),
-            KeyModifiers::CONTROL,
-        )]));
+        render_loop.event_reader = Some(event_reader(vec![make_key_event(KeyCode::Char('c'), KeyModifiers::CONTROL)]));
 
         let mut app = CountingApp::new();
         let result = render_loop.run(&mut app);
@@ -391,10 +355,7 @@ mod tests {
         let event_router = EventRouter::new();
         let mut render_loop = RenderLoop::new(renderer, event_router);
 
-        render_loop.event_reader = Some(event_reader(vec![make_key_event(
-            KeyCode::Char('x'),
-            KeyModifiers::NONE,
-        )]));
+        render_loop.event_reader = Some(event_reader(vec![make_key_event(KeyCode::Char('x'), KeyModifiers::NONE)]));
 
         let mut app = CountingApp::new();
         let result = render_loop.run(&mut app);

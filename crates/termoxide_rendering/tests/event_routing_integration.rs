@@ -7,14 +7,18 @@
 //! - broadcast events (resize)
 
 use crossterm::event::{
-    Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MouseButton, MouseEvent,
+    Event,
+    KeyCode,
+    KeyEvent,
+    KeyEventKind,
+    KeyEventState,
+    KeyModifiers,
+    MouseButton,
+    MouseEvent,
     MouseEventKind,
 };
-use ratatui::layout::Rect;
-use ratatui::style::Style;
-
-use termoxide_rendering::event_router::EventRouter;
-use termoxide_rendering::view_node::ViewNode;
+use ratatui::{layout::Rect, style::Style};
+use termoxide_rendering::{event_router::EventRouter, view_node::ViewNode};
 
 // ─────────────────────────────────────────────────────────────────────────── //
 //  Helper: build simple multi-component trees
@@ -24,20 +28,21 @@ fn build_two_panel_tree() -> ViewNode {
     // Two side-by-side panels with distinct component IDs
     let left_panel = ViewNode::text(Rect::new(0, 0, 40, 24), "Left", Style::default()).with_id(1);
 
-    let right_panel =
-        ViewNode::text(Rect::new(40, 0, 40, 24), "Right", Style::default()).with_id(2);
+    let right_panel = ViewNode::text(Rect::new(40, 0, 40, 24), "Right", Style::default()).with_id(2);
 
     ViewNode::container(Rect::new(0, 0, 80, 24), vec![left_panel, right_panel])
 }
 
 fn build_overlapping_tree() -> ViewNode {
     // Three overlapping rectangles: A (background), B (middle), C (topmost)
-    let background =
-        ViewNode::text(Rect::new(0, 0, 80, 24), "Background", Style::default()).with_id(1); // x: 0..80, y: 0..24
+    // x: 0..80, y: 0..24
+    let background = ViewNode::text(Rect::new(0, 0, 80, 24), "Background", Style::default()).with_id(1);
 
-    let middle = ViewNode::text(Rect::new(10, 5, 50, 10), "Middle", Style::default()).with_id(2); // x: 10..60, y: 5..15
+    // x: 10..60, y: 5..15
+    let middle = ViewNode::text(Rect::new(10, 5, 50, 10), "Middle", Style::default()).with_id(2);
 
-    let topmost = ViewNode::text(Rect::new(30, 8, 30, 5), "Topmost", Style::default()).with_id(3); // x: 30..60, y: 8..13
+    // x: 30..60, y: 8..13
+    let topmost = ViewNode::text(Rect::new(30, 8, 30, 5), "Topmost", Style::default()).with_id(3);
 
     ViewNode::container(Rect::new(0, 0, 80, 24), vec![background, middle, topmost])
 }
@@ -275,12 +280,8 @@ fn test_event_router_mouse_moved() {
     let mut router = EventRouter::new();
     router.sync_hit_map(&root);
 
-    let moved_ev = Event::Mouse(MouseEvent {
-        kind: MouseEventKind::Moved,
-        column: 50,
-        row: 10,
-        modifiers: KeyModifiers::NONE,
-    });
+    let moved_ev =
+        Event::Mouse(MouseEvent { kind: MouseEventKind::Moved, column: 50, row: 10, modifiers: KeyModifiers::NONE });
 
     let target = router.route_event(&moved_ev, &root);
     assert!(target.is_none());

@@ -76,6 +76,7 @@
 //!     style::Style,
 //! };
 //! use termoxide_rendering::{
+//!     event_router::EventRouter,
 //!     render_loop::{App, RenderLoop},
 //!     renderer::Renderer,
 //!     view_node::{ComponentId, ViewNode},
@@ -103,9 +104,7 @@
 //!     let renderer = Renderer::new(terminal).unwrap();
 //!     let event_router = EventRouter::new();
 //!
-//!     RenderLoop::new(renderer, event_router)
-//!         .run(&mut Hello)
-//!         .unwrap();
+//!     RenderLoop::new(renderer, event_router).run(&mut Hello).unwrap();
 //! }
 //! ```
 

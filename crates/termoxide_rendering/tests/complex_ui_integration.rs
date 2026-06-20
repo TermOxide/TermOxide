@@ -8,11 +8,11 @@
 //! - event propagation patterns
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-use ratatui::layout::Rect;
-use ratatui::style::Style;
-
-use termoxide_rendering::render_loop::App;
-use termoxide_rendering::view_node::{ComponentId, ViewNode};
+use ratatui::{layout::Rect, style::Style};
+use termoxide_rendering::{
+    render_loop::App,
+    view_node::{ComponentId, ViewNode},
+};
 
 // ─────────────────────────────────────────────────────────────────────────── //
 //  Form-like multi-field app
@@ -27,23 +27,15 @@ struct FormApp {
 impl FormApp {
     fn new() -> Self {
         Self {
-            fields: vec![
-                "Field 1".to_string(),
-                "Field 2".to_string(),
-                "Field 3".to_string(),
-            ],
+            fields: vec!["Field 1".to_string(), "Field 2".to_string(), "Field 3".to_string()],
             focused_field: 0,
             submitted: false,
         }
     }
 
-    fn total_fields(&self) -> usize {
-        self.fields.len()
-    }
+    fn total_fields(&self) -> usize { self.fields.len() }
 
-    fn next_field(&mut self) {
-        self.focused_field = (self.focused_field + 1) % self.total_fields();
-    }
+    fn next_field(&mut self) { self.focused_field = (self.focused_field + 1) % self.total_fields(); }
 
     fn prev_field(&mut self) {
         if self.focused_field == 0 {
@@ -59,9 +51,7 @@ impl App for FormApp {
         let mut children = Vec::new();
 
         // Title
-        children.push(
-            ViewNode::text(Rect::new(0, 0, viewport.width, 1), "Form", Style::default()).with_id(0),
-        );
+        children.push(ViewNode::text(Rect::new(0, 0, viewport.width, 1), "Form", Style::default()).with_id(0));
 
         // Form fields
         for (i, field_text) in self.fields.iter().enumerate() {
@@ -94,34 +84,19 @@ impl App for FormApp {
 
     fn handle_event(&mut self, _id: Option<ComponentId>, event: Event) -> bool {
         match event {
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('q'),
-                ..
-            }) => true,
-            Event::Key(KeyEvent {
-                code: KeyCode::Down,
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            Event::Key(KeyEvent { code: KeyCode::Char('q'), .. }) => true,
+            Event::Key(KeyEvent { code: KeyCode::Down, kind: KeyEventKind::Press, .. }) => {
                 self.next_field();
                 false
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Up,
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            },
+            Event::Key(KeyEvent { code: KeyCode::Up, kind: KeyEventKind::Press, .. }) => {
                 self.prev_field();
                 false
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Enter,
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            },
+            Event::Key(KeyEvent { code: KeyCode::Enter, kind: KeyEventKind::Press, .. }) => {
                 self.submitted = true;
                 false
-            }
+            },
             _ => false,
         }
     }
@@ -237,30 +212,17 @@ struct ModalApp {
 }
 
 impl ModalApp {
-    fn new() -> Self {
-        Self {
-            show_modal: false,
-            modal_confirmed: false,
-        }
-    }
+    fn new() -> Self { Self { show_modal: false, modal_confirmed: false } }
 }
 
 impl App for ModalApp {
     fn build_view(&mut self, viewport: Rect) -> ViewNode {
         let mut children = vec![
-            ViewNode::text(
-                Rect::new(0, 0, viewport.width, viewport.height),
-                "Background",
-                Style::default(),
-            )
-            .with_id(1),
+            ViewNode::text(Rect::new(0, 0, viewport.width, viewport.height), "Background", Style::default()).with_id(1),
         ];
 
         if self.show_modal {
-            children.push(
-                ViewNode::text(Rect::new(20, 8, 40, 8), "Modal Dialog", Style::default())
-                    .with_id(2),
-            );
+            children.push(ViewNode::text(Rect::new(20, 8, 40, 8), "Modal Dialog", Style::default()).with_id(2));
         }
 
         ViewNode::container(viewport, children)
@@ -268,27 +230,16 @@ impl App for ModalApp {
 
     fn handle_event(&mut self, _id: Option<ComponentId>, event: Event) -> bool {
         match event {
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('q'),
-                ..
-            }) => true,
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('m'),
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            Event::Key(KeyEvent { code: KeyCode::Char('q'), .. }) => true,
+            Event::Key(KeyEvent { code: KeyCode::Char('m'), kind: KeyEventKind::Press, .. }) => {
                 self.show_modal = !self.show_modal;
                 false
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Enter,
-                kind: KeyEventKind::Press,
-                ..
-            }) if self.show_modal => {
+            },
+            Event::Key(KeyEvent { code: KeyCode::Enter, kind: KeyEventKind::Press, .. }) if self.show_modal => {
                 self.modal_confirmed = true;
                 self.show_modal = false;
                 false
-            }
+            },
             _ => false,
         }
     }
@@ -376,9 +327,7 @@ impl ListApp {
         }
     }
 
-    fn move_selection_down(&mut self) {
-        self.selected_index = (self.selected_index + 1) % self.items.len();
-    }
+    fn move_selection_down(&mut self) { self.selected_index = (self.selected_index + 1) % self.items.len(); }
 
     fn move_selection_up(&mut self) {
         if self.selected_index == 0 {
@@ -399,12 +348,8 @@ impl App for ListApp {
             let text = format!("{}{}", prefix, item);
 
             children.push(
-                ViewNode::text(
-                    Rect::new(0, i as u16, viewport.width, 1),
-                    text,
-                    Style::default(),
-                )
-                .with_id((i + 1) as ComponentId),
+                ViewNode::text(Rect::new(0, i as u16, viewport.width, 1), text, Style::default())
+                    .with_id((i + 1) as ComponentId),
             );
         }
 
@@ -413,26 +358,15 @@ impl App for ListApp {
 
     fn handle_event(&mut self, _id: Option<ComponentId>, event: Event) -> bool {
         match event {
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('q'),
-                ..
-            }) => true,
-            Event::Key(KeyEvent {
-                code: KeyCode::Down,
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            Event::Key(KeyEvent { code: KeyCode::Char('q'), .. }) => true,
+            Event::Key(KeyEvent { code: KeyCode::Down, kind: KeyEventKind::Press, .. }) => {
                 self.move_selection_down();
                 false
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Up,
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            },
+            Event::Key(KeyEvent { code: KeyCode::Up, kind: KeyEventKind::Press, .. }) => {
                 self.move_selection_up();
                 false
-            }
+            },
             _ => false,
         }
     }
@@ -491,11 +425,7 @@ struct TabApp {
 impl TabApp {
     fn new() -> Self {
         Self {
-            tabs: vec![
-                "Tab 1".to_string(),
-                "Tab 2".to_string(),
-                "Tab 3".to_string(),
-            ],
+            tabs: vec!["Tab 1".to_string(), "Tab 2".to_string(), "Tab 3".to_string()],
             active_tab: 0,
         }
     }
@@ -506,9 +436,7 @@ impl TabApp {
         }
     }
 
-    fn next_tab(&mut self) {
-        self.active_tab = (self.active_tab + 1) % self.tabs.len();
-    }
+    fn next_tab(&mut self) { self.active_tab = (self.active_tab + 1) % self.tabs.len(); }
 
     fn prev_tab(&mut self) {
         if self.active_tab == 0 {
@@ -533,11 +461,7 @@ impl App for TabApp {
             }
         }
 
-        children.push(ViewNode::text(
-            Rect::new(0, 0, viewport.width, 1),
-            tab_line,
-            Style::default(),
-        ));
+        children.push(ViewNode::text(Rect::new(0, 0, viewport.width, 1), tab_line, Style::default()));
 
         // Tab content (dummy)
         children.push(ViewNode::text(
@@ -551,35 +475,20 @@ impl App for TabApp {
 
     fn handle_event(&mut self, _id: Option<ComponentId>, event: Event) -> bool {
         match event {
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('q'),
-                ..
-            }) => true,
-            Event::Key(KeyEvent {
-                code: KeyCode::Right,
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            Event::Key(KeyEvent { code: KeyCode::Char('q'), .. }) => true,
+            Event::Key(KeyEvent { code: KeyCode::Right, kind: KeyEventKind::Press, .. }) => {
                 self.next_tab();
                 false
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Left,
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            },
+            Event::Key(KeyEvent { code: KeyCode::Left, kind: KeyEventKind::Press, .. }) => {
                 self.prev_tab();
                 false
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Char(c @ '1'..='9'),
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            },
+            Event::Key(KeyEvent { code: KeyCode::Char(c @ '1'..='9'), kind: KeyEventKind::Press, .. }) => {
                 let idx = (c as usize) - ('1' as usize);
                 self.switch_tab(idx);
                 false
-            }
+            },
             _ => false,
         }
     }
@@ -659,12 +568,7 @@ struct GameApp {
 }
 
 impl GameApp {
-    fn new() -> Self {
-        Self {
-            state: AppState::Menu,
-            score: 0,
-        }
-    }
+    fn new() -> Self { Self { state: AppState::Menu, score: 0 } }
 }
 
 impl App for GameApp {
@@ -681,46 +585,31 @@ impl App for GameApp {
 
     fn handle_event(&mut self, _id: Option<ComponentId>, event: Event) -> bool {
         match event {
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('q'),
-                ..
-            }) => true,
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('p'),
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            Event::Key(KeyEvent { code: KeyCode::Char('q'), .. }) => true,
+            Event::Key(KeyEvent { code: KeyCode::Char('p'), kind: KeyEventKind::Press, .. }) => {
                 if self.state == AppState::Menu {
                     self.state = AppState::Playing;
                     self.score = 0;
                 }
                 false
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Char(' '),
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            },
+            Event::Key(KeyEvent { code: KeyCode::Char(' '), kind: KeyEventKind::Press, .. }) => {
                 if self.state == AppState::Playing {
                     self.state = AppState::Paused;
                 }
                 false
-            }
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('r'),
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            },
+            Event::Key(KeyEvent { code: KeyCode::Char('r'), kind: KeyEventKind::Press, .. }) => {
                 match self.state {
                     AppState::Paused => self.state = AppState::Playing,
                     AppState::GameOver => {
                         self.state = AppState::Menu;
                         self.score = 0;
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
                 false
-            }
+            },
             _ => false,
         }
     }
