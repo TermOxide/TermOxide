@@ -87,7 +87,9 @@ pub fn poll_events() -> Vec<Event> {
 /// The first event wait uses `timeout`; if one event is found, this function
 /// drains all remaining ready events with a zero timeout.
 #[allow(dead_code)]
-pub(crate) fn poll_events_timeout(timeout: Duration) -> std::io::Result<Vec<Event>> {
+pub(crate) fn poll_events_timeout(
+    timeout: Duration,
+) -> std::io::Result<Vec<Event>> {
     poll_events_timeout_with(timeout, event::poll, event::read)
 }
 
@@ -240,8 +242,10 @@ impl KeySignalBindings {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
-    use std::io::{Error, ErrorKind};
+    use std::{
+        cell::RefCell,
+        io::{Error, ErrorKind},
+    };
 
     use crossterm::event::{
         KeyEvent,
@@ -510,19 +514,16 @@ mod tests {
             Duration::from_millis(5),
             |_| poll_results.next().unwrap_or(Ok(false)),
             || {
-                read_results
-                    .next()
-                    .unwrap_or_else(|| Err(Error::new(ErrorKind::UnexpectedEof, "no event")))
+                read_results.next().unwrap_or_else(|| {
+                    Err(Error::new(ErrorKind::UnexpectedEof, "no event"))
+                })
             },
         )
         .expect("poll events");
 
-        assert_eq!(
-            events,
-            vec![Event::KeyPress(KeyPress::new(
-                KeyCode::Char('z'),
-                KeyModifiers::NONE
-            ))]
-        );
+        assert_eq!(events, vec![Event::KeyPress(KeyPress::new(
+            KeyCode::Char('z'),
+            KeyModifiers::NONE
+        ))]);
     }
 }

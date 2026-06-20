@@ -22,12 +22,12 @@ use reactive_graph::owner::Owner as InnerOwner;
 /// owner.set(); // activate the owner on the current thread
 ///
 /// let signal = Signal::new(42i32);
-/// use termoxide_reactive::runtime::Owner;
-/// use termoxide_reactive::ArcRwSignal;
-///
-/// let owner = Owner::new();
-/// let _guard = owner.set(); // activate the owner on the current thread
-///
+/// assert_eq!(signal.get(), 42);
+/// ```
+pub struct Owner(InnerOwner);
+
+impl Owner {
+    /// Create a new reactive owner.
     pub fn new() -> Self { Self(InnerOwner::new()) }
 
     /// Activate this owner on the current thread.

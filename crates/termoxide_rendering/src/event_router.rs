@@ -64,7 +64,7 @@
 //! let root = ViewNode::container(Rect::new(0, 0, 80, 24), vec![a, b]);
 //!
 //! let mut router = EventRouter::new();
-//! router.sync_hit_map(&root);          // build the spatial index
+//! router.sync_hit_map(&root); // build the spatial index
 //!
 //! // Keyboard events go to the focused component.
 //! use crossterm::event::{
@@ -84,8 +84,7 @@
 //! assert_eq!(router.route_event(&key_ev, &root), None);
 //! ```
 
-use crossterm::event::Event;
-use crossterm::event::KeyEventKind;
+use crossterm::event::{Event, KeyEventKind};
 use ratatui::layout::Rect;
 use termoxide_reactive::Signal;
 
@@ -183,7 +182,8 @@ impl EventRouter {
         }
     }
 
-    // ── Key-to-signal bindings ───────────────────────────────────────────── //
+    // ── Key-to-signal bindings ─────────────────────────────────────────────
+    // //
 
     /// Bind a key to a fixed signal value.
     ///
@@ -221,7 +221,8 @@ impl EventRouter {
         &mut self.key_bindings
     }
 
-    // ── Event routing ──────────────────────────────────────────────────────── //
+    // ── Event routing ────────────────────────────────────────────────────────
+    // //
 
     /// Determine which component should handle `event` and return its id.
     ///
@@ -238,22 +239,26 @@ impl EventRouter {
     ) -> Option<ComponentId> {
         match event {
             Event::Key(key_ev) => self.route_key(key_ev),
-            // Resize, FocusGained, FocusLost, Paste → broadcast (no specific target).
+            // Resize, FocusGained, FocusLost, Paste → broadcast (no specific
+            // target).
             _ => None,
         }
     }
 
     /// Route a keyboard event.
-    fn route_key(&mut self, ev: &crossterm::event::KeyEvent) -> Option<ComponentId> {
+    fn route_key(
+        &mut self,
+        ev: &crossterm::event::KeyEvent,
+    ) -> Option<ComponentId> {
         if ev.kind != KeyEventKind::Press {
             return self.focused;
         }
 
         // Keep Tab reserved for focus traversal. All other key presses can
         // drive global reactive bindings.
-        let _ = self
-            .key_bindings
-            .apply_event(&InputEvent::KeyPress(KeyPress::new(ev.code, ev.modifiers)));
+        let _ = self.key_bindings.apply_event(&InputEvent::KeyPress(
+            KeyPress::new(ev.code, ev.modifiers),
+        ));
 
         self.focused
     }
@@ -430,6 +435,4 @@ mod tests {
         router.sync_hit_map(&root);
         assert_eq!(router.hit_map.len(), 2);
     }
-
-    
 }
