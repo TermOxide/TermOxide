@@ -24,11 +24,6 @@ pub mod layout;
 pub mod unit;
 
 #[cfg(feature = "future")]
-pub mod number;
-#[cfg(feature = "future")]
-pub mod str;
-
-#[cfg(feature = "future")]
 use box_model::Gap;
 use box_model::{
     Border,
@@ -44,8 +39,6 @@ use font::FontStyle;
 use layout::Display;
 #[cfg(feature = "future")]
 use layout::{Align, FlexDirection, Justify, TextAlign};
-#[cfg(feature = "future")]
-use number::{Float, Opacity};
 use unit::Unit;
 
 /// A complete set of style declarations for one UI element.
@@ -163,11 +156,11 @@ pub struct Style {
     /// Grow factor relative to flex siblings. CSS `flex-grow`. Beyond
     /// Rdmp1: `feature = "future"`.
     #[cfg(feature = "future")]
-    pub flex_grow: Option<Float>,
+    pub flex_grow: Option<f32>,
     /// Shrink factor when space is tight. CSS `flex-shrink`. Beyond Rdmp1:
     /// `feature = "future"`.
     #[cfg(feature = "future")]
-    pub flex_shrink: Option<Float>,
+    pub flex_shrink: Option<f32>,
     /// Cross-axis child alignment. CSS `align-items`. Beyond Rdmp1:
     /// `feature = "future"`.
     #[cfg(feature = "future")]
@@ -197,16 +190,6 @@ pub struct Style {
     /// Paints behind the content and padding out to the border edge,
     /// matching the CSS initial `background-clip: border-box`.
     pub background: Option<Color>,
-
-    /// Element opacity. CSS `opacity`. Beyond Rdmp1:
-    /// `feature = "future"`.
-    ///
-    /// Stored as [`number::Opacity`], which clamps input to `[0.0, 1.0]`
-    /// at construction — the CSS-legal range. In TUI, implemented as
-    /// dimming (`FontStyle::DIM`) rather than alpha-blending; values are
-    /// typically quantized to visible/dim/hidden.
-    #[cfg(feature = "future")]
-    pub opacity: Option<Opacity>,
 
     // -----------------------------------------------------------------------
     // Typography
@@ -253,8 +236,6 @@ impl Style {
             gap: None,
             color: None,
             background: None,
-            #[cfg(feature = "future")]
-            opacity: None,
             #[cfg(feature = "future")]
             text_align: None,
             font_style: None,
@@ -318,8 +299,6 @@ impl Style {
         }
         m!(color);
         m!(background);
-        #[cfg(feature = "future")]
-        m!(opacity);
         #[cfg(feature = "future")]
         m!(text_align);
         m!(font_style);
@@ -407,13 +386,13 @@ impl Style {
     }
 
     #[cfg(feature = "future")]
-    pub fn with_flex_grow(mut self, v: Float) -> Self {
+    pub fn with_flex_grow(mut self, v: f32) -> Self {
         self.flex_grow = Some(v);
         self
     }
 
     #[cfg(feature = "future")]
-    pub fn with_flex_shrink(mut self, v: Float) -> Self {
+    pub fn with_flex_shrink(mut self, v: f32) -> Self {
         self.flex_shrink = Some(v);
         self
     }
@@ -457,14 +436,6 @@ impl Style {
     /// Convenience: uniform border on all four sides.
     pub fn with_border_all(self, v: Border) -> Self {
         self.with_border(Borders::all(v))
-    }
-
-    /// Set the element opacity. The input is clamped to `[0.0, 1.0]`
-    /// via [`Opacity::from`].
-    #[cfg(feature = "future")]
-    pub fn with_opacity(mut self, v: Float) -> Self {
-        self.opacity = Some(Opacity::from(v));
-        self
     }
 
     #[cfg(feature = "future")]
@@ -512,7 +483,7 @@ impl Style {
             || self.border.is_some()
             || self.font_style.is_some();
         #[cfg(feature = "future")]
-        let base = base || self.opacity.is_some() || self.text_align.is_some();
+        let base = base || self.text_align.is_some();
         base
     }
 }
@@ -528,18 +499,12 @@ pub use stylesheet::StyleSheet;
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "future")]
-    use std::borrow::Cow;
 
     use box_model::{Border, BorderStyle, Borders, Edges, Margin, Padding};
     use color::{Color, NamedColor};
     use font::FontStyle;
-    #[cfg(feature = "future")]
-    use number::{Float, Int};
     use unit::Unit;
 
-    #[cfg(feature = "future")]
-    use super::str::Str;
     use super::*;
 
     // --- Color ---
@@ -584,74 +549,6 @@ mod tests {
         assert!(!Color::Named(NamedColor::Red).is_abstract());
         #[cfg(feature = "future")]
         assert!(!Color::rgb(0, 0, 0).is_abstract());
-    }
-
-    // --- Int ---
-
-    #[cfg(feature = "future")]
-    #[test]
-    fn int_arithmetic() {
-        assert_eq!(Int::new(3) + Int::new(4), Int::new(7));
-        assert_eq!(Int::new(10) - Int::new(3), Int::new(7));
-        assert_eq!(-Int::new(5), Int::new(-5));
-    }
-
-    #[cfg(feature = "future")]
-    #[test]
-    fn int_predicates() {
-        assert!(Int::ZERO.is_zero());
-        assert!(!Int::ONE.is_zero());
-        assert!(Int::new(-1).is_negative());
-        assert!(!Int::ONE.is_negative());
-    }
-
-    // --- Float ---
-
-    #[cfg(feature = "future")]
-    #[test]
-    fn float_eq_bitwise() {
-        assert_eq!(Float::new(1.0), Float::new(1.0));
-        assert_ne!(Float::new(0.5), Float::new(0.9));
-        let nan = Float::new(f32::NAN);
-        assert_eq!(nan, nan); // NaN == NaN via bits — intentional
-    }
-
-    #[cfg(feature = "future")]
-    #[test]
-    fn float_clamp_unit() {
-        assert_eq!(Float::new(1.5).clamp_unit(), Float::new(1.0));
-        assert_eq!(Float::new(-0.5).clamp_unit(), Float::new(0.0));
-        assert_eq!(Float::new(0.75).clamp_unit(), Float::new(0.75));
-    }
-
-    #[cfg(feature = "future")]
-    #[test]
-    fn float_ops() {
-        assert_eq!(Float::new(0.5) + Float::new(0.25), Float::new(0.75));
-        assert_eq!(Float::new(2.0) * Float::new(3.0), Float::new(6.0));
-    }
-
-    // --- Str ---
-
-    #[cfg(feature = "future")]
-    #[test]
-    fn str_static_is_borrowed() {
-        let s = Str::from_static("mono");
-        assert!(matches!(s.0, Cow::Borrowed(_)));
-        assert_eq!(s.as_str(), "mono");
-    }
-
-    #[cfg(feature = "future")]
-    #[test]
-    fn str_from_string_is_owned() {
-        let s = Str::from_string("runtime".to_string());
-        assert!(matches!(s.0, Cow::Owned(_)));
-    }
-
-    #[cfg(feature = "future")]
-    #[test]
-    fn str_equality_ignores_cow_variant() {
-        assert_eq!(Str::from_static("hello"), Str::from_string("hello".into()));
     }
 
     // --- Unit ---
@@ -854,32 +751,6 @@ mod tests {
     fn gap_preserves_valid_values() {
         assert_eq!(box_model::Gap::cells(3).unit(), Unit::cells(3));
         assert_eq!(box_model::Gap::percent(25).unit(), Unit::percent(25));
-    }
-
-    // --- Opacity invariant (future-gated) ---
-
-    #[cfg(feature = "future")]
-    #[test]
-    fn opacity_clamps_out_of_range() {
-        assert_eq!(number::Opacity::new(1.5).get(), 1.0);
-        assert_eq!(number::Opacity::new(-0.2).get(), 0.0);
-        assert_eq!(number::Opacity::new(0.75).get(), 0.75);
-    }
-
-    #[cfg(feature = "future")]
-    #[test]
-    fn opacity_endpoints() {
-        assert_eq!(number::Opacity::TRANSPARENT.get(), 0.0);
-        assert_eq!(number::Opacity::OPAQUE.get(), 1.0);
-    }
-
-    #[cfg(feature = "future")]
-    #[test]
-    fn opacity_nan_resolves_to_zero() {
-        // f32::clamp resolves NaN to the lower bound — the type is
-        // guaranteed never to carry NaN.
-        let o = number::Opacity::new(f32::NAN);
-        assert_eq!(o.get(), 0.0);
     }
 
     // --- FontStyle ---
