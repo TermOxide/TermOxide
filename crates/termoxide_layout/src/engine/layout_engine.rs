@@ -695,11 +695,11 @@ impl LayoutEngine {
         // ── flex_grow / flex_shrink ────────────────────────────────────────
         // //
         if let Some(grow) = s.flex_grow {
-            // Float.0 is a pub f32 field
-            t.flex_grow = grow.0;
+            // f32 is a pub f32 field
+            t.flex_grow = grow;
         }
         if let Some(shrink) = s.flex_shrink {
-            t.flex_shrink = shrink.0;
+            t.flex_shrink = shrink;
         }
 
         // ── align_items ────────────────────────────────────────────────────
