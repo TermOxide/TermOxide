@@ -3,13 +3,11 @@
 //! [`Renderer`] is the bridge between the logical UI tree and raw terminal
 //! cells.  It performs two distinct jobs on every frame:
 //!
-//! 1. **Paint** — walk the [`ViewNode`] tree top-down, dispatching each node's
-//!    [`ViewContent`] to the appropriate draw routine, accumulating the results
-//!    in an in-memory [`Buffer`].
+//! 1. **Paint** — walk the [`ViewNode`] tree top-down, dispatching each node's [`ViewContent`] to the appropriate draw
+//!    routine, accumulating the results in an in-memory [`Buffer`].
 //!
-//! 2. **Diff & flush** — compare the freshly painted buffer against the
-//!    previous frame's buffer, encode only the *changed* cells as ANSI escape
-//!    sequences, and hand them to ratatui's [`Terminal::draw`] machinery.
+//! 2. **Diff & flush** — compare the freshly painted buffer against the previous frame's buffer, encode only the
+//!    *changed* cells as ANSI escape sequences, and hand them to ratatui's [`Terminal::draw`] machinery.
 //!
 //! ## Position in the pipeline
 //!
@@ -53,11 +51,7 @@
 //! let terminal = Terminal::new(backend).unwrap();
 //! let mut renderer = Renderer::new(terminal).unwrap();
 //!
-//! let mut root = ViewNode::text(
-//!     Rect::new(0, 0, 80, 24),
-//!     "Hello, TermOxide!",
-//!     Style::default().fg(Color::Cyan),
-//! );
+//! let mut root = ViewNode::text(Rect::new(0, 0, 80, 24), "Hello, TermOxide!", Style::default().fg(Color::Cyan));
 //!
 //! renderer.render_frame(&mut root).unwrap();
 //! ```
@@ -165,21 +159,13 @@ impl<B: Backend> Renderer<B> {
             let _ = disable_raw_mode();
             return Err(RenderError::Io(e));
         }
-        Ok(Self {
-            terminal,
-            terminal_mode_active: true,
-        })
+        Ok(Self { terminal, terminal_mode_active: true })
     }
 
     /// Create a `Renderer` for testing, which does not enable raw mode or
     /// alternate screen.
     #[cfg(test)]
-    pub(crate) fn new_for_test(terminal: Terminal<B>) -> Self {
-        Self {
-            terminal,
-            terminal_mode_active: false,
-        }
-    }
+    pub(crate) fn new_for_test(terminal: Terminal<B>) -> Self { Self { terminal, terminal_mode_active: false } }
 
     /// Return the current terminal viewport size as a [`Rect`].
     ///
@@ -193,12 +179,11 @@ impl<B: Backend> Renderer<B> {
     /// Render one complete frame from `root` to the terminal.
     ///
     /// The method:
-    /// 1. Calls [`draw_node`][Self::draw_node] recursively on `root`, filling
-    ///    a temporary [`Buffer`] from the top of the tree down.
-    /// 2. Hands the filled buffer to ratatui's `Terminal::draw`, which diffs
-    ///    it against the previous frame and writes only the changed cells.
-    /// 3. Returns without additional bookkeeping; ratatui handles the diff
-    ///    against the previous frame.
+    /// 1. Calls [`draw_node`][Self::draw_node] recursively on `root`, filling a temporary [`Buffer`] from the top of
+    ///    the tree down.
+    /// 2. Hands the filled buffer to ratatui's `Terminal::draw`, which diffs it against the previous frame and writes
+    ///    only the changed cells.
+    /// 3. Returns without additional bookkeeping; ratatui handles the diff against the previous frame.
     ///
     /// # Errors
     ///
@@ -236,7 +221,7 @@ impl<B: Backend> Renderer<B> {
 
             ViewContent::Raw(f) => {
                 f(buf, node.area);
-            }
+            },
         }
 
         // Recurse into children (document order).
@@ -298,19 +283,20 @@ impl<B: Backend> Renderer<B> {
 }
 
 impl<B: Backend> Drop for Renderer<B> {
-    fn drop(&mut self) {
-        let _ = self.restore();
-    }
+    fn drop(&mut self) { let _ = self.restore(); }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::io::IsTerminal;
 
-    use ratatui::backend::{CrosstermBackend, TestBackend};
-    use ratatui::layout::Rect;
-    use ratatui::style::Style;
+    use ratatui::{
+        backend::{CrosstermBackend, TestBackend},
+        layout::Rect,
+        style::Style,
+    };
+
+    use super::*;
 
     #[test]
     fn draw_node_truncates_text_to_area() {

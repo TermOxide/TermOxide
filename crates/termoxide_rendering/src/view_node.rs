@@ -22,20 +22,15 @@
 //!
 //! ## Design principles
 //!
-//! - **Owned, heap-allocated tree**: unlike ratatui `Widget` which is consumed
-//!   on render, `ViewNode` is a plain data structure that can be inspected,
-//!   diffed, or logged independently of the render pass.
+//! - **Owned, heap-allocated tree**: unlike ratatui `Widget` which is consumed on render, `ViewNode` is a plain data
+//!   structure that can be inspected, diffed, or logged independently of the render pass.
 //!
-//! - **Dirty tracking**: the [`ViewNode::dirty`] flag is set by the reactive
-//!   layer whenever a signal that the node depends on changes.  The
-//!   [`RenderLoop`][crate::render_loop::RenderLoop] only re-renders the
-//!   sub-tree containing at least one dirty node, keeping frame work low.
-//!   (note implemented yet)
+//! - **Dirty tracking**: the [`ViewNode::dirty`] flag is set by the reactive layer whenever a signal that the node
+//!   depends on changes.  The [`RenderLoop`][crate::render_loop::RenderLoop] only re-renders the sub-tree containing at
+//!   least one dirty node, keeping frame work low. (note implemented yet)
 //!
-//! - **Spatial metadata**: every node carries the terminal area ([`Rect`])
-//!   assigned to it by the layout engine so that the
-//!   [`EventRouter`][crate::event_router::EventRouter] can perform O(nodes)
-//!   hit-testing without re-running layout.
+//! - **Spatial metadata**: every node carries the terminal area ([`Rect`]) assigned to it by the layout engine so that
+//!   the [`EventRouter`][crate::event_router::EventRouter] can perform O(nodes) hit-testing without re-running layout.
 //!
 //! - **Type-erased content**: [`ViewContent::Raw`] lets any component supply an
 //!   arbitrary draw closure, which keeps this crate decoupled from the full set
@@ -51,11 +46,7 @@
 //! use termoxide_rendering::view_node::{ViewContent, ViewNode};
 //!
 //! // A simple text label node.
-//! let label = ViewNode::text(
-//!     Rect::new(0, 0, 20, 1),
-//!     "Hello, TermOxide!",
-//!     Style::default().fg(Color::Yellow),
-//! );
+//! let label = ViewNode::text(Rect::new(0, 0, 20, 1), "Hello, TermOxide!", Style::default().fg(Color::Yellow));
 //!
 //! // A container wrapping it.
 //! let root = ViewNode::container(Rect::new(0, 0, 80, 24), vec![label]);
@@ -222,14 +213,7 @@ impl ViewNode {
     ///
     /// Prefer the typed constructors ([`container`][Self::container],
     /// [`text`][Self::text], [`raw`][Self::raw]) for common use-cases.
-    pub fn new(area: Rect, content: ViewContent) -> Self {
-        Self {
-            id: None,
-            area,
-            content,
-            children: Vec::new(),
-        }
-    }
+    pub fn new(area: Rect, content: ViewContent) -> Self { Self { id: None, area, content, children: Vec::new() } }
 
     /// Create a layout-only container with the given children.
     ///
@@ -238,18 +222,10 @@ impl ViewNode {
     /// use termoxide_rendering::view_node::ViewNode;
     ///
     /// let root = ViewNode::container(Rect::new(0, 0, 80, 24), vec![]);
-    /// assert!(matches!(
-    ///     root.content,
-    ///     termoxide_rendering::view_node::ViewContent::Container
-    /// ));
+    /// assert!(matches!(root.content, termoxide_rendering::view_node::ViewContent::Container));
     /// ```
     pub fn container(area: Rect, children: Vec<ViewNode>) -> Self {
-        Self {
-            id: None,
-            area,
-            content: ViewContent::Container,
-            children,
-        }
+        Self { id: None, area, content: ViewContent::Container, children }
     }
 
     /// Create a single-line text node.
@@ -265,10 +241,7 @@ impl ViewNode {
         Self {
             id: None,
             area,
-            content: ViewContent::Text {
-                text: text.into(),
-                style,
-            },
+            content: ViewContent::Text { text: text.into(), style },
             children: Vec::new(),
         }
     }
@@ -280,12 +253,7 @@ impl ViewNode {
     where
         F: Fn(&mut Buffer, Rect) + Send + 'static,
     {
-        Self {
-            id: None,
-            area,
-            content: ViewContent::Raw(Box::new(f)),
-            children: Vec::new(),
-        }
+        Self { id: None, area, content: ViewContent::Raw(Box::new(f)), children: Vec::new() }
     }
 
     // ── Builder methods ──────────────────────────────────────────────────────

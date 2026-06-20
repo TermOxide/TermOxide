@@ -7,9 +7,7 @@
 //! - area validation
 //! - tree structure integrity
 
-use ratatui::layout::Rect;
-use ratatui::style::Style;
-
+use ratatui::{layout::Rect, style::Style};
 use termoxide_rendering::view_node::{ComponentId, ViewNode};
 
 // ─────────────────────────────────────────────────────────────────────────── //
@@ -82,9 +80,7 @@ fn test_view_node_id_overwrite() {
     let id1: ComponentId = 1;
     let id2: ComponentId = 2;
 
-    let node = ViewNode::text(rect, "Test", Style::default())
-        .with_id(id1)
-        .with_id(id2);
+    let node = ViewNode::text(rect, "Test", Style::default()).with_id(id1).with_id(id2);
 
     assert_eq!(node.id, Some(id2));
 }
@@ -169,8 +165,7 @@ fn test_view_node_wide_tree() {
     let mut children = Vec::new();
     for i in 0..10 {
         let x = (i * 8) as u16;
-        let child = ViewNode::text(Rect::new(x, 0, 8, 10), &format!("C{}", i), Style::default())
-            .with_id(i as u64 + 1);
+        let child = ViewNode::text(Rect::new(x, 0, 8, 10), &format!("C{}", i), Style::default()).with_id(i as u64 + 1);
         children.push(child);
     }
 
@@ -213,9 +208,7 @@ fn test_view_node_raw_with_id() {
     let rect = Rect::new(5, 5, 30, 10);
     let id: ComponentId = 99;
 
-    let node = ViewNode::raw(rect, |_buf, _rect| {
-    })
-    .with_id(id);
+    let node = ViewNode::raw(rect, |_buf, _rect| {}).with_id(id);
 
     assert_eq!(node.id, Some(id));
 }
@@ -238,9 +231,7 @@ fn test_view_node_children_order_preserved() {
     let children: Vec<_> = ids
         .iter()
         .enumerate()
-        .map(|(i, &id)| {
-            ViewNode::text(Rect::new(0, i as u16, 20, 1), "Item", Style::default()).with_id(id)
-        })
+        .map(|(i, &id)| ViewNode::text(Rect::new(0, i as u16, 20, 1), "Item", Style::default()).with_id(id))
         .collect();
 
     let parent = ViewNode::container(Rect::new(0, 0, 20, 5), children);
@@ -267,8 +258,7 @@ fn test_view_node_with_children_replaces_children() {
 
 #[test]
 fn test_view_node_mixed_content_types() {
-    let text_node =
-        ViewNode::text(Rect::new(0, 0, 40, 5), "Text Area", Style::default()).with_id(1);
+    let text_node = ViewNode::text(Rect::new(0, 0, 40, 5), "Text Area", Style::default()).with_id(1);
 
     let raw_node = ViewNode::raw(Rect::new(40, 0, 40, 5), |_buf, _rect| {}).with_id(2);
 
