@@ -1071,6 +1071,9 @@ dependencies = [
 [[package]]
 name = "termoxide_event"
 version = "0.1.0"
+dependencies = [
+ "crossterm",
+]
 
 [[package]]
 name = "termoxide_macros"

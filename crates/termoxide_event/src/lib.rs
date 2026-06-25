@@ -1,4 +1,6 @@
+pub mod crossterm;
 use std::{sync::mpsc, thread};
+use crossterm::read_events;
 
 pub fn setup_events() -> mpsc::Receiver<()> {
     let (tx, rx) = mpsc::channel();
@@ -8,6 +10,7 @@ pub fn setup_events() -> mpsc::Receiver<()> {
             dbg!(error);
             return;
         }
+        let _ = read_events();
     });
 
     return rx;
