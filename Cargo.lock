@@ -1069,6 +1069,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "termoxide_event"
+version = "0.1.0"
+
+[[package]]
 name = "termoxide_macros"
 version = "1.0.0-alpha"
 dependencies = [
