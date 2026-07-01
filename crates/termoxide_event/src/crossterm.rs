@@ -1,4 +1,5 @@
 use std::{io, sync::mpsc, time::Duration};
+
 use crossterm::{
     event::{poll, read},
     terminal::{disable_raw_mode, enable_raw_mode},
@@ -33,8 +34,9 @@ pub fn read_events(shutdown: mpsc::Receiver<()>) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::print_events;
     use std::{sync::mpsc, thread, time::Duration};
+
+    use super::print_events;
 
     #[test]
     fn print_events_stops_when_shutdown_already_signaled() {
@@ -47,9 +49,9 @@ mod tests {
             let _ = done_tx.send(result);
         });
 
-        let result = done_rx
-            .recv_timeout(Duration::from_secs(2))
-            .expect("print_events did not return: the shutdown did not break the loop");
+        let result = done_rx.recv_timeout(Duration::from_secs(2)).expect(
+            "print_events did not return: the shutdown did not break the loop",
+        );
         result.expect("print_events returned an error");
     }
 }
