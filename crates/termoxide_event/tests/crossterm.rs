@@ -1,6 +1,6 @@
 use std::{sync::mpsc, thread, time::Duration};
 
-use termoxide_event::crossterm::print_events;
+use termoxide_event::backend::print_events;
 
 #[test]
 fn print_events_stops_when_shutdown_already_signaled() {

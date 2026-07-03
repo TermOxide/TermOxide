@@ -1,7 +1,7 @@
-pub mod crossterm;
+pub mod backend;
 use std::{sync::mpsc, thread, time::Duration};
 
-use crossterm::read_events;
+use backend::read_events;
 
 pub struct EventStream {
     receiver: mpsc::Receiver<()>,
