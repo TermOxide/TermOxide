@@ -5,6 +5,13 @@ on:
     branches:
       - dev/trunk
       - main
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: "Branch to upload a coverage report for"
+        required: true
+        default: "dev/trunk"
+        type: string
 
 jobs:
   upload-coverage:
@@ -12,10 +19,20 @@ jobs:
     environment: codecov
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve target ref
+        id: ref
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "ref=${{ inputs.target_branch }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          ref: ${{ steps.ref.outputs.ref }}
           persist-credentials: false
 
       - name: Setup Rust & push cache
@@ -39,3 +56,4 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage/lcov.info
+          override_branch: ${{ steps.ref.outputs.ref }}
