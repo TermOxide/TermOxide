@@ -9,7 +9,7 @@ pub fn print_events(shutdown: &mpsc::Receiver<()>) -> io::Result<()> {
     loop {
         match shutdown.try_recv() {
             Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
-            Err(mpsc::TryRecvError::Empty) => {}
+            Err(mpsc::TryRecvError::Empty) => {},
         }
 
         if poll(Duration::from_millis(100))? {
