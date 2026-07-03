@@ -28,7 +28,11 @@ pub fn read_events(shutdown: mpsc::Receiver<()>) -> io::Result<()> {
 
     let result = print_events(&shutdown);
 
-    disable_raw_mode()?;
+    if let Err(disable_error) = disable_raw_mode() {
+        if result.is_ok() {
+            return Err(disable_error);
+        }
+    }
 
     result
 }
