@@ -207,7 +207,7 @@ jobs:
           for crate in $crates; do
             pkg_args="$pkg_args -p $crate"
           done
-          cargo tarpaulin $pkg_args --out Lcov --output-dir ./coverage
+          cargo tarpaulin $pkg_args --ignore-tests --exclude-files "*/tests/*" --out Lcov --output-dir ./coverage
 
       - name: Upload results to Codecov
         if: always()
