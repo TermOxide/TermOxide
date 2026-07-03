@@ -88,6 +88,10 @@ runs:
       run: |
         packages='${{ inputs.packages }}'
         for pkg in $(echo "$packages" | jq -r '.[]'); do
+          if [ -x "$HOME/.cargo/bin/$pkg" ]; then
+            echo "${pkg} already present in cargo bin (restored from a partial cache hit), skipping install"
+            continue
+          fi
           echo "::group::Installing ${pkg}"
           cargo install "$pkg" --locked
           echo "::endgroup::"
