@@ -1,0 +1,86 @@
+name: Push Coverage Baseline
+
+on:
+  push:
+    branches:
+      - dev/trunk
+      - main
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: "Branch to upload a coverage report for"
+        required: true
+        default: "dev/trunk"
+        type: string
+      target_commit:
+        description: "Optional specific commit SHA to check out instead of the tip of target_branch"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  upload-coverage:
+    name: Tests & Coverage
+    environment: codecov
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve target ref
+        id: ref
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET_COMMIT: ${{ inputs.target_commit }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ -n "$TARGET_COMMIT" ]]; then
+              echo "checkout_ref=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+            else
+              echo "checkout_ref=$TARGET_BRANCH" >> "$GITHUB_OUTPUT"
+            fi
+            echo "branch=$TARGET_BRANCH" >> "$GITHUB_OUTPUT"
+          else
+            echo "checkout_ref=$REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "branch=$REF_NAME" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.ref.outputs.checkout_ref }}
+          persist-credentials: false
+
+      # codecov-action falls back to GITHUB_SHA when override_commit isn't set,
+      # which for workflow_dispatch is the ref that launched the run, not the
+      # commit actually checked out above. Resolve it explicitly so backfills
+      # land on the right commit instead of the dispatch ref's tip.
+      - name: Resolve checked-out commit
+        id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Rust & push cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: push
+          packages: '["cargo-tarpaulin"]'
+
+      - name: Restore Rust cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: pull
+          packages: '["cargo-tarpaulin"]'
+
+      - name: Run tests with coverage
+        run: |
+          cargo tarpaulin --workspace --exclude cargo-extract --out Lcov --output-dir ./coverage
+
+      - name: Upload results to Codecov
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/lcov.info
+          override_branch: ${{ steps.ref.outputs.branch }}
+          override_commit: ${{ steps.commit.outputs.sha }}
