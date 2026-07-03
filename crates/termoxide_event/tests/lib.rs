@@ -1,14 +1,17 @@
 use std::{sync::mpsc, thread, time::Duration};
 
+use serial_test::serial;
 use termoxide_event::EventStream;
 
 #[test]
+#[serial]
 fn check_receive() {
     let events = EventStream::new();
     assert!(events.recv().is_ok(), "EventStream::recv() failed");
 }
 
 #[test]
+#[serial]
 fn handle_drop_stops_thread() {
     let events = EventStream::new();
     assert!(
@@ -29,6 +32,7 @@ fn handle_drop_stops_thread() {
 }
 
 #[test]
+#[serial]
 fn check_teardown_stops_thread() {
     let events = EventStream::new();
     assert!(
@@ -49,6 +53,7 @@ fn check_teardown_stops_thread() {
 }
 
 #[test]
+#[serial]
 fn ready_send_fails_if_receiver_is_dropped_early() {
     let events = EventStream::new();
     drop(events);
