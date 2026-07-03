@@ -6,6 +6,10 @@ description = "Event system for TermOxide"
 license = "BSD-2-Clause"
 
 [dependencies]
+crossterm = "0.27"
+
+[dev-dependencies]
+serial_test = "3"
 
 [lints]
 workspace = true

@@ -75,7 +75,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          cargo tarpaulin --workspace --exclude cargo-extract --out Lcov --output-dir ./coverage
+          cargo tarpaulin --ignore-tests --exclude-files "*/tests/*" --workspace --exclude cargo-extract --out Lcov --output-dir ./coverage
 
       - name: Upload results to Codecov
         uses: codecov/codecov-action@v6
