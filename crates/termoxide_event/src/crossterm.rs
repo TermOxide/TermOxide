@@ -7,8 +7,9 @@ use crossterm::{
 
 pub fn print_events(shutdown: &mpsc::Receiver<()>) -> io::Result<()> {
     loop {
-        if shutdown.try_recv().is_ok() {
-            break;
+        match shutdown.try_recv() {
+            Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
+            Err(mpsc::TryRecvError::Empty) => {}
         }
 
         if poll(Duration::from_millis(100))? {
