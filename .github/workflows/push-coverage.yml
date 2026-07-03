@@ -12,6 +12,11 @@ on:
         required: true
         default: "dev/trunk"
         type: string
+      target_commit:
+        description: "Optional specific commit SHA to check out instead of the tip of target_branch"
+        required: false
+        default: ""
+        type: string
 
 jobs:
   upload-coverage:
@@ -23,16 +28,23 @@ jobs:
         id: ref
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "ref=${{ inputs.target_branch }}" >> "$GITHUB_OUTPUT"
+            commit="${{ inputs.target_commit }}"
+            if [[ -n "$commit" ]]; then
+              echo "checkout_ref=$commit" >> "$GITHUB_OUTPUT"
+            else
+              echo "checkout_ref=${{ inputs.target_branch }}" >> "$GITHUB_OUTPUT"
+            fi
+            echo "branch=${{ inputs.target_branch }}" >> "$GITHUB_OUTPUT"
           else
-            echo "ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "checkout_ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ steps.ref.outputs.ref }}
+          ref: ${{ steps.ref.outputs.checkout_ref }}
           persist-credentials: false
 
       - name: Setup Rust & push cache
@@ -56,4 +68,4 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage/lcov.info
-          override_branch: ${{ steps.ref.outputs.ref }}
+          override_branch: ${{ steps.ref.outputs.branch }}
