@@ -53,6 +53,14 @@ jobs:
           ref: ${{ steps.ref.outputs.checkout_ref }}
           persist-credentials: false
 
+      # codecov-action falls back to GITHUB_SHA when override_commit isn't set,
+      # which for workflow_dispatch is the ref that launched the run, not the
+      # commit actually checked out above. Resolve it explicitly so backfills
+      # land on the right commit instead of the dispatch ref's tip.
+      - name: Resolve checked-out commit
+        id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Setup Rust & push cache
         uses: ./.github/actions/rust-cache
         with:
@@ -75,3 +83,4 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage/lcov.info
           override_branch: ${{ steps.ref.outputs.branch }}
+          override_commit: ${{ steps.commit.outputs.sha }}
