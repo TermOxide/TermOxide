@@ -20,7 +20,9 @@ impl EventStream {
                 dbg!(error);
                 return;
             }
-            let _ = read_events(shutdown_rx);
+            if let Err(error) = read_events(shutdown_rx) {
+                dbg!(error);
+            }
         });
 
         Self {
