@@ -27,3 +27,29 @@ fn handle_drop_stops_thread() {
         "EventHandle::drop did not complete: the thread was not stopped"
     );
 }
+
+#[test]
+fn check_teardown_stops_thread() {
+    let events = EventStream::new();
+    assert!(
+        events.recv().is_ok(),
+        "EventStream::recv() failed before calling teardown"
+    );
+
+    let (done_tx, done_rx) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = events.teardown();
+        let _ = done_tx.send(());
+    });
+
+    assert!(
+        done_rx.recv_timeout(Duration::from_secs(3)).is_ok(),
+        "EventHandle::teardown did not complete: the thread was not stopped"
+    );
+}
+
+#[test]
+fn ready_send_fails_if_receiver_is_dropped_early() {
+    let events = EventStream::new();
+    drop(events);
+}
