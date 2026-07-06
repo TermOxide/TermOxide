@@ -7,6 +7,16 @@ use crossterm::{
 
 use crate::event::{Event, KeyCode};
 
+#[derive(Debug)]
+pub enum SendEventError {
+    ChannelError(mpsc::SendError<Event>),
+    TerminalError(io::Error),
+}
+
+impl From<io::Error> for SendEventError {
+    fn from(error: io::Error) -> Self { SendEventError::TerminalError(error) }
+}
+
 fn translate(event: crossterm::event::Event) -> Option<Event> {
     match event {
         crossterm::event::Event::Key(key) => {
@@ -49,31 +59,43 @@ fn to_keycode(code: crossterm::event::KeyCode) -> Option<KeyCode> {
     }
 }
 
-pub fn print_events(shutdown: &mpsc::Receiver<()>) -> io::Result<()> {
+pub fn print_events(
+    events_tx: &mpsc::Sender<Event>,
+    shutdown: &mpsc::Receiver<()>,
+) -> Result<(), SendEventError> {
     loop {
         match shutdown.try_recv() {
             Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
             Err(mpsc::TryRecvError::Empty) => {},
         }
 
-        if poll(Duration::from_millis(100))? {
-            let event = read()?;
-            println!("Event::{event:?}\r");
-        } else {
-            println!(".\r");
+        if poll(Duration::from_millis(100))
+            .map_err(SendEventError::TerminalError)?
+        {
+            let event = read().map_err(SendEventError::TerminalError)?;
+            if let Some(translated_event) = translate(event) {
+                events_tx
+                    .send(translated_event)
+                    .map_err(SendEventError::ChannelError)?;
+            }
         }
     }
 
     Ok(())
 }
 
-pub fn read_events(shutdown_rx: mpsc::Receiver<()>) -> io::Result<()> {
-    enable_raw_mode()?;
+pub fn read_events(
+    events_tx: mpsc::Sender<Event>,
+    shutdown_rx: mpsc::Receiver<()>,
+) -> Result<(), SendEventError> {
+    enable_raw_mode().map_err(SendEventError::TerminalError)?;
 
-    let result = print_events(&shutdown_rx);
+    let result = print_events(&events_tx, &shutdown_rx);
 
-    if let Err(disable_error) = disable_raw_mode() && result.is_ok() {
-        return Err(disable_error);
+    if let Err(disable_error) = disable_raw_mode()
+        && result.is_ok()
+    {
+        return Err(disable_error.into());
     }
 
     result

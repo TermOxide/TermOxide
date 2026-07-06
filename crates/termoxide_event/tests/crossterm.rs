@@ -5,6 +5,7 @@ use termoxide_event::backend::print_events;
 #[test]
 fn print_events_stops_when_shutdown_already_signaled() {
     let (shutdown_tx, shutdown_rx) = mpsc::channel();
+    let (events_tx, _events_rx) = mpsc::channel();
     assert!(
         shutdown_tx.send(()).is_ok(),
         "Failed to send shutdown signal"
@@ -12,7 +13,7 @@ fn print_events_stops_when_shutdown_already_signaled() {
 
     let (done_tx, done_rx) = mpsc::channel();
     thread::spawn(move || {
-        let result = print_events(&shutdown_rx);
+        let result = print_events(&events_tx, &shutdown_rx);
         let _ = done_tx.send(result);
     });
 
