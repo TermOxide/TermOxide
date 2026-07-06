@@ -1,10 +1,12 @@
 pub mod backend;
+pub mod event;
 use std::{sync::mpsc, thread, time::Duration};
 
 use backend::read_events;
+use event::Event;
 
 pub struct EventStream {
-    receiver: mpsc::Receiver<()>,
+    receiver: mpsc::Receiver<Event>,
     shutdown: Option<mpsc::SyncSender<()>>,
     thread: Option<thread::JoinHandle<()>>,
 }
@@ -16,7 +18,7 @@ impl EventStream {
         let (shutdown_tx, shutdown_rx) = mpsc::sync_channel(1);
 
         let thread = thread::spawn(move || {
-            if let Err(error) = ready_tx.send(()) {
+            if let Err(error) = ready_tx.send(Event::ChannelReady) {
                 dbg!(error);
                 return;
             }
@@ -32,7 +34,7 @@ impl EventStream {
         }
     }
 
-    pub fn recv(&self) -> Result<(), mpsc::RecvTimeoutError> {
+    pub fn recv(&self) -> Result<Event, mpsc::RecvTimeoutError> {
         self.receiver.recv_timeout(Duration::from_secs(2))
     }
 
