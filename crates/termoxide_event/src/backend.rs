@@ -59,7 +59,7 @@ fn to_keycode(code: crossterm::event::KeyCode) -> Option<KeyCode> {
     }
 }
 
-pub fn print_events(
+pub fn send_events(
     events_tx: &mpsc::Sender<Event>,
     shutdown: &mpsc::Receiver<()>,
 ) -> Result<(), SendEventError> {
@@ -90,7 +90,7 @@ pub fn read_events(
 ) -> Result<(), SendEventError> {
     enable_raw_mode().map_err(SendEventError::TerminalError)?;
 
-    let result = print_events(&events_tx, &shutdown_rx);
+    let result = send_events(&events_tx, &shutdown_rx);
 
     if let Err(disable_error) = disable_raw_mode()
         && result.is_ok()

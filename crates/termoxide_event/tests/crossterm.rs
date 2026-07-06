@@ -1,9 +1,9 @@
 use std::{sync::mpsc, thread, time::Duration};
 
-use termoxide_event::backend::print_events;
+use termoxide_event::backend::send_events;
 
 #[test]
-fn print_events_stops_when_shutdown_already_signaled() {
+fn send_events_stops_when_shutdown_already_signaled() {
     let (shutdown_tx, shutdown_rx) = mpsc::channel();
     let (events_tx, _events_rx) = mpsc::channel();
     assert!(
@@ -13,7 +13,7 @@ fn print_events_stops_when_shutdown_already_signaled() {
 
     let (done_tx, done_rx) = mpsc::channel();
     thread::spawn(move || {
-        let result = print_events(&events_tx, &shutdown_rx);
+        let result = send_events(&events_tx, &shutdown_rx);
         let _ = done_tx.send(result);
     });
 
