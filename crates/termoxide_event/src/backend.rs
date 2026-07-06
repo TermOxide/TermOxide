@@ -19,16 +19,10 @@ impl From<io::Error> for SendEventError {
 
 fn translate(event: crossterm::event::Event) -> Option<Event> {
     match event {
-        crossterm::event::Event::Key(key) => {
-            if key.kind == crossterm::event::KeyEventKind::Press {
-                if let Some(key_code) = to_keycode(key.code) {
-                    Some(Event::KeyPress(key_code))
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
+        crossterm::event::Event::Key(key)
+            if key.kind == crossterm::event::KeyEventKind::Press =>
+        {
+            to_keycode(key.code).map(Event::KeyPress)
         },
         _ => None,
     }
