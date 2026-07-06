@@ -13,10 +13,6 @@ pub enum SendEventError {
     TerminalError(io::Error),
 }
 
-impl From<io::Error> for SendEventError {
-    fn from(error: io::Error) -> Self { SendEventError::TerminalError(error) }
-}
-
 fn translate(event: crossterm::event::Event) -> Option<Event> {
     match event {
         crossterm::event::Event::Key(key)
@@ -89,7 +85,7 @@ pub fn read_events(
     if let Err(disable_error) = disable_raw_mode()
         && result.is_ok()
     {
-        return Err(disable_error.into());
+        return Err(SendEventError::TerminalError(disable_error));
     }
 
     result
