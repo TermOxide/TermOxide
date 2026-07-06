@@ -14,11 +14,11 @@ pub struct EventStream {
 impl EventStream {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        let (ready_tx, ready_rx) = mpsc::channel();
+        let (events_tx, events_rx) = mpsc::channel();
         let (shutdown_tx, shutdown_rx) = mpsc::sync_channel(1);
 
         let thread = thread::spawn(move || {
-            if let Err(error) = ready_tx.send(Event::ChannelReady) {
+            if let Err(error) = events_tx.send(Event::ChannelReady) {
                 dbg!(error);
                 return;
             }
@@ -28,7 +28,7 @@ impl EventStream {
         });
 
         Self {
-            receiver: ready_rx,
+            receiver: events_rx,
             shutdown: Some(shutdown_tx),
             thread: Some(thread),
         }
