@@ -38,7 +38,7 @@
 
 pub mod backend;
 pub mod event;
-use std::{sync::mpsc, thread, time::Duration};
+use std::{sync::mpsc, thread};
 
 use backend::read_events;
 use event::Event;
@@ -94,14 +94,18 @@ impl EventStream {
         }
     }
 
-    /// Block until the next event arrives, up to a 2-second timeout.
+    /// Block until the next event arrives.
     ///
-    /// Returns [`RecvTimeoutError::Timeout`](mpsc::RecvTimeoutError::Timeout)
-    /// if no event was produced within the window, or
-    /// [`RecvTimeoutError::Disconnected`](mpsc::RecvTimeoutError::Disconnected)
-    /// once the reader thread has stopped and the channel is closed.
-    pub fn recv(&self) -> Result<Event, mpsc::RecvTimeoutError> {
-        self.receiver.recv_timeout(Duration::from_secs(2))
+    /// Waits indefinitely for the reader thread to produce an event. The very
+    /// first call is guaranteed to return [`Event::ChannelReady`], so it never
+    /// hangs on a freshly created stream. Returns
+    /// [`RecvError`](mpsc::RecvError) once the reader thread has stopped and the
+    /// channel is closed.
+    ///
+    /// This is a temporary interface that will be superseded by a dedicated
+    /// polling method.
+    pub fn recv(&self) -> Result<Event, mpsc::RecvError> {
+        self.receiver.recv()
     }
 
     /// Stop the stream explicitly and wait for the reader thread to finish.
