@@ -9,10 +9,10 @@
 //!
 //! |Type|Role|
 //! |------|------|
-//! |[`EventStream`]|Handle owning the reader thread; pull events with [`recv`](EventStream::recv)|
+//! |[`EventStream`]|Handle owning the reader thread|
 //! |[`Event`]|A single event (handshake or key press) delivered by the stream|
 //! |[`KeyCode`](event::KeyCode)|Backend-agnostic key identifier|
-//! |[`SendEventError`](backend::SendEventError)|Error surfaced by the reader loop|
+//! |[`SendEventError`](backend::SendEventError)|Error from the reader loop|
 //!
 //! Raw mode is enabled while the stream is alive and restored when it is
 //! dropped, so the terminal is never left in a broken state.
@@ -99,8 +99,8 @@ impl EventStream {
     /// Waits indefinitely for the reader thread to produce an event. The very
     /// first call is guaranteed to return [`Event::ChannelReady`], so it never
     /// hangs on a freshly created stream. Returns
-    /// [`RecvError`](mpsc::RecvError) once the reader thread has stopped and the
-    /// channel is closed.
+    /// [`RecvError`](mpsc::RecvError) once the reader thread has stopped and
+    /// the channel is closed.
     ///
     /// This is a temporary interface that will be superseded by a dedicated
     /// polling method.
@@ -119,10 +119,10 @@ impl EventStream {
     /// Signal the reader thread to stop and join it, at most once.
     ///
     /// Both the shutdown sender and the join handle are taken out of their
-    /// `Option` slots, so repeated calls (for instance [`teardown`](Self::teardown)
-    /// followed by [`Drop`]) are safe no-ops. Sending the shutdown signal is
-    /// best-effort: if the thread has already exited the send simply fails and
-    /// is ignored.
+    /// `Option` slots, so repeated calls (for instance
+    /// [`teardown`](Self::teardown) followed by [`Drop`]) are safe no-ops.
+    /// Sending the shutdown signal is best-effort: if the thread has
+    /// already exited the send simply fails and is ignored.
     fn stop(&mut self) -> thread::Result<()> {
         if let Some(shutdown) = self.shutdown.take() {
             let _ = shutdown.send(());
@@ -138,7 +138,8 @@ impl Drop for EventStream {
     /// Stop the reader thread when the handle goes out of scope.
     ///
     /// This is the RAII guarantee that raw mode is disabled and the terminal
-    /// restored even if the caller never calls [`teardown`](EventStream::teardown).
-    /// The join result is discarded here; use `teardown` to observe it.
+    /// restored even if the caller never calls
+    /// [`teardown`](EventStream::teardown). The join result is discarded
+    /// here; use `teardown` to observe it.
     fn drop(&mut self) { let _ = self.stop(); }
 }
