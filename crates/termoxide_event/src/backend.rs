@@ -332,4 +332,45 @@ mod tests {
             assert_eq!(translate(event), None, "expected None for {described}");
         }
     }
+
+    #[test]
+    fn display_channel_error_describes_dropped_receiver() {
+        let error =
+            SendEventError::ChannelError(mpsc::SendError(Event::ChannelReady));
+        assert_eq!(
+            format!("{error}"),
+            "event channel receiver was dropped: sending on a closed channel"
+        );
+    }
+
+    #[test]
+    fn display_terminal_error_wraps_inner_message() {
+        let inner = io::Error::other("boom");
+        let error = SendEventError::TerminalError(inner);
+        assert_eq!(format!("{error}"), "terminal operation failed: boom");
+    }
+
+    #[test]
+    fn source_exposes_the_inner_error() {
+        use std::error::Error as _;
+
+        let channel =
+            SendEventError::ChannelError(mpsc::SendError(Event::ChannelReady));
+        assert!(
+            channel
+                .source()
+                .and_then(|s| s.downcast_ref::<mpsc::SendError<Event>>())
+                .is_some(),
+            "ChannelError source should be the inner SendError"
+        );
+
+        let terminal = SendEventError::TerminalError(io::Error::other("boom"));
+        assert!(
+            terminal
+                .source()
+                .and_then(|s| s.downcast_ref::<io::Error>())
+                .is_some(),
+            "TerminalError source should be the inner io::Error"
+        );
+    }
 }
