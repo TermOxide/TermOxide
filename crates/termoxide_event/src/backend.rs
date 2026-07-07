@@ -95,7 +95,7 @@ fn to_keycode(code: crossterm::event::KeyCode) -> Option<KeyCode> {
 /// - [`SendEventError::TerminalError`] if polling or reading fails.
 /// - [`SendEventError::ChannelError`] if the receiver has been dropped and a
 ///   translated event can no longer be delivered.
-pub fn send_events(
+fn send_events(
     events_tx: &mpsc::Sender<Event>,
     shutdown: &mpsc::Receiver<()>,
 ) -> Result<(), SendEventError> {
@@ -132,7 +132,7 @@ pub fn send_events(
 /// succeeded but `disable_raw_mode` fails, that teardown failure is surfaced
 /// instead as a [`SendEventError::TerminalError`]; a loop error takes
 /// precedence over a teardown error and is preserved unchanged.
-pub fn read_events(
+pub(crate) fn read_events(
     events_tx: mpsc::Sender<Event>,
     shutdown_rx: mpsc::Receiver<()>,
 ) -> Result<(), SendEventError> {
@@ -151,12 +151,46 @@ pub fn read_events(
 
 #[cfg(test)]
 mod tests {
+    use std::thread;
+
     use crossterm::event::{
-        KeyCode as Ct, KeyEvent, KeyEventKind, KeyModifiers, MediaKeyCode,
-        ModifierKeyCode, MouseEvent, MouseEventKind,
+        KeyCode as Ct,
+        KeyEvent,
+        KeyEventKind,
+        KeyModifiers,
+        MediaKeyCode,
+        ModifierKeyCode,
+        MouseEvent,
+        MouseEventKind,
     };
 
     use super::*;
+
+    #[test]
+    fn send_events_stops_when_shutdown_already_signaled() {
+        let (shutdown_tx, shutdown_rx) = mpsc::channel();
+        let (events_tx, _events_rx) = mpsc::channel();
+        assert!(
+            shutdown_tx.send(()).is_ok(),
+            "failed to send shutdown signal"
+        );
+
+        // Drive the loop on a side thread guarded by a timeout: if
+        // `send_events` ever failed to notice the shutdown signal and looped
+        // forever, the test fails after 2s instead of hanging the binary.
+        let (done_tx, done_rx) = mpsc::channel();
+        thread::spawn(move || {
+            let result = send_events(&events_tx, &shutdown_rx);
+            let _ = done_tx.send(result);
+        });
+
+        let result = done_rx.recv_timeout(Duration::from_secs(2));
+        assert!(
+            result.is_ok(),
+            "send_events did not return: {:?}",
+            result.err()
+        );
+    }
 
     /// Wrap a `crossterm` key code and kind into a full terminal event.
     ///
@@ -237,10 +271,7 @@ mod tests {
     #[test]
     fn translate_keeps_supported_key_press() {
         let event = key_event(Ct::Char('x'), KeyEventKind::Press);
-        assert_eq!(
-            translate(event),
-            Some(Event::KeyPress(KeyCode::Char('x')))
-        );
+        assert_eq!(translate(event), Some(Event::KeyPress(KeyCode::Char('x'))));
     }
 
     #[test]

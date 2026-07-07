@@ -69,10 +69,9 @@ impl EventStream {
     /// Create a stream and start reading terminal input.
     ///
     /// Spawns the reader thread, which immediately emits
-    /// [`Event::ChannelReady`] and then runs the read loop
-    /// ([`read_events`]), enabling raw mode for the
-    /// lifetime of the stream. Returns as soon as the thread is spawned,
-    /// without blocking on the first event.
+    /// [`Event::ChannelReady`] and then runs the internal read loop,
+    /// enabling raw mode for the lifetime of the stream. Returns as soon as
+    /// the thread is spawned, without blocking on the first event.
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let (events_tx, events_rx) = mpsc::channel();
