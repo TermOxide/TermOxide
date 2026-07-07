@@ -1,3 +1,15 @@
+//! # Terminal backend — the `crossterm` adapter
+//!
+//! This module is the only place in the crate that depends on a concrete
+//! terminal library. It reads raw input from `crossterm`, translates it into
+//! the backend-agnostic [`Event`] / [`KeyCode`] types from
+//! [`crate::event`], and forwards it over a channel.
+//!
+//! Because all of the coupling lives here, supporting a different backend
+//! (for example `termion`, or a native Windows console) is a matter of
+//! providing another translation step and read loop — no consumer of the
+//! crate needs to change.
+
 use std::{io, sync::mpsc, time::Duration};
 
 use crossterm::{
@@ -7,12 +19,24 @@ use crossterm::{
 
 use crate::event::{Event, KeyCode};
 
+/// Error returned by the reader loop when it cannot make progress.
 #[derive(Debug)]
 pub enum SendEventError {
+    /// The receiving end of the event channel was dropped, so translated
+    /// events can no longer be delivered.
     ChannelError(mpsc::SendError<Event>),
+    /// A `crossterm` terminal operation failed (polling, reading, or
+    /// enabling/disabling raw mode).
     TerminalError(io::Error),
 }
 
+/// Translate a raw `crossterm` event into a crate [`Event`].
+///
+/// Only key **press** events are kept (`KeyEventKind::Press`); key releases,
+/// repeats, and every non-key event (mouse, resize, focus, paste) yield
+/// `None` and are silently discarded. A recognised press further depends on
+/// [`to_keycode`] succeeding, so a press on an unsupported key also yields
+/// `None`.
 fn translate(event: crossterm::event::Event) -> Option<Event> {
     match event {
         crossterm::event::Event::Key(key)
@@ -24,6 +48,10 @@ fn translate(event: crossterm::event::Event) -> Option<Event> {
     }
 }
 
+/// Map a `crossterm` key code onto the crate's [`KeyCode`].
+///
+/// Returns `None` for any key that has no corresponding [`KeyCode`] variant
+/// (for example media or modifier keys), which lets [`translate`] drop it.
 fn to_keycode(code: crossterm::event::KeyCode) -> Option<KeyCode> {
     use crossterm::event::KeyCode as Ct;
     match code {
@@ -49,6 +77,24 @@ fn to_keycode(code: crossterm::event::KeyCode) -> Option<KeyCode> {
     }
 }
 
+/// Run the input loop, forwarding translated events until asked to stop.
+///
+/// Each iteration first checks `shutdown`: the loop returns `Ok(())` as soon
+/// as a stop signal is received *or* the sender side is disconnected.
+/// Otherwise it polls the terminal for up to 100 ms, and on activity reads one
+/// event, translates it, and sends the result over `events_tx`.
+///
+/// The 100 ms poll timeout bounds how long a shutdown request can take to be
+/// noticed: the loop reacts within at most one poll interval.
+///
+/// This function does **not** manage raw mode; it expects the terminal to be
+/// prepared by the caller (see [`read_events`]).
+///
+/// # Errors
+///
+/// - [`SendEventError::TerminalError`] if polling or reading fails.
+/// - [`SendEventError::ChannelError`] if the receiver has been dropped and a
+///   translated event can no longer be delivered.
 pub fn send_events(
     events_tx: &mpsc::Sender<Event>,
     shutdown: &mpsc::Receiver<()>,
@@ -74,6 +120,18 @@ pub fn send_events(
     Ok(())
 }
 
+/// Enable raw mode, run [`send_events`], and restore the terminal afterwards.
+///
+/// This is the entry point run on the background reader thread. It brackets
+/// the loop with `enable_raw_mode` / `disable_raw_mode` so the terminal is
+/// always left in a sane state, even when the loop stops because of an error.
+///
+/// # Errors
+///
+/// Returns the error produced by [`send_events`], if any. When the loop itself
+/// succeeded but `disable_raw_mode` fails, that teardown failure is surfaced
+/// instead as a [`SendEventError::TerminalError`]; a loop error takes
+/// precedence over a teardown error and is preserved unchanged.
 pub fn read_events(
     events_tx: mpsc::Sender<Event>,
     shutdown_rx: mpsc::Receiver<()>,
