@@ -170,14 +170,16 @@ mod tests {
     fn send_events_stops_when_shutdown_already_signaled() {
         let (shutdown_tx, shutdown_rx) = mpsc::channel();
         let (events_tx, _events_rx) = mpsc::channel();
+        // Signal shutdown up front, so the loop must exit on its very first
+        // iteration without ever blocking on a terminal poll.
         assert!(
             shutdown_tx.send(()).is_ok(),
-            "failed to send shutdown signal"
+            "Failed to send shutdown signal"
         );
 
-        // Drive the loop on a side thread guarded by a timeout: if
-        // `send_events` ever failed to notice the shutdown signal and looped
-        // forever, the test fails after 2s instead of hanging the binary.
+        // Run the loop on a side thread and wait with a timeout: if it fails to
+        // honour the pre-set shutdown signal and blocks, the test fails after
+        // 2s instead of hanging forever.
         let (done_tx, done_rx) = mpsc::channel();
         thread::spawn(move || {
             let result = send_events(&events_tx, &shutdown_rx);
@@ -187,7 +189,7 @@ mod tests {
         let result = done_rx.recv_timeout(Duration::from_secs(2));
         assert!(
             result.is_ok(),
-            "send_events did not return: {:?}",
+            "send_events returned an error: {:?}",
             result.err()
         );
     }
