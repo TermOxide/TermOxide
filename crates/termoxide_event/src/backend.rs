@@ -10,7 +10,7 @@
 //! providing another translation step and read loop — no consumer of the
 //! crate needs to change.
 
-use std::{io, sync::mpsc, time::Duration};
+use std::{fmt, io, sync::mpsc, time::Duration};
 
 use crossterm::{
     event::{poll, read},
@@ -28,6 +28,28 @@ pub enum SendEventError {
     /// A `crossterm` terminal operation failed (polling, reading, or
     /// enabling/disabling raw mode).
     TerminalError(io::Error),
+}
+
+impl fmt::Display for SendEventError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SendEventError::ChannelError(error) => {
+                write!(f, "event channel receiver was dropped: {error}")
+            },
+            SendEventError::TerminalError(error) => {
+                write!(f, "terminal operation failed: {error}")
+            },
+        }
+    }
+}
+
+impl std::error::Error for SendEventError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            SendEventError::ChannelError(error) => Some(error),
+            SendEventError::TerminalError(error) => Some(error),
+        }
+    }
 }
 
 /// Translate a raw `crossterm` event into a crate [`Event`].
