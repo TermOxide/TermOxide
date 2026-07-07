@@ -148,3 +148,133 @@ pub fn read_events(
 
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use crossterm::event::{
+        KeyCode as Ct, KeyEvent, KeyEventKind, KeyModifiers, MediaKeyCode,
+        ModifierKeyCode, MouseEvent, MouseEventKind,
+    };
+
+    use super::*;
+
+    /// Wrap a `crossterm` key code and kind into a full terminal event.
+    ///
+    /// Keeps the `translate` tests focused on the two axes that matter here —
+    /// the key code and the event kind — without repeating the modifier and
+    /// wrapper boilerplate at every call site.
+    fn key_event(code: Ct, kind: KeyEventKind) -> crossterm::event::Event {
+        crossterm::event::Event::Key(KeyEvent::new_with_kind(
+            code,
+            KeyModifiers::NONE,
+            kind,
+        ))
+    }
+
+    #[test]
+    fn to_keycode_maps_every_supported_key() {
+        let cases = [
+            (Ct::Backspace, KeyCode::Backspace),
+            (Ct::Enter, KeyCode::Enter),
+            (Ct::Left, KeyCode::Left),
+            (Ct::Right, KeyCode::Right),
+            (Ct::Up, KeyCode::Up),
+            (Ct::Down, KeyCode::Down),
+            (Ct::Home, KeyCode::Home),
+            (Ct::End, KeyCode::End),
+            (Ct::PageUp, KeyCode::PageUp),
+            (Ct::PageDown, KeyCode::PageDown),
+            (Ct::Tab, KeyCode::Tab),
+            (Ct::BackTab, KeyCode::BackTab),
+            (Ct::Delete, KeyCode::Delete),
+            (Ct::Insert, KeyCode::Insert),
+            (Ct::Null, KeyCode::Null),
+            (Ct::Esc, KeyCode::Esc),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(
+                to_keycode(input),
+                Some(expected),
+                "unexpected mapping for {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn to_keycode_preserves_function_key_number() {
+        for n in [0u8, 1, 5, 12, 255] {
+            assert_eq!(to_keycode(Ct::F(n)), Some(KeyCode::F(n)));
+        }
+    }
+
+    #[test]
+    fn to_keycode_preserves_char_value() {
+        for c in ['a', 'Z', '9', ' ', 'é', '\n', '\0'] {
+            assert_eq!(to_keycode(Ct::Char(c)), Some(KeyCode::Char(c)));
+        }
+    }
+
+    #[test]
+    fn to_keycode_returns_none_for_unsupported_keys() {
+        let unsupported = [
+            Ct::CapsLock,
+            Ct::ScrollLock,
+            Ct::NumLock,
+            Ct::PrintScreen,
+            Ct::Pause,
+            Ct::Menu,
+            Ct::KeypadBegin,
+            Ct::Media(MediaKeyCode::Play),
+            Ct::Modifier(ModifierKeyCode::LeftShift),
+        ];
+
+        for input in unsupported {
+            assert_eq!(to_keycode(input), None, "expected None for {input:?}");
+        }
+    }
+
+    #[test]
+    fn translate_keeps_supported_key_press() {
+        let event = key_event(Ct::Char('x'), KeyEventKind::Press);
+        assert_eq!(
+            translate(event),
+            Some(Event::KeyPress(KeyCode::Char('x')))
+        );
+    }
+
+    #[test]
+    fn translate_drops_press_on_unsupported_key() {
+        let event = key_event(Ct::CapsLock, KeyEventKind::Press);
+        assert_eq!(translate(event), None);
+    }
+
+    #[test]
+    fn translate_drops_key_release_and_repeat() {
+        for kind in [KeyEventKind::Release, KeyEventKind::Repeat] {
+            let event = key_event(Ct::Char('x'), kind);
+            assert_eq!(translate(event), None, "expected None for {kind:?}");
+        }
+    }
+
+    #[test]
+    fn translate_drops_non_key_events() {
+        let events = [
+            crossterm::event::Event::Resize(80, 24),
+            crossterm::event::Event::FocusGained,
+            crossterm::event::Event::FocusLost,
+            crossterm::event::Event::Paste("hello".to_string()),
+            crossterm::event::Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Moved,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::NONE,
+            }),
+        ];
+
+        for event in events {
+            let described = format!("{event:?}");
+            assert_eq!(translate(event), None, "expected None for {described}");
+        }
+    }
+}
