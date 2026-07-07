@@ -67,11 +67,12 @@ fn check_teardown_stops_thread() {
 
 #[test]
 #[serial]
-fn ready_send_fails_if_receiver_is_dropped_early() {
-    // Drop the stream right away, before the reader thread gets to send
-    // `ChannelReady`. That send then fails; the test guards that the thread
-    // handles the failure gracefully (no panic, clean shutdown) — reaching the
-    // end of the test at all is the assertion.
+fn drop_immediately_shuts_down_cleanly() {
+    // Drop the stream right away, without ever calling `recv`. Depending on
+    // timing the reader thread may or may not have sent `ChannelReady` yet, so
+    // the `ChannelReady` send may succeed or fail — either way the thread must
+    // shut down without panicking. Reaching the end of the test is the
+    // assertion: `drop` signals shutdown and joins the thread cleanly.
     let events = EventStream::new();
     drop(events);
 }
