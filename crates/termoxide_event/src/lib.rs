@@ -32,15 +32,19 @@
 //!     }
 //! }
 //!
-//! // Stop the reader thread and restore the terminal.
-//! events.teardown().expect("reader thread panicked");
+//! // Stop the reader thread and restore the terminal, surfacing any error the
+//! // reader loop stopped on.
+//! match events.teardown().expect("reader thread panicked") {
+//!     Ok(()) => {},
+//!     Err(error) => eprintln!("reader stopped: {error}"),
+//! }
 //! ```
 
 pub mod backend;
 pub mod event;
 use std::{sync::mpsc, thread};
 
-use backend::read_events;
+use backend::{SendEventError, read_events};
 use event::Event;
 
 /// An owning handle over a background terminal-input reader.
@@ -61,8 +65,9 @@ pub struct EventStream {
     /// stopping is idempotent.
     shutdown: Option<mpsc::SyncSender<()>>,
     /// Join handle of the reader thread; taken on shutdown so it is joined at
-    /// most once.
-    thread: Option<thread::JoinHandle<()>>,
+    /// most once. The thread yields the [`SendEventError`] its loop stopped
+    /// on, if any.
+    thread: Option<thread::JoinHandle<Result<(), SendEventError>>>,
 }
 
 impl EventStream {
@@ -77,14 +82,11 @@ impl EventStream {
         let (events_tx, events_rx) = mpsc::channel();
         let (shutdown_tx, shutdown_rx) = mpsc::sync_channel(1);
 
-        let thread = thread::spawn(move || {
-            if let Err(error) = events_tx.send(Event::ChannelReady) {
-                dbg!(error);
-                return;
-            }
-            if let Err(error) = read_events(events_tx, shutdown_rx) {
-                dbg!(error);
-            }
+        let thread = thread::spawn(move || -> Result<(), SendEventError> {
+            events_tx
+                .send(Event::ChannelReady)
+                .map_err(SendEventError::ChannelError)?;
+            read_events(events_tx, shutdown_rx)
         });
 
         Self {
@@ -111,25 +113,29 @@ impl EventStream {
     /// Stop the stream explicitly and wait for the reader thread to finish.
     ///
     /// Consumes the handle, signals shutdown, and joins the thread — the same
-    /// work the [`Drop`] implementation performs, except the join result is
-    /// returned rather than ignored. The [`thread::Result`] is `Err` only if
-    /// the reader thread panicked.
-    pub fn teardown(mut self) -> thread::Result<()> { self.stop() }
+    /// work the [`Drop`] implementation performs, except the result is returned
+    /// rather than ignored. The outer [`thread::Result`] is `Err` only if the
+    /// reader thread panicked; the inner `Result` carries the
+    /// [`SendEventError`] the reader loop stopped on, if any.
+    pub fn teardown(mut self) -> thread::Result<Result<(), SendEventError>> {
+        self.stop()
+    }
 
     /// Signal the reader thread to stop and join it, at most once.
     ///
     /// Both the shutdown sender and the join handle are taken out of their
     /// `Option` slots, so repeated calls (for instance
-    /// [`teardown`](Self::teardown) followed by [`Drop`]) are safe no-ops.
-    /// Sending the shutdown signal is best-effort: if the thread has
-    /// already exited the send simply fails and is ignored.
-    fn stop(&mut self) -> thread::Result<()> {
+    /// [`teardown`](Self::teardown) followed by [`Drop`]) are safe no-ops that
+    /// return `Ok(Ok(()))`. Sending the shutdown signal is best-effort: if the
+    /// thread has already exited the send simply fails and is ignored. On the
+    /// first call the reader thread's own result is forwarded unchanged.
+    fn stop(&mut self) -> thread::Result<Result<(), SendEventError>> {
         if let Some(shutdown) = self.shutdown.take() {
             let _ = shutdown.send(());
         }
         match self.thread.take() {
             Some(thread) => thread.join(),
-            None => Ok(()),
+            None => Ok(Ok(())),
         }
     }
 }
