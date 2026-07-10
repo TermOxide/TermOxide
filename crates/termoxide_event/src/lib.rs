@@ -96,20 +96,6 @@ impl EventStream {
         }
     }
 
-    /// Block until the next event arrives.
-    ///
-    /// Waits indefinitely for the reader thread to produce an event. The very
-    /// first call is guaranteed to return [`Event::ChannelReady`], so it never
-    /// hangs on a freshly created stream. Returns
-    /// [`RecvError`](mpsc::RecvError) once the reader thread has stopped and
-    /// the channel is closed.
-    ///
-    /// This is a temporary interface that will be superseded by a dedicated
-    /// polling method.
-    pub fn recv(&self) -> Result<Event, mpsc::RecvError> {
-        self.receiver.recv()
-    }
-
     /// Poll for all events currently available.
     ///
     /// Returns a vector of all events currently available, or an empty vector
