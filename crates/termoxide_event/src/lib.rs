@@ -110,6 +110,20 @@ impl EventStream {
         self.receiver.recv()
     }
 
+    /// Poll for all events currently available.
+    ///
+    /// Returns a vector of all events currently available, or an empty vector
+    /// if none are ready. The order of events is preserved.
+    /// This is a non-blocking call, so it will return
+    /// immediately even if no events are ready.
+    pub fn poll_events(&self) -> Vec<Event> {
+        let mut events = Vec::new();
+        while let Ok(event) = self.receiver.try_recv() {
+            events.push(event);
+        }
+        events
+    }
+
     /// Stop the stream explicitly and wait for the reader thread to finish.
     ///
     /// Consumes the handle, signals shutdown, and joins the thread — the same
