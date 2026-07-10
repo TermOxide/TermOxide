@@ -109,9 +109,17 @@ impl EventStream {
     /// Poll for all events currently available.
     ///
     /// Returns a vector of all events currently available, or an empty vector
-    /// if none are ready. The order of events is preserved.
-    /// This is a non-blocking call, so it will return
-    /// immediately even if no events are ready.
+    /// if none are ready. The order of events is preserved. This is a
+    /// non-blocking call, so it returns immediately even if no events are
+    /// ready — including before the reader thread has sent its initial
+    /// [`Event::ChannelReady`].
+    ///
+    /// An empty vector does **not** signal end of stream: this method cannot
+    /// distinguish "nothing pending yet" from "the reader thread has stopped
+    /// and the channel is closed". To observe the reader stopping — and to
+    /// surface any [`SendEventError`] it stopped on — call
+    /// [`teardown`](Self::teardown) rather than inferring shutdown from an
+    /// empty poll.
     pub fn poll_events(&self) -> Vec<Event> {
         let mut events = Vec::new();
         while let Ok(event) = self.receiver.try_recv() {
