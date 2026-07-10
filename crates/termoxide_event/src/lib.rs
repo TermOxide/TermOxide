@@ -20,16 +20,26 @@
 //! ## Quickstart
 //!
 //! ```no_run
+//! use std::{thread, time::Duration};
+//!
 //! use termoxide_event::{EventStream, event::Event};
 //!
 //! let events = EventStream::new();
 //!
-//! // The first event is always `Event::ChannelReady`: the reader is live.
-//! while let Ok(event) = events.recv() {
-//!     match event {
-//!         Event::ChannelReady => println!("stream ready"),
-//!         Event::KeyPress(code) => println!("key pressed: {code:?}"),
+//! // `poll_events` never blocks: it drains whatever input is pending and
+//! // returns an empty `Vec` when nothing is ready, so the loop must set its
+//! // own pace. The first event is always `Event::ChannelReady`.
+//! 'run: loop {
+//!     for event in events.poll_events() {
+//!         match event {
+//!             Event::ChannelReady => println!("stream ready"),
+//!             Event::KeyPress(code) => {
+//!                 println!("key pressed: {code:?}");
+//!                 break 'run;
+//!             },
+//!         }
 //!     }
+//!     thread::sleep(Duration::from_millis(16));
 //! }
 //!
 //! // Stop the reader thread and restore the terminal, surfacing any error the
@@ -51,8 +61,8 @@ use event::Event;
 ///
 /// Creating an `EventStream` spawns a thread that puts the terminal into raw
 /// mode and streams [`Event`]s back over a channel. The application consumes
-/// them with [`recv`](Self::recv). The very first event is always
-/// [`Event::ChannelReady`].
+/// them with [`poll_events`](Self::poll_events). The very first event is
+/// always [`Event::ChannelReady`].
 ///
 /// Shutdown is cooperative: dropping the handle (or calling
 /// [`teardown`](Self::teardown)) signals the thread to stop, joins it, and
