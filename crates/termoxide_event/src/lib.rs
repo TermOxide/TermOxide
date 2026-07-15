@@ -20,16 +20,26 @@
 //! ## Quickstart
 //!
 //! ```no_run
+//! use std::{thread, time::Duration};
+//!
 //! use termoxide_event::{EventStream, event::Event};
 //!
 //! let events = EventStream::new();
 //!
-//! // The first event is always `Event::ChannelReady`: the reader is live.
-//! while let Ok(event) = events.recv() {
-//!     match event {
-//!         Event::ChannelReady => println!("stream ready"),
-//!         Event::KeyPress(code) => println!("key pressed: {code:?}"),
+//! // `poll_events` never blocks: it drains whatever input is pending and
+//! // returns an empty `Vec` when nothing is ready, so the loop must set its
+//! // own pace. The first event is always `Event::ChannelReady`.
+//! 'run: loop {
+//!     for event in events.poll_events() {
+//!         match event {
+//!             Event::ChannelReady => println!("stream ready"),
+//!             Event::KeyPress(code) => {
+//!                 println!("key pressed: {code:?}");
+//!                 break 'run;
+//!             },
+//!         }
 //!     }
+//!     thread::sleep(Duration::from_millis(16));
 //! }
 //!
 //! // Stop the reader thread and restore the terminal, surfacing any error the
@@ -51,8 +61,8 @@ use event::Event;
 ///
 /// Creating an `EventStream` spawns a thread that puts the terminal into raw
 /// mode and streams [`Event`]s back over a channel. The application consumes
-/// them with [`recv`](Self::recv). The very first event is always
-/// [`Event::ChannelReady`].
+/// them with [`poll_events`](Self::poll_events). The very first event is
+/// always [`Event::ChannelReady`].
 ///
 /// Shutdown is cooperative: dropping the handle (or calling
 /// [`teardown`](Self::teardown)) signals the thread to stop, joins it, and
@@ -96,18 +106,26 @@ impl EventStream {
         }
     }
 
-    /// Block until the next event arrives.
+    /// Poll for all events currently available.
     ///
-    /// Waits indefinitely for the reader thread to produce an event. The very
-    /// first call is guaranteed to return [`Event::ChannelReady`], so it never
-    /// hangs on a freshly created stream. Returns
-    /// [`RecvError`](mpsc::RecvError) once the reader thread has stopped and
-    /// the channel is closed.
+    /// Returns a vector of all events currently available, or an empty vector
+    /// if none are ready. The order of events is preserved. This is a
+    /// non-blocking call, so it returns immediately even if no events are
+    /// ready — including before the reader thread has sent its initial
+    /// [`Event::ChannelReady`].
     ///
-    /// This is a temporary interface that will be superseded by a dedicated
-    /// polling method.
-    pub fn recv(&self) -> Result<Event, mpsc::RecvError> {
-        self.receiver.recv()
+    /// An empty vector does **not** signal end of stream: this method cannot
+    /// distinguish "nothing pending yet" from "the reader thread has stopped
+    /// and the channel is closed". To observe the reader stopping — and to
+    /// surface any [`SendEventError`] it stopped on — call
+    /// [`teardown`](Self::teardown) rather than inferring shutdown from an
+    /// empty poll.
+    pub fn poll_events(&self) -> Vec<Event> {
+        let mut events = Vec::new();
+        while let Ok(event) = self.receiver.try_recv() {
+            events.push(event);
+        }
+        events
     }
 
     /// Stop the stream explicitly and wait for the reader thread to finish.
