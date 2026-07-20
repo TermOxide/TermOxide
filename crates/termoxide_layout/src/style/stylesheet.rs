@@ -11,6 +11,10 @@ pub struct StyleSheet {
     map: HashMap<String, Style>,
 }
 
+impl Default for StyleSheet {
+    fn default() -> Self { Self::new() }
+}
+
 impl StyleSheet {
     /// Create an empty stylesheet.
     pub fn new() -> Self {
