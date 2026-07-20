@@ -6,8 +6,8 @@
 //! - quit event handling
 //! - error propagation
 
-use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{Terminal, backend::TestBackend, layout::Rect, style::Style};
+use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use termoxide_rendering::{
     event_router::EventRouter,
     render_loop::App,

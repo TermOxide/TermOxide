@@ -472,14 +472,11 @@ mod tests {
 
             // ...and an extra held modifier must not either, since matching is
             // on the exact modifier set.
-            let ctrl_shift_c = Event::KeyPress(KeyEvent::new(
-                KeyCode::Char('c'),
-                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-            ));
+            let ctrl_shift_c =
+                Event::KeyPress(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL | KeyModifiers::SHIFT));
             assert_eq!(bindings.apply_event(&ctrl_shift_c), 0);
 
-            let ctrl_c =
-                Event::KeyPress(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+            let ctrl_c = Event::KeyPress(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
             assert_eq!(bindings.apply_event(&ctrl_c), 1);
             assert_eq!(signal.get_untracked(), 1);
         });
