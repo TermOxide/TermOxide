@@ -957,5 +957,7 @@ mod tests {
     // Ratatui integration
     #[test]
     #[cfg(feature = "ratatui")]
-    fn convert_to_ratatui() { assert!(true) }
+    #[ignore = "TDD: Style -> ratatui::style::Style conversion is not \
+                implemented yet"]
+    fn convert_to_ratatui() { todo!() }
 }
