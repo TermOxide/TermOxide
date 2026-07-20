@@ -58,13 +58,7 @@
 
 use crossterm::{
     ExecutableCommand,
-    event::{DisableMouseCapture, EnableMouseCapture},
-    terminal::{
-        EnterAlternateScreen,
-        LeaveAlternateScreen,
-        disable_raw_mode,
-        enable_raw_mode,
-    },
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{
     Terminal,
@@ -143,27 +137,32 @@ impl<B: Backend> Renderer<B> {
     /// The terminal's cursor is hidden immediately so that it does not
     /// flicker during rendering.
     ///
+    /// ## Raw mode
+    ///
+    /// The renderer does **not** manage raw mode: that belongs to
+    /// [`EventStream`][termoxide_event::EventStream], which needs it to read
+    /// input and restores it on drop. Create the stream before the renderer and
+    /// keep it alive for at least as long, otherwise this alternate screen will
+    /// be driven by a cooked terminal.
+    ///
     /// # Errors
     ///
-    /// Returns [`RenderError::Io`] if hiding the cursor fails.
+    /// Returns [`RenderError::Io`] if entering the alternate screen or hiding
+    /// the cursor fails.
     pub fn new(mut terminal: Terminal<B>) -> Result<Self, RenderError> {
-        enable_raw_mode()?;
         if let Err(e) = (|| -> std::io::Result<()> {
             std::io::stdout().execute(EnterAlternateScreen)?;
-            std::io::stdout().execute(EnableMouseCapture)?;
             terminal.hide_cursor()?;
             Ok(())
         })() {
-            let _ = std::io::stdout().execute(DisableMouseCapture);
             let _ = std::io::stdout().execute(LeaveAlternateScreen);
-            let _ = disable_raw_mode();
             return Err(RenderError::Io(e));
         }
         Ok(Self { terminal, terminal_mode_active: true })
     }
 
-    /// Create a `Renderer` for testing, which does not enable raw mode or
-    /// alternate screen.
+    /// Create a `Renderer` for testing, which does not enter the alternate
+    /// screen.
     #[cfg(test)]
     pub(crate) fn new_for_test(terminal: Terminal<B>) -> Self { Self { terminal, terminal_mode_active: false } }
 
@@ -254,7 +253,8 @@ impl<B: Backend> Renderer<B> {
     /// Restore the terminal to a clean state.
     ///
     /// Must be called before the process exits (or panics) to avoid leaving
-    /// the user's terminal in raw mode without a visible cursor.
+    /// the user staring at the alternate screen without a visible cursor.
+    /// Raw mode is not touched here — see [`Self::new`].
     ///
     /// # Errors
     ///
@@ -267,10 +267,7 @@ impl<B: Backend> Renderer<B> {
         }
 
         self.terminal.show_cursor()?;
-        // Disable mouse capture and restore the alternate screen and raw mode.
-        std::io::stdout().execute(DisableMouseCapture)?;
         std::io::stdout().execute(LeaveAlternateScreen)?;
-        disable_raw_mode()?;
         self.terminal_mode_active = false;
         Ok(())
     }
