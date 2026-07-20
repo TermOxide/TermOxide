@@ -178,8 +178,10 @@ impl KeySignalBindings {
 #[derive(Debug, Clone)]
 struct HitEntry {
     /// Terminal area (inclusive bounding box) of the component.
+    #[allow(dead_code)]
     area: Rect,
     /// Stable component identifier.
+    #[allow(dead_code)]
     id: ComponentId,
 }
 
@@ -332,6 +334,7 @@ impl Default for EventRouter {
 /// The rectangle is inclusive on the top-left and exclusive on the
 /// bottom-right, matching ratatui's convention (`Rect::contains`).
 #[inline]
+#[allow(dead_code)]
 fn contains(rect: Rect, col: u16, row: u16) -> bool {
     col >= rect.x
         && col < rect.x.saturating_add(rect.width)
