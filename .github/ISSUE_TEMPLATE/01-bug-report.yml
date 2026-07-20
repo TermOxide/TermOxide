@@ -1,0 +1,76 @@
+name: "\U0001F41B Bug Report (internal)"
+description: Report a bug observed while working on the codebase.
+title: "[Bug]: "
+labels: ["1.type: bug", "2.component: uncategorized", "01.status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This template assumes you are reporting a bug observed while building or running the project locally — there is no released version yet.
+
+        When the project is opened to external contributors, a public-flavored bug report template will be written alongside this one.
+
+  - type: checkboxes
+    id: regression
+    attributes:
+      label: Regression?
+      description: >
+        Check this if the bug is about functionality that worked on
+        a previous commit on `main` and has now broken. Mention the
+        suspected breaking commit in the "Additional context" section
+        if you have a candidate.
+      options:
+        - label: This is a regression on `main`.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A short, clear description of the bug.
+      placeholder: What did you observe?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen instead?
+      placeholder: I expected…
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: >
+        Minimal steps so a teammate can reproduce locally. A code snippet
+        or a pointer to a failing test is ideal.
+      placeholder: |
+        1. Run this snippet
+        2. Observe that `...` panics
+    validations:
+      required: true
+
+  - type: input
+    id: commit
+    attributes:
+      label: Commit SHA
+      description: >
+        Output of `git rev-parse HEAD` (or `jj log -r @ -T commit_id`).
+        Short SHA is fine.
+        A branch name that points to the commit is also fine.
+      placeholder: "e.g. 9809b9b3, feat/<component>/<scope>"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: >
+        Logs, panic backtraces, screenshots, a candidate breaking commit,
+        or anything else that might help diagnose the issue. `RUST_BACKTRACE=1` output is welcome.
+    validations:
+      required: false

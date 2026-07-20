@@ -1,0 +1,14 @@
+# Policy for redhat-plumbers-in-action/advanced-issue-labeler
+# Docs: https://github.com/redhat-plumbers-in-action/advanced-issue-labeler#policy
+#
+# This file maps form field values (from github-issue-parser JSON output)
+# to GitHub labels. Add new sections here as you add more form fields
+# you want to auto-label (e.g. a component dropdown).
+
+policy:
+  - template: [01-bug-report.yml]
+    section:
+      - id: [regression]
+        label:
+          - name: "1.type: regression"
+            keys: ["This is a regression on `main`."]

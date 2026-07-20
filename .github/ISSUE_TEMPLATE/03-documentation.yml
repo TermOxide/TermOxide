@@ -1,0 +1,54 @@
+name: "\U0001F4DA Documentation Issue"
+description: Report incorrect, missing, or confusing documentation.
+title: "[Docs]: "
+labels: ["1.type: documentation", "01.status: needs-triage"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of issue
+      options:
+        - Incorrect or outdated information
+        - Missing documentation
+        - Unclear or confusing explanation
+        - Typo or formatting issue
+        - Missing example or code snippet
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Where?
+      description: >
+        URL, file path, rustdoc page, or section name where the issue
+        exists (or where you expected to find documentation).
+      placeholder: "e.g. https://termoxide.dev/docs/signals or crates/termoxide_signal/src/lib.rs:42"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What is wrong or missing? What did you expect to find?
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested improvement
+      description: >
+        If you have a concrete suggestion for how to fix or improve the
+        documentation, describe it here or open a PR directly.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I have searched the [existing documentation issues](https://github.com/TermOxide/TermOxide/labels/1.type:%20documentation) and this has not been reported yet.
+          required: true

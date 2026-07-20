@@ -1,0 +1,25 @@
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: true
+
+ignore:
+  - "crates/cargo-extract" # Complete independent crate, not part of the main codebase
+
+coverage:
+  precision: 2
+  round: down
+  range: "0...100"
+  status:
+    project:
+      default:
+        target: 60%        # minimum overall coverage
+        threshold: 1%      # allow small drop
+        if_not_found: failure
+        if_ci_failed: error
+
+    patch:
+      default:
+        target: 70%        # enforce coverage on changed code
+        if_not_found: failure
+        if_ci_failed: error

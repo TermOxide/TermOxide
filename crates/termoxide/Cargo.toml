@@ -25,7 +25,7 @@ long_description = "TermOxide is a framework for building terminal user interfac
 
 [dependencies]
 termoxide_macros = { path = "../termoxide_macros" }
-termoxide_layout = { path = "../termoxide_layout/" }
+oxidui_style = { path = "../oxidui_style", default-features = true }
 termoxide_reactive = { path = "../termoxide_reactive" }
 
 # Path handling
@@ -41,4 +41,4 @@ enum_cycling = "0.2.1"
 
 [features]
 default = ["ratatui"]
-ratatui = ["termoxide_layout/ratatui"]
+ratatui = ["oxidui_style/ratatui"]

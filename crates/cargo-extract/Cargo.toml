@@ -1,0 +1,8 @@
+[package]
+name = "cargo-extract"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+guppy = "0.17"
+anyhow = "1"
