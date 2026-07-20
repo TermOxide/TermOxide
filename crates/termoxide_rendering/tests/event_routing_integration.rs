@@ -2,21 +2,15 @@
 //!
 //! Tests the EventRouter component covering:
 //! - keyboard event routing to focused component
-//! - mouse hit-testing and topmost-wins semantics
-//! - focus state transitions (Tab, set_focus)
-//! - broadcast events (resize)
+//! - keyboard routing through the global bindings
+//! - hit-map maintenance across varied and nested trees
+//! - the stream handshake being routed nowhere
+//!
+//! Mouse hit-testing, focus transitions (Tab, `set_focus`) and resize broadcast
+//! are not covered: the router implements none of them yet, and
+//! `termoxide_event` carries neither mouse nor resize events today.
 
-use crossterm::event::{
-    Event,
-    KeyCode,
-    KeyEvent,
-    KeyEventKind,
-    KeyEventState,
-    KeyModifiers,
-    MouseButton,
-    MouseEvent,
-    MouseEventKind,
-};
+use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{layout::Rect, style::Style};
 use termoxide_rendering::{event_router::EventRouter, view_node::ViewNode};
 
@@ -70,12 +64,7 @@ fn test_event_router_keyboard_basic() {
     let mut router = EventRouter::new();
     router.sync_hit_map(&root);
 
-    let ev = Event::Key(KeyEvent {
-        code: KeyCode::Char('a'),
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let ev = Event::KeyPress(KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::NONE });
 
     let target = router.route_event(&ev, &root);
     assert!((target.is_none()));
@@ -88,12 +77,7 @@ fn test_event_router_keyboard_multiple_events() {
     router.sync_hit_map(&root);
 
     for _ in 0..5 {
-        let ev = Event::Key(KeyEvent {
-            code: KeyCode::Char('x'),
-            modifiers: KeyModifiers::NONE,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        });
+        let ev = Event::KeyPress(KeyEvent { code: KeyCode::Char('x'), modifiers: KeyModifiers::NONE });
         let target = router.route_event(&ev, &root);
         assert!(target.is_none());
     }
@@ -105,80 +89,18 @@ fn test_event_router_keyboard_with_modifiers() {
     let mut router = EventRouter::new();
     router.sync_hit_map(&root);
 
-    let ev = Event::Key(KeyEvent {
-        code: KeyCode::Char('c'),
-        modifiers: KeyModifiers::CONTROL,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let ev = Event::KeyPress(KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL });
 
     let target = router.route_event(&ev, &root);
     assert!(target.is_none());
 }
-
 // ─────────────────────────────────────────────────────────────────────────── //
-//  Mouse hit-testing tests.-
+//  Hit-map maintenance tests
 // ─────────────────────────────────────────────────────────────────────────── //
-
-#[test]
-fn test_event_router_mouse_hit_test_basic() {
-    let root = build_two_panel_tree();
-    let mut router = EventRouter::new();
-    router.sync_hit_map(&root);
-
-    let mouse_ev = Event::Mouse(MouseEvent {
-        kind: MouseEventKind::Down(MouseButton::Left),
-        column: 20,
-        row: 12,
-        modifiers: KeyModifiers::NONE,
-    });
-
-    let target = router.route_event(&mouse_ev, &root);
-    assert!(target.is_none());
-}
-
-#[test]
-fn test_event_router_mouse_multiple_clicks() {
-    let root = build_two_panel_tree();
-    let mut router = EventRouter::new();
-    router.sync_hit_map(&root);
-
-    for col in &[10, 30, 50, 70] {
-        let mouse_ev = Event::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: *col,
-            row: 12,
-            modifiers: KeyModifiers::NONE,
-        });
-
-        let target = router.route_event(&mouse_ev, &root);
-        assert!(target.is_none());
-    }
-}
-
-#[test]
-fn test_event_router_mouse_buttons() {
-    let root = build_two_panel_tree();
-    let mut router = EventRouter::new();
-    router.sync_hit_map(&root);
-
-    // Test different mouse buttons
-    for button in &[MouseButton::Left, MouseButton::Right, MouseButton::Middle] {
-        let mouse_ev = Event::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(*button),
-            column: 40,
-            row: 12,
-            modifiers: KeyModifiers::NONE,
-        });
-
-        let target = router.route_event(&mouse_ev, &root);
-        assert!(target.is_none());
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Hit map sync tests
-// ─────────────────────────────────────────────────────────────────────────── //
+//
+//  The hit map is built but not yet consulted, so these only assert that
+//  syncing it over varied trees keeps routing well-behaved. They will grow real
+//  assertions once hit-testing lands.
 
 #[test]
 fn test_event_router_sync_hit_map_rebuilds() {
@@ -186,21 +108,15 @@ fn test_event_router_sync_hit_map_rebuilds() {
     let mut router = EventRouter::new();
     router.sync_hit_map(&root1);
 
-    // Build a new tree with different structure
+    // Build a new tree with a different structure.
     let left = ViewNode::text(Rect::new(0, 0, 80, 24), "Full Width", Style::default()).with_id(10);
     let root2 = ViewNode::container(Rect::new(0, 0, 80, 24), vec![left]);
 
     router.sync_hit_map(&root2);
 
-    // Verify sync_hit_map completes without error
-    let mouse_ev = Event::Mouse(MouseEvent {
-        kind: MouseEventKind::Down(MouseButton::Left),
-        column: 40,
-        row: 12,
-        modifiers: KeyModifiers::NONE,
-    });
+    let ev = Event::KeyPress(KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::NONE });
 
-    let target = router.route_event(&mouse_ev, &root2);
+    let target = router.route_event(&ev, &root2);
     assert!(target.is_none());
 }
 
@@ -209,127 +125,37 @@ fn test_event_router_nested_components_sync() {
     let root = build_nested_tree();
     let mut router = EventRouter::new();
 
-    // Sync should handle nested structures
+    // Sync should handle nested structures.
     router.sync_hit_map(&root);
 
-    let mouse_ev = Event::Mouse(MouseEvent {
-        kind: MouseEventKind::Down(MouseButton::Left),
-        column: 10,
-        row: 2,
-        modifiers: KeyModifiers::NONE,
-    });
+    let ev = Event::KeyPress(KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::NONE });
 
-    let target = router.route_event(&mouse_ev, &root);
-    assert!(target.is_none());
-}
-
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Mouse scroll and drag tests
-// ─────────────────────────────────────────────────────────────────────────── //
-
-#[test]
-fn test_event_router_mouse_scroll_events() {
-    let root = build_two_panel_tree();
-    let mut router = EventRouter::new();
-    router.sync_hit_map(&root);
-
-    let scroll_up = Event::Mouse(MouseEvent {
-        kind: MouseEventKind::ScrollUp,
-        column: 20,
-        row: 12,
-        modifiers: KeyModifiers::NONE,
-    });
-
-    let _target = router.route_event(&scroll_up, &root);
-
-    let scroll_down = Event::Mouse(MouseEvent {
-        kind: MouseEventKind::ScrollDown,
-        column: 60,
-        row: 12,
-        modifiers: KeyModifiers::NONE,
-    });
-
-    let target = router.route_event(&scroll_down, &root);
+    let target = router.route_event(&ev, &root);
     assert!(target.is_none());
 }
 
 #[test]
-fn test_event_router_mouse_drag() {
-    let root = build_two_panel_tree();
-    let mut router = EventRouter::new();
-    router.sync_hit_map(&root);
-
-    let drag_ev = Event::Mouse(MouseEvent {
-        kind: MouseEventKind::Drag(MouseButton::Left),
-        column: 40,
-        row: 10,
-        modifiers: KeyModifiers::NONE,
-    });
-
-    let target = router.route_event(&drag_ev, &root);
-    assert!(target.is_none());
-}
-
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Mouse moved tests
-// ─────────────────────────────────────────────────────────────────────────── //
-
-#[test]
-fn test_event_router_mouse_moved() {
+fn test_event_router_overlapping_tree_sync() {
     let root = build_overlapping_tree();
     let mut router = EventRouter::new();
+
     router.sync_hit_map(&root);
 
-    let moved_ev =
-        Event::Mouse(MouseEvent { kind: MouseEventKind::Moved, column: 50, row: 10, modifiers: KeyModifiers::NONE });
+    let ev = Event::KeyPress(KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::NONE });
 
-    let target = router.route_event(&moved_ev, &root);
+    let target = router.route_event(&ev, &root);
     assert!(target.is_none());
 }
 
 // ─────────────────────────────────────────────────────────────────────────── //
-//  Boundary condition tests
+//  Stream handshake
 // ─────────────────────────────────────────────────────────────────────────── //
 
 #[test]
-fn test_event_router_click_boundaries() {
+fn test_event_router_ignores_channel_ready() {
     let root = build_two_panel_tree();
     let mut router = EventRouter::new();
     router.sync_hit_map(&root);
 
-    for col in &[0, 39, 40, 79] {
-        let mouse_ev = Event::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: *col,
-            row: 12,
-            modifiers: KeyModifiers::NONE,
-        });
-
-        let target = router.route_event(&mouse_ev, &root);
-        assert!(target.is_none());
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Component ID stability tests
-// ─────────────────────────────────────────────────────────────────────────── //
-
-#[test]
-fn test_event_router_preserves_component_ids() {
-    let root = build_two_panel_tree();
-    let mut router = EventRouter::new();
-
-    for _ in 0..3 {
-        router.sync_hit_map(&root);
-
-        let mouse_ev = Event::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: 20,
-            row: 12,
-            modifiers: KeyModifiers::NONE,
-        });
-
-        let target = router.route_event(&mouse_ev, &root);
-        assert!(target.is_none());
-    }
+    assert!(router.route_event(&Event::ChannelReady, &root).is_none());
 }

@@ -6,7 +6,7 @@
 //! - quit event handling
 //! - error propagation
 
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{Terminal, backend::TestBackend, layout::Rect, style::Style};
 use termoxide_rendering::{
     event_router::EventRouter,
@@ -37,30 +37,20 @@ impl App for CounterApp {
 
     fn handle_event(&mut self, _id: Option<ComponentId>, event: Event) -> bool {
         match event {
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('q'),
-                modifiers: KeyModifiers::NONE,
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Char('q'), modifiers: KeyModifiers::NONE, .. }) => {
                 self.last_event = Some("quit".to_string());
                 true
             },
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('c'),
-                modifiers: KeyModifiers::CONTROL,
-                kind: KeyEventKind::Press,
-                ..
-            }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL, .. }) => {
                 self.last_event = Some("ctrl-c".to_string());
                 true
             },
-            Event::Key(KeyEvent { code: KeyCode::Char('+'), kind: KeyEventKind::Press, .. }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Char('+'), .. }) => {
                 self.count += 1;
                 self.last_event = Some("increment".to_string());
                 false
             },
-            Event::Key(KeyEvent { code: KeyCode::Char('-'), kind: KeyEventKind::Press, .. }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Char('-'), .. }) => {
                 self.count = self.count.saturating_sub(1);
                 self.last_event = Some("decrement".to_string());
                 false
@@ -113,12 +103,7 @@ fn test_app_build_view_reflects_state() {
 fn test_app_handle_event_quit_signal() {
     let mut app = CounterApp::new();
 
-    let quit_event = Event::Key(KeyEvent {
-        code: KeyCode::Char('q'),
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let quit_event = Event::KeyPress(KeyEvent { code: KeyCode::Char('q'), modifiers: KeyModifiers::NONE });
 
     let should_quit = app.handle_event(None, quit_event);
     assert!(should_quit);
@@ -129,12 +114,7 @@ fn test_app_handle_event_quit_signal() {
 fn test_app_handle_event_ctrl_c() {
     let mut app = CounterApp::new();
 
-    let ctrl_c = Event::Key(KeyEvent {
-        code: KeyCode::Char('c'),
-        modifiers: KeyModifiers::CONTROL,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let ctrl_c = Event::KeyPress(KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL });
 
     let should_quit = app.handle_event(None, ctrl_c);
     assert!(should_quit);
@@ -146,12 +126,7 @@ fn test_app_handle_event_increment() {
     let mut app = CounterApp::new();
     assert_eq!(app.count, 0);
 
-    let inc_event = Event::Key(KeyEvent {
-        code: KeyCode::Char('+'),
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let inc_event = Event::KeyPress(KeyEvent { code: KeyCode::Char('+'), modifiers: KeyModifiers::NONE });
 
     let should_quit = app.handle_event(None, inc_event);
     assert!(!should_quit);
@@ -164,12 +139,7 @@ fn test_app_handle_event_decrement() {
     let mut app = CounterApp::new();
     app.count = 10;
 
-    let dec_event = Event::Key(KeyEvent {
-        code: KeyCode::Char('-'),
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let dec_event = Event::KeyPress(KeyEvent { code: KeyCode::Char('-'), modifiers: KeyModifiers::NONE });
 
     let should_quit = app.handle_event(None, dec_event);
     assert!(!should_quit);
@@ -181,12 +151,7 @@ fn test_app_decrement_saturates_at_zero() {
     let mut app = CounterApp::new();
     app.count = 0;
 
-    let dec_event = Event::Key(KeyEvent {
-        code: KeyCode::Char('-'),
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let dec_event = Event::KeyPress(KeyEvent { code: KeyCode::Char('-'), modifiers: KeyModifiers::NONE });
 
     app.handle_event(None, dec_event);
     assert_eq!(app.count, 0); // should not underflow
@@ -197,12 +162,7 @@ fn test_app_unknown_event_not_handled() {
     let mut app = CounterApp::new();
     app.count = 5;
 
-    let unknown = Event::Key(KeyEvent {
-        code: KeyCode::Char('x'),
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let unknown = Event::KeyPress(KeyEvent { code: KeyCode::Char('x'), modifiers: KeyModifiers::NONE });
 
     let should_quit = app.handle_event(None, unknown);
     assert!(!should_quit);
@@ -262,7 +222,7 @@ impl App for MultiComponentApp {
     }
 
     fn handle_event(&mut self, id: Option<ComponentId>, event: Event) -> bool {
-        if let Event::Key(KeyEvent { code: KeyCode::Char('q'), .. }) = event {
+        if let Event::KeyPress(KeyEvent { code: KeyCode::Char('q'), .. }) = event {
             return true;
         }
 
@@ -275,12 +235,7 @@ impl App for MultiComponentApp {
 fn test_multi_component_event_routing() {
     let mut app = MultiComponentApp::new();
 
-    let ev1 = Event::Key(KeyEvent {
-        code: KeyCode::Char('a'),
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let ev1 = Event::KeyPress(KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::NONE });
 
     app.handle_event(Some(1), ev1);
     assert_eq!(app.events_received.len(), 1);
@@ -294,12 +249,7 @@ fn test_multi_component_focus_switches() {
 
     app.focused_id = Some(2);
 
-    let ev = Event::Key(KeyEvent {
-        code: KeyCode::Char('x'),
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let ev = Event::KeyPress(KeyEvent { code: KeyCode::Char('x'), modifiers: KeyModifiers::NONE });
 
     app.handle_event(app.focused_id, ev);
     assert_eq!(app.events_received[0].0, Some(2));

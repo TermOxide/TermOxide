@@ -7,7 +7,7 @@ description = "Reactive rendering pipeline for TermOxide: ViewNode tree, render 
 [dependencies]
 ratatui = { version = "0.26", features = ["crossterm"] }
 crossterm = "0.27"
-crossbeam-channel = "0.5"
+termoxide_event = { path = "../termoxide_event" }
 termoxide_layout = { path = "../termoxide_layout" }
 termoxide_reactive = { path = "../termoxide_reactive" }
 

@@ -1,35 +1,44 @@
-//! Main application loop: waits for events and drives redraws.
+//! Main application loop: polls for events and drives redraws.
 //!
 //! [`RenderLoop`] is the beating heart of a TermOxide application.  It owns
-//! the [`Renderer`][crate::renderer::Renderer] and the
-//! [`EventRouter`][crate::event_router::EventRouter], and orchestrates the
-//! complete **event → layout → render → diff → output** cycle.
+//! the [`Renderer`][crate::renderer::Renderer], the
+//! [`EventRouter`][crate::event_router::EventRouter] and an [`EventSource`],
+//! and orchestrates the complete **event → layout → render → diff → output**
+//! cycle.
 //!
 //! ## High-level cycle
+//!
+//! The loop is **frame-paced**, not input-paced: input is drained without
+//! blocking, so each iteration sets its own tempo by sleeping out the rest of
+//! the frame budget.  A frame only rebuilds and repaints when something
+//! actually changed — an event was handled, or the viewport was resized.
 //!
 //! ```text
 //! ┌──────────────────────────────────────────────────────┐
 //! │                     RenderLoop::run()                │
 //! │                                                      │
 //! │  ┌─────────────┐   ┌──────────────────────────┐      │
-//! │  │  crossterm  │   │  blocking event loop     │      │
-//! │  │  event      │   │  (event::read)           │      │
-//! │  └──────┬──────┘   └──────────┬───────────────┘      │
-//! │         │                     ▼                      │
-//! │         │          ┌───────────────────────┐         │
-//! │         │          │  EventRouter::route() │         │
-//! │         │          └──────────┬────────────┘         │
-//! │         │                     ▼                      │
-//! │         │          ┌───────────────────────┐         │
-//! │         │          │  app.build_view()     │         │
-//! │         │          └──────────┬────────────┘         │
-//! │         │                     ▼                      │
-//! │         │          ┌───────────────────────┐         │
-//! │         │          │  Renderer::render_    │         │
-//! │         │          │       frame()         │         │
-//! │         │          └───────────────────────┘         │
-//! │         │                                            │
-//! │         └──────────────(continue loop)────────────── │
+//! │  │ EventSource │──▶│  drain (non-blocking)    │      │
+//! │  └─────────────┘   └──────────┬───────────────┘      │
+//! │                               ▼                      │
+//! │                    ┌───────────────────────┐         │
+//! │                    │  EventRouter::route() │         │
+//! │                    └──────────┬────────────┘         │
+//! │                               ▼                      │
+//! │                    ┌───────────────────────┐         │
+//! │                    │  app.build_view()     │  if     │
+//! │                    └──────────┬────────────┘  dirty  │
+//! │                               ▼                      │
+//! │                    ┌───────────────────────┐         │
+//! │                    │  Renderer::render_    │         │
+//! │                    │       frame()         │         │
+//! │                    └──────────┬────────────┘         │
+//! │                               ▼                      │
+//! │                    ┌───────────────────────┐         │
+//! │                    │  sleep(rest of frame) │         │
+//! │                    └───────────────────────┘         │
+//! │                               │                      │
+//! │         ┌─────────────(continue loop)◀───────────────┤
 //! └──────────────────────────────────────────────────────┘
 //! ```
 //!
@@ -54,7 +63,7 @@
 //!     fn handle_event(
 //!         &mut self,
 //!         _id: Option<termoxide_rendering::view_node::ComponentId>,
-//!         _event: crossterm::event::Event,
+//!         _event: termoxide_event::event::Event,
 //!     ) -> bool {
 //!         false // not handled → propagate
 //!     }
@@ -64,18 +73,51 @@
 //! ## Shutdown
 //!
 //! The loop terminates when:
-//! - [`App::handle_event`] returns `true` for a [`crossterm::event::Event::Key`] with code `Char('q')` or `Esc` (the
-//!   application controls this), **or**
-//! - [`RenderLoop::quit`] sender is used from another thread.
+//! - the built-in quit bindings fire (Ctrl-C or Ctrl-D), **or**
+//! - [`App::handle_event`] returns `true` (the application controls this).
 
-use crossterm::event::{self, Event, KeyModifiers};
+use std::{
+    thread,
+    time::{Duration, Instant},
+};
+
 use ratatui::{backend::Backend, layout::Rect};
+use termoxide_event::{
+    EventStream,
+    event::{Event, KeyCode, KeyModifiers},
+};
 
 use crate::{
     event_router::EventRouter,
     renderer::{RenderError, Renderer},
     view_node::{ComponentId, ViewNode},
 };
+
+/// Target duration of one loop iteration (~60 frames per second).
+///
+/// Because [`EventSource::poll_events`] never blocks, this budget is the only
+/// thing keeping the loop from spinning on an idle terminal.
+pub const FRAME_INTERVAL: Duration = Duration::from_millis(16);
+
+// ───────────────────────────────────────────────────────────────────────────
+// //  EventSource
+// ───────────────────────────────────────────────────────────────────────────
+// //
+
+/// Non-blocking source of input events feeding the render loop.
+///
+/// The production implementation is [`EventStream`]; tests substitute their own
+/// so the loop can be exercised without a real terminal.
+pub trait EventSource {
+    /// Return every event available right now, oldest first.
+    ///
+    /// Must **not** block: an empty vector simply means "nothing pending".
+    fn poll_events(&mut self) -> Vec<Event>;
+}
+
+impl EventSource for EventStream {
+    fn poll_events(&mut self) -> Vec<Event> { EventStream::poll_events(self) }
+}
 
 // ───────────────────────────────────────────────────────────────────────────
 // //  App trait
@@ -86,7 +128,7 @@ use crate::{
 ///
 /// Implement this trait on your root application state struct.  The render
 /// loop calls [`build_view`][App::build_view] whenever the dirty flag is set,
-/// and [`handle_event`][App::handle_event] whenever a crossterm event arrives.
+/// and [`handle_event`][App::handle_event] whenever an input event arrives.
 ///
 /// ## Example
 ///
@@ -103,7 +145,7 @@ pub trait App {
     /// layout engine fills the terminal.
     fn build_view(&mut self, viewport: Rect) -> ViewNode;
 
-    /// Handle a routed crossterm event.
+    /// Handle a routed input event.
     ///
     /// `id` is the [`ComponentId`] that the
     /// [`EventRouter`][crate::event_router::EventRouter] determined should
@@ -131,7 +173,12 @@ pub trait App {
 /// use std::io::stdout;
 ///
 /// use ratatui::{Terminal, backend::CrosstermBackend};
+/// use termoxide_event::EventStream;
 /// use termoxide_rendering::{event_router::EventRouter, render_loop::RenderLoop, renderer::Renderer};
+///
+/// // The event stream owns raw mode, so it must be created *before* the
+/// // renderer enters the alternate screen.
+/// let events = EventStream::new();
 ///
 /// let backend = CrosstermBackend::new(stdout());
 /// let terminal = Terminal::new(backend).unwrap();
@@ -140,21 +187,33 @@ pub trait App {
 /// let event_router = EventRouter::new();
 ///
 /// // let mut app = MyApp::new();
-/// // RenderLoop::new(renderer, event_router).run(&mut app);
+/// // RenderLoop::new(renderer, event_router, events).run(&mut app);
 /// ```
+///
+/// ## Terminal restoration order
+///
+/// The field order below is load-bearing. Rust drops fields in declaration
+/// order, so `renderer` is torn down (leaving the alternate screen, restoring
+/// the cursor) *before* the event source drops and disables raw mode. Swapping
+/// them would cut raw mode while the alternate screen is still up.
 pub struct RenderLoop<B: Backend> {
     renderer: Renderer<B>,
     event_router: EventRouter,
-    event_reader: Option<Box<dyn FnMut() -> std::io::Result<Event>>>,
+    event_source: Box<dyn EventSource>,
 }
 
 impl<B: Backend> RenderLoop<B> {
     /// Create a new render loop.
     ///
     /// - `renderer` — the configured [`Renderer`] to paint frames.
-    /// - `event_router` — the [`EventRouter`] that maps raw crossterm events to component ids.
-    pub fn new(renderer: Renderer<B>, event_router: EventRouter) -> Self {
-        Self { renderer, event_router, event_reader: None }
+    /// - `event_router` — the [`EventRouter`] that maps input events to component ids.
+    /// - `event_source` — where input comes from; [`EventStream`] in production.
+    pub fn new(
+        renderer: Renderer<B>,
+        event_router: EventRouter,
+        event_source: impl EventSource + 'static,
+    ) -> Self {
+        Self { renderer, event_router, event_source: Box::new(event_source) }
     }
 
     /// Enter the blocking event loop.
@@ -191,34 +250,53 @@ impl<B: Backend> RenderLoop<B> {
 
     fn loop_body<A: App>(&mut self, app: &mut A) -> Result<(), RenderLoopError> {
         // Force an initial render.
-        let viewport = self.renderer.viewport();
+        let mut viewport = self.renderer.viewport();
         let mut root = app.build_view(viewport);
         self.renderer.render_frame(&mut root)?;
-        // Build initial spatial index so mouse events are routed immediately.
+        // Build initial spatial index so events are routed immediately.
         self.event_router.sync_hit_map(&root);
 
         loop {
-            let ev = self.read_event()?;
+            let frame_start = Instant::now();
+            let mut dirty = false;
 
-            // Default quit bindings: Ctrl-C and Ctrl-D.
-            if Self::is_quit_event(&ev) {
-                return Ok(());
+            for ev in self.event_source.poll_events() {
+                // Default quit bindings: Ctrl-C and Ctrl-D.
+                if Self::is_quit_event(&ev) {
+                    return Ok(());
+                }
+
+                // Route the event to the appropriate component.
+                let target_id = self.event_router.route_event(&ev, &root);
+
+                // Let the application handle it.
+                if app.handle_event(target_id, ev) {
+                    return Ok(());
+                }
+
+                dirty = true;
             }
 
-            // Route the event to the appropriate component.
-            let target_id = self.event_router.route_event(&ev, &root);
-
-            // Let the application handle it.
-            if app.handle_event(target_id, ev) {
-                return Ok(());
+            // The input stream carries no resize event, so the viewport is
+            // sampled every frame instead. This also catches resizes that
+            // happen while the user is not typing at all.
+            let current_viewport = self.renderer.viewport();
+            if current_viewport != viewport {
+                viewport = current_viewport;
+                dirty = true;
             }
 
-            // Rebuild the view after every handled event. Finer-grained dirty
+            // Rebuild the view whenever something changed. Finer-grained dirty
             // tracking can be reintroduced later.
-            let viewport = self.renderer.viewport();
-            root = app.build_view(viewport);
-            self.event_router.sync_hit_map(&root);
-            self.renderer.render_frame(&mut root)?;
+            if dirty {
+                root = app.build_view(viewport);
+                self.event_router.sync_hit_map(&root);
+                self.renderer.render_frame(&mut root)?;
+            }
+
+            // Spend the rest of the frame budget asleep. Polling never blocks,
+            // so without this the loop would busy-wait on an idle terminal.
+            thread::sleep(FRAME_INTERVAL.saturating_sub(frame_start.elapsed()));
         }
     }
 
@@ -230,19 +308,12 @@ impl<B: Backend> RenderLoop<B> {
     /// Applications that want different quit behaviour should intercept the
     /// event in [`App::handle_event`] and return `true` from there.
     fn is_quit_event(ev: &Event) -> bool {
-        use crossterm::event::{Event::Key, KeyCode::Char, KeyEvent};
-        matches!(
-            ev,
-            Key(KeyEvent { code: Char('c'), modifiers: KeyModifiers::CONTROL, .. })
-                | Key(KeyEvent { code: Char('d'), modifiers: KeyModifiers::CONTROL, .. })
-        )
-    }
-
-    fn read_event(&mut self) -> std::io::Result<Event> {
-        if let Some(reader) = self.event_reader.as_mut() {
-            reader()
-        } else {
-            event::read()
+        match *ev {
+            Event::KeyPress(key) => {
+                matches!(key.code, KeyCode::Char('c') | KeyCode::Char('d'))
+                    && key.modifiers == KeyModifiers::CONTROL
+            },
+            Event::ChannelReady => false,
         }
     }
 }
@@ -285,13 +356,10 @@ impl From<std::io::Error> for RenderLoopError {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        collections::VecDeque,
-        io::{Error, ErrorKind},
-    };
+    use std::collections::VecDeque;
 
-    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     use ratatui::{Terminal, backend::TestBackend, layout::Rect, style::Style};
+    use termoxide_event::event::KeyEvent;
 
     use super::*;
 
@@ -312,32 +380,59 @@ mod tests {
 
         fn handle_event(&mut self, _id: Option<ComponentId>, event: Event) -> bool {
             self.handle_count += 1;
-            matches!(event, Event::Key(KeyEvent { code: KeyCode::Char('x'), .. }))
+            matches!(event, Event::KeyPress(KeyEvent { code: KeyCode::Char('x'), .. }))
+        }
+    }
+
+    /// Number of empty polls tolerated before the fake source forces a quit.
+    ///
+    /// Without this the loop would spin forever on a test that forgets to queue
+    /// a terminating event; here it ends instead with a wrong `build_count`,
+    /// which is a readable failure rather than a hung suite.
+    const MAX_IDLE_POLLS: usize = 64;
+
+    /// Replays queued events, one per poll, so each event lands on its own
+    /// frame — mirroring how a user types rather than a burst arriving at once.
+    struct ScriptedEvents {
+        queue: VecDeque<Event>,
+        idle_polls: usize,
+    }
+
+    impl ScriptedEvents {
+        fn new(events: Vec<Event>) -> Self { Self { queue: events.into(), idle_polls: 0 } }
+    }
+
+    impl EventSource for ScriptedEvents {
+        fn poll_events(&mut self) -> Vec<Event> {
+            match self.queue.pop_front() {
+                Some(event) => vec![event],
+                None => {
+                    self.idle_polls += 1;
+                    if self.idle_polls > MAX_IDLE_POLLS {
+                        vec![make_key_event(KeyCode::Char('c'), KeyModifiers::CONTROL)]
+                    } else {
+                        Vec::new()
+                    }
+                },
+            }
         }
     }
 
     fn make_key_event(code: KeyCode, modifiers: KeyModifiers) -> Event {
-        Event::Key(KeyEvent { code, modifiers, kind: KeyEventKind::Press, state: KeyEventState::NONE })
+        Event::KeyPress(KeyEvent::new(code, modifiers))
     }
 
-    fn event_reader(events: Vec<Event>) -> Box<dyn FnMut() -> std::io::Result<Event>> {
-        let mut queue: VecDeque<Event> = events.into();
-        Box::new(move || {
-            queue
-                .pop_front()
-                .ok_or_else(|| Error::new(ErrorKind::UnexpectedEof, "no events"))
-        })
+    fn make_loop(events: Vec<Event>) -> RenderLoop<TestBackend> {
+        let backend = TestBackend::new(10, 1);
+        let terminal = Terminal::new(backend).expect("terminal");
+        let renderer = Renderer::new_for_test(terminal);
+
+        RenderLoop::new(renderer, EventRouter::new(), ScriptedEvents::new(events))
     }
 
     #[test]
     fn run_quits_on_ctrl_c_before_app_handle() {
-        let backend = TestBackend::new(10, 1);
-        let terminal = Terminal::new(backend).expect("terminal");
-        let renderer = Renderer::new_for_test(terminal);
-        let event_router = EventRouter::new();
-        let mut render_loop = RenderLoop::new(renderer, event_router);
-
-        render_loop.event_reader = Some(event_reader(vec![make_key_event(KeyCode::Char('c'), KeyModifiers::CONTROL)]));
+        let mut render_loop = make_loop(vec![make_key_event(KeyCode::Char('c'), KeyModifiers::CONTROL)]);
 
         let mut app = CountingApp::new();
         let result = render_loop.run(&mut app);
@@ -348,14 +443,35 @@ mod tests {
     }
 
     #[test]
-    fn run_stops_when_app_handles_event() {
-        let backend = TestBackend::new(10, 1);
-        let terminal = Terminal::new(backend).expect("terminal");
-        let renderer = Renderer::new_for_test(terminal);
-        let event_router = EventRouter::new();
-        let mut render_loop = RenderLoop::new(renderer, event_router);
+    fn run_quits_on_ctrl_d() {
+        let mut render_loop = make_loop(vec![make_key_event(KeyCode::Char('d'), KeyModifiers::CONTROL)]);
 
-        render_loop.event_reader = Some(event_reader(vec![make_key_event(KeyCode::Char('x'), KeyModifiers::NONE)]));
+        let mut app = CountingApp::new();
+        let result = render_loop.run(&mut app);
+
+        assert!(result.is_ok());
+        assert_eq!(app.handle_count, 0);
+    }
+
+    #[test]
+    fn bare_c_is_not_a_quit_event() {
+        // Guards the whole modifier chain: without modifiers travelling with
+        // the key code, a plain 'c' would be indistinguishable from Ctrl-C.
+        let mut render_loop = make_loop(vec![
+            make_key_event(KeyCode::Char('c'), KeyModifiers::NONE),
+            make_key_event(KeyCode::Char('c'), KeyModifiers::CONTROL),
+        ]);
+
+        let mut app = CountingApp::new();
+        let result = render_loop.run(&mut app);
+
+        assert!(result.is_ok());
+        assert_eq!(app.handle_count, 1, "the bare 'c' should have reached the app");
+    }
+
+    #[test]
+    fn run_stops_when_app_handles_event() {
+        let mut render_loop = make_loop(vec![make_key_event(KeyCode::Char('x'), KeyModifiers::NONE)]);
 
         let mut app = CountingApp::new();
         let result = render_loop.run(&mut app);
@@ -367,22 +483,48 @@ mod tests {
 
     #[test]
     fn loop_body_rebuilds_after_non_quit_event() {
-        let backend = TestBackend::new(10, 1);
-        let terminal = Terminal::new(backend).expect("terminal");
-        let renderer = Renderer::new_for_test(terminal);
-        let event_router = EventRouter::new();
-        let mut render_loop = RenderLoop::new(renderer, event_router);
-
-        render_loop.event_reader = Some(event_reader(vec![
+        let mut render_loop = make_loop(vec![
             make_key_event(KeyCode::Char('a'), KeyModifiers::NONE),
             make_key_event(KeyCode::Char('c'), KeyModifiers::CONTROL),
-        ]));
+        ]);
 
         let mut app = CountingApp::new();
         let result = render_loop.run(&mut app);
 
         assert!(result.is_ok());
         assert_eq!(app.build_count, 2);
+        assert_eq!(app.handle_count, 1);
+    }
+
+    #[test]
+    fn idle_polls_do_not_rebuild_the_view() {
+        // Three empty frames go by before the quit event: none of them may
+        // trigger a rebuild, otherwise the loop repaints on every tick.
+        let mut render_loop = make_loop(Vec::new());
+        render_loop.event_source = Box::new(ScriptedEvents {
+            queue: VecDeque::new(),
+            idle_polls: MAX_IDLE_POLLS - 3,
+        });
+
+        let mut app = CountingApp::new();
+        let result = render_loop.run(&mut app);
+
+        assert!(result.is_ok());
+        assert_eq!(app.build_count, 1, "only the initial render should have happened");
+        assert_eq!(app.handle_count, 0);
+    }
+
+    #[test]
+    fn channel_ready_reaches_the_app_without_quitting() {
+        let mut render_loop = make_loop(vec![
+            Event::ChannelReady,
+            make_key_event(KeyCode::Char('c'), KeyModifiers::CONTROL),
+        ]);
+
+        let mut app = CountingApp::new();
+        let result = render_loop.run(&mut app);
+
+        assert!(result.is_ok());
         assert_eq!(app.handle_count, 1);
     }
 }
