@@ -11,7 +11,9 @@
 //! |------|------|
 //! |[`EventStream`]|Handle owning the reader thread|
 //! |[`Event`]|A single event (handshake or key press) delivered by the stream|
+//! |[`KeyEvent`](event::KeyEvent)|A key press: a key code plus its modifiers|
 //! |[`KeyCode`](event::KeyCode)|Backend-agnostic key identifier|
+//! |[`KeyModifiers`](event::KeyModifiers)|Modifier keys held during a press|
 //! |[`SendEventError`](backend::SendEventError)|Error from the reader loop|
 //!
 //! Raw mode is enabled while the stream is alive and restored when it is
@@ -33,8 +35,8 @@
 //!     for event in events.poll_events() {
 //!         match event {
 //!             Event::ChannelReady => println!("stream ready"),
-//!             Event::KeyPress(code) => {
-//!                 println!("key pressed: {code:?}");
+//!             Event::KeyPress(key) => {
+//!                 println!("key pressed: {:?} with {:?}", key.code, key.modifiers);
 //!                 break 'run;
 //!             },
 //!         }
