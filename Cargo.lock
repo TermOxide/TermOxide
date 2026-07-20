@@ -1159,9 +1159,9 @@ dependencies = [
 name = "termoxide_rendering"
 version = "0.1.0"
 dependencies = [
- "crossbeam-channel",
  "crossterm",
  "ratatui",
+ "termoxide_event",
  "termoxide_layout",
  "termoxide_reactive",
 ]

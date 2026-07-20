@@ -1,19 +1,10 @@
-//! Routes raw crossterm events to the appropriate component.
+//! Routes [`termoxide_event`] events to the appropriate component.
 //!
-//! [`EventRouter`] sits between crossterm (which emits untyped [`Event`]s) and
-//! the component tree (which expects events targeted at a specific
-//! [`ComponentId`]).  It answers the question *"which component should receive
-//! this event?"* using two complementary strategies:
-//!
-//! | Event class   | Routing strategy                                        |
-//! |---------------|---------------------------------------------------------|
-//! | Keyboard      | delivered to the currently focused    |
-//! |               | component, identified by [`ComponentId`].               |
-//! | Mouse (click, | **Hit-test** — the [`ViewNode`] area that contains the  |
-//! | hover, scroll)| cursor position claims the event.  Ties are broken by   |
-//! |               | document order (last child wins, i.e. topmost drawn).   |
-//! | Resize        | Broadcast — routed to `None` so the application's root  |
-//! |               | handler can trigger a full relayout.                    |
+//! [`EventRouter`] sits between the input stream (which emits untyped
+//! [`Event`]s) and the component tree (which expects events targeted at a
+//! specific [`ComponentId`]).  It answers the question *"which component should
+//! receive this event?"*, and applies the global key-to-signal bindings on the
+//! way through, so that keyboard handling has a single entry point.
 //!
 //! ## Hit map
 //!
@@ -22,27 +13,26 @@
 //! after every render pass so that moving or resizing components is always
 //! reflected immediately.
 //!
-//! Building the hit map is O(nodes); hit-testing a mouse event is O(nodes) in
-//! the worst case but terminates early on the first match when iterating in
-//! reverse document order (topmost → bottommost).
+//! Building the hit map is O(nodes).
 //!
 //! ## Focus management
-//!
-//! Focus moves between components via:
-//!
-//! - **Explicit API**: call [`EventRouter::set_focus`] from application code.
-//! - **Tab / Shift-Tab**: the router intercepts these and advances or retreats
-//!   focus through the ordered list of focusable components (those with a
-//!   [`ComponentId`]).
 //!
 //! Only one component holds focus at a time.  `None` focus means keyboard
 //! events are routed to `None` (the application root can still handle them as
 //! global hotkeys).
 //!
+//! ## Current limitations
+//!
+//! Focus is never assigned: there is no `set_focus` yet and no Tab / Shift-Tab
+//! traversal, so [`EventRouter::route_event`] always returns `None` and the
+//! hit map is built but not yet consulted.  Mouse hit-testing is likewise not
+//! wired up — [`termoxide_event`] does not carry mouse events at all today.
+//!
 //! ## Example
 //!
 //! ```rust
 //! use ratatui::layout::Rect;
+//! use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 //! use termoxide_rendering::{
 //!     event_router::EventRouter,
 //!     view_node::{ViewContent, ViewNode},
@@ -67,32 +57,113 @@
 //! router.sync_hit_map(&root); // build the spatial index
 //!
 //! // Keyboard events go to the focused component.
-//! use crossterm::event::{
-//!     Event,
-//!     KeyCode,
-//!     KeyEvent,
-//!     KeyEventKind,
-//!     KeyEventState,
-//!     KeyModifiers,
-//! };
-//! let key_ev = Event::Key(KeyEvent {
-//!     code: KeyCode::Char('j'),
-//!     modifiers: KeyModifiers::NONE,
-//!     kind: KeyEventKind::Press,
-//!     state: KeyEventState::NONE,
-//! });
+//! let key_ev = Event::KeyPress(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
 //! assert_eq!(router.route_event(&key_ev, &root), None);
 //! ```
 
-use crossterm::event::{Event, KeyEventKind};
 use ratatui::layout::Rect;
+use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use termoxide_reactive::Signal;
 
-pub use crate::input::KeyBinding;
-use crate::{
-    input::{Event as InputEvent, KeyPress, KeySignalBindings},
-    view_node::{ComponentId, ViewNode},
-};
+use crate::view_node::{ComponentId, ViewNode};
+
+// ───────────────────────────────────────────────────────────────────────────
+// //  Key bindings
+// ───────────────────────────────────────────────────────────────────────────
+// //
+
+/// Keyboard matcher used by [`KeySignalBindings`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct KeyBinding {
+    /// Key code to match.
+    pub code: KeyCode,
+    /// Required modifiers to match.
+    pub modifiers: KeyModifiers,
+}
+
+impl KeyBinding {
+    /// Build a key binding.
+    pub const fn new(code: KeyCode, modifiers: KeyModifiers) -> Self { Self { code, modifiers } }
+
+    /// Matches on an exact modifier set, not a subset.
+    ///
+    /// `Ctrl+S` therefore does not fire on `Ctrl+Shift+S`, so a binding can
+    /// never be triggered by accident through an extra held modifier.
+    fn matches(self, key: KeyEvent) -> bool { self.code == key.code && self.modifiers == key.modifiers }
+}
+
+type SignalAction = Box<dyn Fn() + Send + Sync>;
+
+/// Maps key presses to signal updates.
+///
+/// Use this to wire specific hotkeys to specific reactive signals.
+#[derive(Default)]
+pub struct KeySignalBindings {
+    bindings: Vec<(KeyBinding, SignalAction)>,
+}
+
+impl std::fmt::Debug for KeySignalBindings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KeySignalBindings").field("len", &self.bindings.len()).finish()
+    }
+}
+
+impl KeySignalBindings {
+    /// Create an empty key binding table.
+    pub fn new() -> Self { Self::default() }
+
+    /// Number of installed bindings.
+    pub fn len(&self) -> usize { self.bindings.len() }
+
+    /// Returns `true` when no binding is installed.
+    pub fn is_empty(&self) -> bool { self.bindings.is_empty() }
+
+    /// Bind a key to a fixed signal value.
+    pub fn bind_set<T>(&mut self, key: KeyBinding, signal: Signal<T>, value: T)
+    where
+        T: Clone + Send + Sync + 'static,
+    {
+        self.bindings.push((key, Box::new(move || signal.set(value.clone()))));
+    }
+
+    /// Bind a key to an in-place signal update closure.
+    pub fn bind_update<T, F>(&mut self, key: KeyBinding, signal: Signal<T>, updater: F)
+    where
+        T: Send + Sync + 'static,
+        F: Fn(&mut T) + Send + Sync + 'static,
+    {
+        self.bindings.push((
+            key,
+            Box::new(move || {
+                signal.update(|value| updater(value));
+            }),
+        ));
+    }
+
+    /// Apply one event to all matching key bindings.
+    ///
+    /// Returns the number of signal updates performed.
+    pub fn apply_event(&self, event: &Event) -> usize {
+        match *event {
+            Event::KeyPress(key) => {
+                let mut updates = 0;
+                for (binding, action) in &self.bindings {
+                    if binding.matches(key) {
+                        action();
+                        updates += 1;
+                    }
+                }
+                updates
+            },
+            Event::ChannelReady => 0,
+        }
+    }
+
+    /// Apply multiple events in order.
+    ///
+    /// Returns the total number of signal updates performed.
+    pub fn apply_events(&self, events: &[Event]) -> usize { events.iter().map(|event| self.apply_event(event)).sum() }
+}
 
 // ───────────────────────────────────────────────────────────────────────────
 // //  HitEntry
@@ -226,40 +297,23 @@ impl EventRouter {
 
     /// Determine which component should handle `event` and return its id.
     ///
-    /// - **Keyboard**: delivered to [`Self::focused`].  Tab / Shift-Tab advance
-    ///   or retreat focus before returning the new focused id.
-    /// - **Mouse**: hit-tested against the spatial index.  Clicking also
-    ///   transfers keyboard focus to the clicked component.
-    /// - **Resize / FocusGained / FocusLost / Paste**: returned as `None` so
-    ///   the application root handles them.
-    pub fn route_event(
-        &mut self,
-        event: &Event,
-        _root: &ViewNode,
-    ) -> Option<ComponentId> {
-        match event {
-            Event::Key(key_ev) => self.route_key(key_ev),
-            // Resize, FocusGained, FocusLost, Paste → broadcast (no specific
-            // target).
-            _ => None,
+    /// - **Key press**: applies the matching global bindings, then returns [`Self::focused`].
+    /// - **[`Event::ChannelReady`]**: a stream handshake carrying no input, routed to `None`.
+    ///
+    /// Note that the input stream only ever reports key *presses*: releases and
+    /// repeats are already filtered out by [`termoxide_event`], so there is no
+    /// event kind left to check here.
+    pub fn route_event(&mut self, event: &Event, _root: &ViewNode) -> Option<ComponentId> {
+        match *event {
+            Event::KeyPress(key) => self.route_key(key),
+            // Stream handshake — no target, nothing to bind.
+            Event::ChannelReady => None,
         }
     }
 
     /// Route a keyboard event.
-    fn route_key(
-        &mut self,
-        ev: &crossterm::event::KeyEvent,
-    ) -> Option<ComponentId> {
-        if ev.kind != KeyEventKind::Press {
-            return self.focused;
-        }
-
-        // Keep Tab reserved for focus traversal. All other key presses can
-        // drive global reactive bindings.
-        let _ = self.key_bindings.apply_event(&InputEvent::KeyPress(
-            KeyPress::new(ev.code, ev.modifiers),
-        ));
-
+    fn route_key(&mut self, key: KeyEvent) -> Option<ComponentId> {
+        let _ = self.key_bindings.apply_event(&Event::KeyPress(key));
         self.focused
     }
 }
@@ -292,16 +346,6 @@ fn contains(rect: Rect, col: u16, row: u16) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crossterm::event::{
-        KeyCode,
-        KeyEvent,
-        KeyEventKind,
-        KeyEventState,
-        KeyModifiers,
-        MouseButton,
-        MouseEvent,
-        MouseEventKind,
-    };
     use ratatui::style::Style;
     use termoxide_reactive::{Signal, with_owner};
 
@@ -317,6 +361,9 @@ mod tests {
         ViewNode::container(Rect::new(0, 0, 80, 24), vec![left, right])
     }
 
+    /// Shorthand for a key press event with no modifier held.
+    fn press(code: KeyCode) -> Event { Event::KeyPress(KeyEvent::new(code, KeyModifiers::NONE)) }
+
     #[test]
     fn key_bindings_are_applied_by_router() {
         with_owner(|| {
@@ -330,14 +377,7 @@ mod tests {
                 7,
             );
 
-            let ev = Event::Key(KeyEvent {
-                code: KeyCode::Char('k'),
-                modifiers: KeyModifiers::NONE,
-                kind: KeyEventKind::Press,
-                state: KeyEventState::NONE,
-            });
-
-            assert_eq!(router.route_event(&ev, &root), None);
+            assert_eq!(router.route_event(&press(KeyCode::Char('k')), &root), None);
             assert_eq!(signal.get_untracked(), 7);
         });
     }
@@ -352,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    fn non_press_key_events_do_not_trigger_bindings() {
+    fn channel_ready_is_routed_nowhere_and_triggers_no_binding() {
         with_owner(|| {
             let root = make_tree();
             let mut router = EventRouter::new();
@@ -364,36 +404,9 @@ mod tests {
                 |value| *value += 1,
             );
 
-            let repeat = Event::Key(KeyEvent {
-                code: KeyCode::Char('k'),
-                modifiers: KeyModifiers::NONE,
-                kind: KeyEventKind::Repeat,
-                state: KeyEventState::NONE,
-            });
-
-            assert_eq!(router.route_event(&repeat, &root), None);
+            assert_eq!(router.route_event(&Event::ChannelReady, &root), None);
             assert_eq!(signal.get_untracked(), 0);
         });
-    }
-
-    #[test]
-    fn zero_sized_hitboxes_are_ignored() {
-        let zero =
-            ViewNode::text(Rect::new(0, 0, 0, 0), "zero", Style::default())
-                .with_id(10);
-        let root = ViewNode::container(Rect::new(0, 0, 10, 10), vec![zero]);
-
-        let mut router = EventRouter::new();
-        router.sync_hit_map(&root);
-
-        let click = Event::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: 0,
-            row: 0,
-            modifiers: KeyModifiers::NONE,
-        });
-
-        assert_eq!(router.route_event(&click, &root), None);
     }
 
     #[test]
@@ -408,14 +421,113 @@ mod tests {
         let root = make_tree();
         let mut router = EventRouter::new();
 
-        let ev = Event::Key(KeyEvent {
-            code: KeyCode::Char('k'),
-            modifiers: KeyModifiers::NONE,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        });
+        assert_eq!(router.route_event(&press(KeyCode::Char('k')), &root), None);
+    }
 
-        assert_eq!(router.route_event(&ev, &root), None);
+    #[test]
+    fn bind_set_updates_signal_when_key_matches() {
+        with_owner(|| {
+            let signal = Signal::new(0i32);
+            let mut bindings = KeySignalBindings::new();
+
+            bindings.bind_set(KeyBinding::new(KeyCode::Char('k'), KeyModifiers::NONE), signal.clone(), 42);
+
+            let updates = bindings.apply_event(&press(KeyCode::Char('k')));
+
+            assert_eq!(updates, 1);
+            assert_eq!(signal.get_untracked(), 42);
+        });
+    }
+
+    #[test]
+    fn bind_update_ignores_non_matching_keys() {
+        with_owner(|| {
+            let signal = Signal::new(10i32);
+            let mut bindings = KeySignalBindings::new();
+
+            bindings.bind_update(
+                KeyBinding::new(KeyCode::Char('k'), KeyModifiers::NONE),
+                signal.clone(),
+                |value| *value += 1,
+            );
+
+            let updates = bindings.apply_event(&press(KeyCode::Char('x')));
+
+            assert_eq!(updates, 0);
+            assert_eq!(signal.get_untracked(), 10);
+        });
+    }
+
+    #[test]
+    fn bindings_discriminate_on_modifiers() {
+        with_owner(|| {
+            let signal = Signal::new(0i32);
+            let mut bindings = KeySignalBindings::new();
+
+            bindings.bind_set(KeyBinding::new(KeyCode::Char('c'), KeyModifiers::CONTROL), signal, 1);
+
+            // A bare 'c' must not fire a Ctrl+C binding...
+            assert_eq!(bindings.apply_event(&press(KeyCode::Char('c'))), 0);
+            assert_eq!(signal.get_untracked(), 0);
+
+            // ...and an extra held modifier must not either, since matching is
+            // on the exact modifier set.
+            let ctrl_shift_c = Event::KeyPress(KeyEvent::new(
+                KeyCode::Char('c'),
+                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            ));
+            assert_eq!(bindings.apply_event(&ctrl_shift_c), 0);
+
+            let ctrl_c =
+                Event::KeyPress(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+            assert_eq!(bindings.apply_event(&ctrl_c), 1);
+            assert_eq!(signal.get_untracked(), 1);
+        });
+    }
+
+    #[test]
+    fn matching_key_can_drive_multiple_signals() {
+        with_owner(|| {
+            let a = Signal::new(0i32);
+            let b = Signal::new(0i32);
+            let mut bindings = KeySignalBindings::new();
+            let key = KeyBinding::new(KeyCode::Char('j'), KeyModifiers::NONE);
+
+            bindings.bind_update(key, a.clone(), |value| *value += 1);
+            bindings.bind_update(key, b.clone(), |value| *value += 10);
+
+            let updates = bindings.apply_event(&press(KeyCode::Char('j')));
+
+            assert_eq!(updates, 2);
+            assert_eq!(a.get_untracked(), 1);
+            assert_eq!(b.get_untracked(), 10);
+        });
+    }
+
+    #[test]
+    fn apply_events_counts_updates_across_many_events() {
+        with_owner(|| {
+            let signal = Signal::new(0usize);
+            let mut bindings = KeySignalBindings::new();
+
+            bindings.bind_update(
+                KeyBinding::new(KeyCode::Char('a'), KeyModifiers::NONE),
+                signal.clone(),
+                |value| *value += 1,
+            );
+
+            let events = vec![
+                press(KeyCode::Char('a')),
+                press(KeyCode::Char('x')),
+                Event::ChannelReady,
+                press(KeyCode::Char('a')),
+            ];
+
+            let updates = bindings.apply_events(&events);
+
+            assert_eq!(updates, 2);
+            assert_eq!(signal.get_untracked(), 2);
+        });
     }
 
     #[test]

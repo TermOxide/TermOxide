@@ -7,7 +7,7 @@
 //! - dynamic tree rebuilding
 //! - event propagation patterns
 
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{layout::Rect, style::Style};
 use termoxide_rendering::{
     render_loop::App,
@@ -84,16 +84,16 @@ impl App for FormApp {
 
     fn handle_event(&mut self, _id: Option<ComponentId>, event: Event) -> bool {
         match event {
-            Event::Key(KeyEvent { code: KeyCode::Char('q'), .. }) => true,
-            Event::Key(KeyEvent { code: KeyCode::Down, kind: KeyEventKind::Press, .. }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Char('q'), .. }) => true,
+            Event::KeyPress(KeyEvent { code: KeyCode::Down, .. }) => {
                 self.next_field();
                 false
             },
-            Event::Key(KeyEvent { code: KeyCode::Up, kind: KeyEventKind::Press, .. }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Up, .. }) => {
                 self.prev_field();
                 false
             },
-            Event::Key(KeyEvent { code: KeyCode::Enter, kind: KeyEventKind::Press, .. }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Enter, .. }) => {
                 self.submitted = true;
                 false
             },
@@ -107,22 +107,12 @@ fn test_form_app_navigation_down() {
     let mut app = FormApp::new();
     assert_eq!(app.focused_field, 0);
 
-    let down = Event::Key(KeyEvent {
-        code: KeyCode::Down,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let down = Event::KeyPress(KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::NONE });
 
     app.handle_event(None, down);
     assert_eq!(app.focused_field, 1);
 
-    let down = Event::Key(KeyEvent {
-        code: KeyCode::Down,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let down = Event::KeyPress(KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::NONE });
     app.handle_event(None, down);
     assert_eq!(app.focused_field, 2);
 }
@@ -132,12 +122,7 @@ fn test_form_app_navigation_up() {
     let mut app = FormApp::new();
     app.focused_field = 1;
 
-    let up = Event::Key(KeyEvent {
-        code: KeyCode::Up,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let up = Event::KeyPress(KeyEvent { code: KeyCode::Up, modifiers: KeyModifiers::NONE });
 
     app.handle_event(None, up);
     assert_eq!(app.focused_field, 0);
@@ -148,12 +133,7 @@ fn test_form_app_navigation_wrap_forward() {
     let mut app = FormApp::new();
     app.focused_field = app.total_fields() - 1;
 
-    let down = Event::Key(KeyEvent {
-        code: KeyCode::Down,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let down = Event::KeyPress(KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::NONE });
 
     app.handle_event(None, down);
     assert_eq!(app.focused_field, 0);
@@ -164,12 +144,7 @@ fn test_form_app_navigation_wrap_backward() {
     let mut app = FormApp::new();
     app.focused_field = 0;
 
-    let up = Event::Key(KeyEvent {
-        code: KeyCode::Up,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let up = Event::KeyPress(KeyEvent { code: KeyCode::Up, modifiers: KeyModifiers::NONE });
 
     app.handle_event(None, up);
     assert_eq!(app.focused_field, app.total_fields() - 1);
@@ -180,12 +155,7 @@ fn test_form_app_submit() {
     let mut app = FormApp::new();
     assert!(!app.submitted);
 
-    let enter = Event::Key(KeyEvent {
-        code: KeyCode::Enter,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let enter = Event::KeyPress(KeyEvent { code: KeyCode::Enter, modifiers: KeyModifiers::NONE });
 
     app.handle_event(None, enter);
     assert!(app.submitted);
@@ -230,12 +200,12 @@ impl App for ModalApp {
 
     fn handle_event(&mut self, _id: Option<ComponentId>, event: Event) -> bool {
         match event {
-            Event::Key(KeyEvent { code: KeyCode::Char('q'), .. }) => true,
-            Event::Key(KeyEvent { code: KeyCode::Char('m'), kind: KeyEventKind::Press, .. }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Char('q'), .. }) => true,
+            Event::KeyPress(KeyEvent { code: KeyCode::Char('m'), .. }) => {
                 self.show_modal = !self.show_modal;
                 false
             },
-            Event::Key(KeyEvent { code: KeyCode::Enter, kind: KeyEventKind::Press, .. }) if self.show_modal => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Enter, .. }) if self.show_modal => {
                 self.modal_confirmed = true;
                 self.show_modal = false;
                 false
@@ -250,14 +220,9 @@ fn test_modal_app_show_hide() {
     let mut app = ModalApp::new();
     assert!(!app.show_modal);
 
-    let m_key = Event::Key(KeyEvent {
-        code: KeyCode::Char('m'),
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let m_key = Event::KeyPress(KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::NONE });
 
-    app.handle_event(None, m_key.clone());
+    app.handle_event(None, m_key);
     assert!(app.show_modal);
 
     app.handle_event(None, m_key);
@@ -269,12 +234,7 @@ fn test_modal_app_confirm() {
     let mut app = ModalApp::new();
     app.show_modal = true;
 
-    let enter = Event::Key(KeyEvent {
-        code: KeyCode::Enter,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let enter = Event::KeyPress(KeyEvent { code: KeyCode::Enter, modifiers: KeyModifiers::NONE });
 
     app.handle_event(None, enter);
     assert!(app.modal_confirmed);
@@ -358,12 +318,12 @@ impl App for ListApp {
 
     fn handle_event(&mut self, _id: Option<ComponentId>, event: Event) -> bool {
         match event {
-            Event::Key(KeyEvent { code: KeyCode::Char('q'), .. }) => true,
-            Event::Key(KeyEvent { code: KeyCode::Down, kind: KeyEventKind::Press, .. }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Char('q'), .. }) => true,
+            Event::KeyPress(KeyEvent { code: KeyCode::Down, .. }) => {
                 self.move_selection_down();
                 false
             },
-            Event::Key(KeyEvent { code: KeyCode::Up, kind: KeyEventKind::Press, .. }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Up, .. }) => {
                 self.move_selection_up();
                 false
             },
@@ -377,22 +337,12 @@ fn test_list_app_selection_navigation() {
     let mut app = ListApp::new();
     assert_eq!(app.selected_index, 0);
 
-    let down = Event::Key(KeyEvent {
-        code: KeyCode::Down,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let down = Event::KeyPress(KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::NONE });
 
     app.handle_event(None, down);
     assert_eq!(app.selected_index, 1);
 
-    let down = Event::Key(KeyEvent {
-        code: KeyCode::Down,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let down = Event::KeyPress(KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::NONE });
     app.handle_event(None, down);
     assert_eq!(app.selected_index, 2);
 }
@@ -402,12 +352,7 @@ fn test_list_app_selection_wraps() {
     let mut app = ListApp::new();
     app.selected_index = app.items.len() - 1; // Last item
 
-    let down = Event::Key(KeyEvent {
-        code: KeyCode::Down,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let down = Event::KeyPress(KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::NONE });
 
     app.handle_event(None, down);
     assert_eq!(app.selected_index, 0); // Wraps to first
@@ -475,16 +420,16 @@ impl App for TabApp {
 
     fn handle_event(&mut self, _id: Option<ComponentId>, event: Event) -> bool {
         match event {
-            Event::Key(KeyEvent { code: KeyCode::Char('q'), .. }) => true,
-            Event::Key(KeyEvent { code: KeyCode::Right, kind: KeyEventKind::Press, .. }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Char('q'), .. }) => true,
+            Event::KeyPress(KeyEvent { code: KeyCode::Right, .. }) => {
                 self.next_tab();
                 false
             },
-            Event::Key(KeyEvent { code: KeyCode::Left, kind: KeyEventKind::Press, .. }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Left, .. }) => {
                 self.prev_tab();
                 false
             },
-            Event::Key(KeyEvent { code: KeyCode::Char(c @ '1'..='9'), kind: KeyEventKind::Press, .. }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Char(c @ '1'..='9'), .. }) => {
                 let idx = (c as usize) - ('1' as usize);
                 self.switch_tab(idx);
                 false
@@ -499,22 +444,12 @@ fn test_tab_app_navigation() {
     let mut app = TabApp::new();
     assert_eq!(app.active_tab, 0);
 
-    let right = Event::Key(KeyEvent {
-        code: KeyCode::Right,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let right = Event::KeyPress(KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::NONE });
 
     app.handle_event(None, right);
     assert_eq!(app.active_tab, 1);
 
-    let right = Event::Key(KeyEvent {
-        code: KeyCode::Right,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let right = Event::KeyPress(KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::NONE });
     app.handle_event(None, right);
     assert_eq!(app.active_tab, 2);
 }
@@ -523,12 +458,7 @@ fn test_tab_app_navigation() {
 fn test_tab_app_direct_switch() {
     let mut app = TabApp::new();
 
-    let tab3 = Event::Key(KeyEvent {
-        code: KeyCode::Char('3'),
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let tab3 = Event::KeyPress(KeyEvent { code: KeyCode::Char('3'), modifiers: KeyModifiers::NONE });
 
     app.handle_event(None, tab3);
     assert_eq!(app.active_tab, 2);
@@ -539,12 +469,7 @@ fn test_tab_app_wrap_navigation() {
     let mut app = TabApp::new();
     app.active_tab = app.tabs.len() - 1;
 
-    let right = Event::Key(KeyEvent {
-        code: KeyCode::Right,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let right = Event::KeyPress(KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::NONE });
 
     app.handle_event(None, right);
     assert_eq!(app.active_tab, 0);
@@ -585,21 +510,21 @@ impl App for GameApp {
 
     fn handle_event(&mut self, _id: Option<ComponentId>, event: Event) -> bool {
         match event {
-            Event::Key(KeyEvent { code: KeyCode::Char('q'), .. }) => true,
-            Event::Key(KeyEvent { code: KeyCode::Char('p'), kind: KeyEventKind::Press, .. }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Char('q'), .. }) => true,
+            Event::KeyPress(KeyEvent { code: KeyCode::Char('p'), .. }) => {
                 if self.state == AppState::Menu {
                     self.state = AppState::Playing;
                     self.score = 0;
                 }
                 false
             },
-            Event::Key(KeyEvent { code: KeyCode::Char(' '), kind: KeyEventKind::Press, .. }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Char(' '), .. }) => {
                 if self.state == AppState::Playing {
                     self.state = AppState::Paused;
                 }
                 false
             },
-            Event::Key(KeyEvent { code: KeyCode::Char('r'), kind: KeyEventKind::Press, .. }) => {
+            Event::KeyPress(KeyEvent { code: KeyCode::Char('r'), .. }) => {
                 match self.state {
                     AppState::Paused => self.state = AppState::Playing,
                     AppState::GameOver => {
@@ -620,22 +545,12 @@ fn test_game_app_state_transitions() {
     let mut app = GameApp::new();
     assert_eq!(app.state, AppState::Menu);
 
-    let p = Event::Key(KeyEvent {
-        code: KeyCode::Char('p'),
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let p = Event::KeyPress(KeyEvent { code: KeyCode::Char('p'), modifiers: KeyModifiers::NONE });
 
     app.handle_event(None, p);
     assert_eq!(app.state, AppState::Playing);
 
-    let space = Event::Key(KeyEvent {
-        code: KeyCode::Char(' '),
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let space = Event::KeyPress(KeyEvent { code: KeyCode::Char(' '), modifiers: KeyModifiers::NONE });
 
     app.handle_event(None, space);
     assert_eq!(app.state, AppState::Paused);
@@ -645,26 +560,11 @@ fn test_game_app_state_transitions() {
 fn test_game_app_full_cycle() {
     let mut app = GameApp::new();
 
-    let p = Event::Key(KeyEvent {
-        code: KeyCode::Char('p'),
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let p = Event::KeyPress(KeyEvent { code: KeyCode::Char('p'), modifiers: KeyModifiers::NONE });
 
-    let space = Event::Key(KeyEvent {
-        code: KeyCode::Char(' '),
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let space = Event::KeyPress(KeyEvent { code: KeyCode::Char(' '), modifiers: KeyModifiers::NONE });
 
-    let r = Event::Key(KeyEvent {
-        code: KeyCode::Char('r'),
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    });
+    let r = Event::KeyPress(KeyEvent { code: KeyCode::Char('r'), modifiers: KeyModifiers::NONE });
 
     // Play game
     app.handle_event(None, p);

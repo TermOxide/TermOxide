@@ -41,10 +41,10 @@
 //!   ratatui draw routines, and accumulates into a `Buffer` diffed against the
 //!   previous frame.
 //! - [`render_loop`]: [`RenderLoop`][render_loop::RenderLoop], the main loop;
-//!   blocks on crossterm events and redraws after input.
-//! - [`event_router`]: [`EventRouter`][event_router::EventRouter] maps raw
-//!   crossterm events to component ids via focus tracking (keyboard) and
-//!   spatial hit-testing (mouse).
+//!   blocks on `termoxide_event` events and redraws after input.
+//! - [`event_router`]: [`EventRouter`][event_router::EventRouter] maps
+//!   `termoxide_event` events to component ids and applies the global
+//!   key-to-signal bindings.
 //!
 //! ## Render pipeline — data flow
 //!
@@ -68,13 +68,13 @@
 //! ```rust,no_run
 //! use std::io::stdout;
 //!
-//! use crossterm::event::Event;
 //! use ratatui::{
 //!     Terminal,
 //!     backend::CrosstermBackend,
 //!     layout::Rect,
 //!     style::Style,
 //! };
+//! use termoxide_event::{EventStream, event::Event};
 //! use termoxide_rendering::{
 //!     event_router::EventRouter,
 //!     render_loop::{App, RenderLoop},
@@ -99,17 +99,19 @@
 //! }
 //!
 //! fn main() {
+//!     // Created first: the stream owns raw mode for as long as it lives.
+//!     let events = EventStream::new();
+//!
 //!     let backend = CrosstermBackend::new(stdout());
 //!     let terminal = Terminal::new(backend).unwrap();
 //!     let renderer = Renderer::new(terminal).unwrap();
 //!     let event_router = EventRouter::new();
 //!
-//!     RenderLoop::new(renderer, event_router).run(&mut Hello).unwrap();
+//!     RenderLoop::new(renderer, event_router, events).run(&mut Hello).unwrap();
 //! }
 //! ```
 
 pub mod event_router;
-pub mod input;
 pub mod render_loop;
 pub mod renderer;
 pub mod view_node;
