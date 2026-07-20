@@ -411,7 +411,7 @@ impl App for TabApp {
         // Tab content (dummy)
         children.push(ViewNode::text(
             Rect::new(0, 1, viewport.width, viewport.height - 1),
-            &format!("Content of {}", self.tabs[self.active_tab]),
+            format!("Content of {}", self.tabs[self.active_tab]),
             Style::default(),
         ));
 
