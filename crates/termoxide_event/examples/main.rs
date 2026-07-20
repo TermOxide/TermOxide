@@ -7,7 +7,7 @@ use std::{
 
 use termoxide_event::{
     EventStream,
-    event::{Event, KeyCode},
+    event::{Event, KeyCode, KeyEvent},
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         for event in stream.poll_events() {
             println!("Received event: {event:?}\r");
             io::stdout().flush()?;
-            if matches!(event, Event::KeyPress(KeyCode::Esc)) {
+            if matches!(event, Event::KeyPress(KeyEvent { code: KeyCode::Esc, .. })) {
                 println!("Exiting...\r");
                 io::stdout().flush()?;
                 break 'run;
