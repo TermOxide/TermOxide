@@ -10,8 +10,8 @@
 //! are not covered: the router implements none of them yet, and
 //! `termoxide_event` carries neither mouse nor resize events today.
 
-use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{layout::Rect, style::Style};
+use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use termoxide_rendering::{event_router::EventRouter, view_node::ViewNode};
 
 // ─────────────────────────────────────────────────────────────────────────── //

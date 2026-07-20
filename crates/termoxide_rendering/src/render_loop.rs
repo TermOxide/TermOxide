@@ -208,11 +208,7 @@ impl<B: Backend> RenderLoop<B> {
     /// - `renderer` — the configured [`Renderer`] to paint frames.
     /// - `event_router` — the [`EventRouter`] that maps input events to component ids.
     /// - `event_source` — where input comes from; [`EventStream`] in production.
-    pub fn new(
-        renderer: Renderer<B>,
-        event_router: EventRouter,
-        event_source: impl EventSource + 'static,
-    ) -> Self {
+    pub fn new(renderer: Renderer<B>, event_router: EventRouter, event_source: impl EventSource + 'static) -> Self {
         Self { renderer, event_router, event_source: Box::new(event_source) }
     }
 
@@ -310,8 +306,7 @@ impl<B: Backend> RenderLoop<B> {
     fn is_quit_event(ev: &Event) -> bool {
         match *ev {
             Event::KeyPress(key) => {
-                matches!(key.code, KeyCode::Char('c') | KeyCode::Char('d'))
-                    && key.modifiers == KeyModifiers::CONTROL
+                matches!(key.code, KeyCode::Char('c') | KeyCode::Char('d')) && key.modifiers == KeyModifiers::CONTROL
             },
             Event::ChannelReady => false,
         }
@@ -501,10 +496,7 @@ mod tests {
         // Three empty frames go by before the quit event: none of them may
         // trigger a rebuild, otherwise the loop repaints on every tick.
         let mut render_loop = make_loop(Vec::new());
-        render_loop.event_source = Box::new(ScriptedEvents {
-            queue: VecDeque::new(),
-            idle_polls: MAX_IDLE_POLLS - 3,
-        });
+        render_loop.event_source = Box::new(ScriptedEvents { queue: VecDeque::new(), idle_polls: MAX_IDLE_POLLS - 3 });
 
         let mut app = CountingApp::new();
         let result = render_loop.run(&mut app);

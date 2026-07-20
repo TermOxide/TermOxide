@@ -7,8 +7,8 @@
 //! - dynamic tree rebuilding
 //! - event propagation patterns
 
-use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{layout::Rect, style::Style};
+use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use termoxide_rendering::{
     render_loop::App,
     view_node::{ComponentId, ViewNode},
