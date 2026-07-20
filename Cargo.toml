@@ -5,6 +5,7 @@ members = [
     "crates/termoxide_macros",
     "crates/termoxide_reactive",
     "crates/termoxide_layout",
+    "crates/termoxide_event",
     "crates/cargo-extract",
 ]
 
