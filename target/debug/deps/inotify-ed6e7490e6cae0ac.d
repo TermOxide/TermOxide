@@ -1,0 +1,12 @@
+/home/vanou/EPI/EIP/TermOxide/target/debug/deps/inotify-ed6e7490e6cae0ac.d: /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/lib.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/events.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/fd_guard.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/inotify.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/util.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/watches.rs
+
+/home/vanou/EPI/EIP/TermOxide/target/debug/deps/libinotify-ed6e7490e6cae0ac.rlib: /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/lib.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/events.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/fd_guard.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/inotify.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/util.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/watches.rs
+
+/home/vanou/EPI/EIP/TermOxide/target/debug/deps/libinotify-ed6e7490e6cae0ac.rmeta: /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/lib.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/events.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/fd_guard.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/inotify.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/util.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/watches.rs
+
+/home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/lib.rs:
+/home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/events.rs:
+/home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/fd_guard.rs:
+/home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/inotify.rs:
+/home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/util.rs:
+/home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.11.4/src/watches.rs:

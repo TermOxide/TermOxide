@@ -1,0 +1,12 @@
+/home/vanou/EPI/EIP/TermOxide/target/debug/deps/cfg_expr-d83476a1632a4e0b.d: /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/lib.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/error.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/expr.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/expr/lexer.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/expr/parser.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/targets.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/targets/builtins.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/../README.md
+
+/home/vanou/EPI/EIP/TermOxide/target/debug/deps/libcfg_expr-d83476a1632a4e0b.rmeta: /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/lib.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/error.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/expr.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/expr/lexer.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/expr/parser.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/targets.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/targets/builtins.rs /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/../README.md
+
+/home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/lib.rs:
+/home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/error.rs:
+/home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/expr.rs:
+/home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/expr/lexer.rs:
+/home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/expr/parser.rs:
+/home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/targets.rs:
+/home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/targets/builtins.rs:
+/home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-expr-0.20.8/src/../README.md:

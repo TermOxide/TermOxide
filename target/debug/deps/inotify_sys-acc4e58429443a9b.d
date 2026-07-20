@@ -1,0 +1,7 @@
+/home/vanou/EPI/EIP/TermOxide/target/debug/deps/inotify_sys-acc4e58429443a9b.d: /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-sys-0.1.5/src/lib.rs
+
+/home/vanou/EPI/EIP/TermOxide/target/debug/deps/libinotify_sys-acc4e58429443a9b.rlib: /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-sys-0.1.5/src/lib.rs
+
+/home/vanou/EPI/EIP/TermOxide/target/debug/deps/libinotify_sys-acc4e58429443a9b.rmeta: /home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-sys-0.1.5/src/lib.rs
+
+/home/vanou/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-sys-0.1.5/src/lib.rs:

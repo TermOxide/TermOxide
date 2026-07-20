@@ -1,0 +1,1 @@
+/home/vanou/EPI/EIP/TermOxide/target/debug/examples/main: /home/vanou/EPI/EIP/TermOxide/crates/termoxide_event/examples/main.rs /home/vanou/EPI/EIP/TermOxide/crates/termoxide_event/src/backend.rs /home/vanou/EPI/EIP/TermOxide/crates/termoxide_event/src/event.rs /home/vanou/EPI/EIP/TermOxide/crates/termoxide_event/src/lib.rs
