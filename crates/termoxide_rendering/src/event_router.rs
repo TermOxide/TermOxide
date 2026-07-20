@@ -430,7 +430,7 @@ mod tests {
             let signal = Signal::new(0i32);
             let mut bindings = KeySignalBindings::new();
 
-            bindings.bind_set(KeyBinding::new(KeyCode::Char('k'), KeyModifiers::NONE), signal.clone(), 42);
+            bindings.bind_set(KeyBinding::new(KeyCode::Char('k'), KeyModifiers::NONE), signal, 42);
 
             let updates = bindings.apply_event(&press(KeyCode::Char('k')));
 
@@ -445,11 +445,9 @@ mod tests {
             let signal = Signal::new(10i32);
             let mut bindings = KeySignalBindings::new();
 
-            bindings.bind_update(
-                KeyBinding::new(KeyCode::Char('k'), KeyModifiers::NONE),
-                signal.clone(),
-                |value| *value += 1,
-            );
+            bindings.bind_update(KeyBinding::new(KeyCode::Char('k'), KeyModifiers::NONE), signal, |value| {
+                *value += 1
+            });
 
             let updates = bindings.apply_event(&press(KeyCode::Char('x')));
 
@@ -490,8 +488,8 @@ mod tests {
             let mut bindings = KeySignalBindings::new();
             let key = KeyBinding::new(KeyCode::Char('j'), KeyModifiers::NONE);
 
-            bindings.bind_update(key, a.clone(), |value| *value += 1);
-            bindings.bind_update(key, b.clone(), |value| *value += 10);
+            bindings.bind_update(key, a, |value| *value += 1);
+            bindings.bind_update(key, b, |value| *value += 10);
 
             let updates = bindings.apply_event(&press(KeyCode::Char('j')));
 
@@ -507,11 +505,9 @@ mod tests {
             let signal = Signal::new(0usize);
             let mut bindings = KeySignalBindings::new();
 
-            bindings.bind_update(
-                KeyBinding::new(KeyCode::Char('a'), KeyModifiers::NONE),
-                signal.clone(),
-                |value| *value += 1,
-            );
+            bindings.bind_update(KeyBinding::new(KeyCode::Char('a'), KeyModifiers::NONE), signal, |value| {
+                *value += 1
+            });
 
             let events = vec![
                 press(KeyCode::Char('a')),
