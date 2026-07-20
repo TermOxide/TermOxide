@@ -165,7 +165,7 @@ fn test_view_node_wide_tree() {
     let mut children = Vec::new();
     for i in 0..10 {
         let x = (i * 8) as u16;
-        let child = ViewNode::text(Rect::new(x, 0, 8, 10), &format!("C{}", i), Style::default()).with_id(i as u64 + 1);
+        let child = ViewNode::text(Rect::new(x, 0, 8, 10), format!("C{}", i), Style::default()).with_id(i as u64 + 1);
         children.push(child);
     }
 
@@ -227,7 +227,7 @@ fn test_view_node_children_empty_initially() {
 
 #[test]
 fn test_view_node_children_order_preserved() {
-    let ids = vec![10, 20, 30, 40, 50];
+    let ids = [10, 20, 30, 40, 50];
     let children: Vec<_> = ids
         .iter()
         .enumerate()
