@@ -72,6 +72,9 @@ use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 /// `0` is reserved and used as the sentinel "no component" value.
 pub type ComponentId = u64;
 
+/// Closure used by [`ViewContent::Raw`].
+pub type RawDrawFn = dyn Fn(&mut Buffer, Rect) + Send;
+
 // ───────────────────────────────────────────────────────────────────────────
 // //  ViewContent
 // ───────────────────────────────────────────────────────────────────────────
@@ -134,7 +137,7 @@ pub enum ViewContent {
     ///     Block::default().borders(Borders::ALL).render(rect, buf);
     /// });
     /// ```
-    Raw(Box<dyn Fn(&mut Buffer, Rect) + Send>),
+    Raw(Box<RawDrawFn>),
 }
 
 impl std::fmt::Debug for ViewContent {
