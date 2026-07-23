@@ -26,13 +26,7 @@ pub mod unit;
 #[cfg(feature = "future")]
 use box_model::Gap;
 use box_model::{
-    Border,
-    Borders,
-    BoxSizing,
-    Dimensions,
-    Margin,
-    Overflow,
-    Padding,
+    Border, Borders, BoxSizing, Dimensions, Margin, Overflow, Padding,
 };
 use color::Color;
 use font::FontStyle;
@@ -464,7 +458,9 @@ impl Style {
     // -----------------------------------------------------------------------
 
     /// `true` if no fields are set (all `None`).
-    pub fn is_empty(&self) -> bool { *self == Style::default() }
+    pub fn is_empty(&self) -> bool {
+        *self == Style::default()
+    }
 
     /// `true` if any dimension or spacing field is set.
     pub fn has_layout(&self) -> bool {
@@ -601,12 +597,15 @@ mod tests {
             Unit::cells(3),
             Unit::cells(4),
         );
-        assert_eq!(e.as_array(), [
-            Unit::cells(1),
-            Unit::cells(2),
-            Unit::cells(3),
-            Unit::cells(4),
-        ]);
+        assert_eq!(
+            e.as_array(),
+            [
+                Unit::cells(1),
+                Unit::cells(2),
+                Unit::cells(3),
+                Unit::cells(4),
+            ]
+        );
     }
 
     // --- Padding invariant: CSS forbids negatives and intrinsic keywords ---
@@ -920,6 +919,30 @@ mod tests {
     }
 
     #[test]
+    fn builder_layout_spacing_and_display_setters() {
+        let s = Style::new()
+            .with_height(Unit::cells(12))
+            .with_min_width(Unit::cells(20))
+            .with_min_height(Unit::cells(4))
+            .with_max_width(Unit::percent(80))
+            .with_max_height(Unit::cells(30))
+            .with_padding(Padding::all(Unit::cells(2)))
+            .with_margin(Margin::all(Unit::cells(3)))
+            .with_padding_all(Unit::cells(1))
+            .with_margin_all(Unit::cells(4))
+            .with_display(Display::None);
+
+        assert_eq!(s.dimensions.height(), Some(Unit::cells(12)));
+        assert_eq!(s.dimensions.min_width(), Some(Unit::cells(20)));
+        assert_eq!(s.dimensions.min_height(), Some(Unit::cells(4)));
+        assert_eq!(s.dimensions.max_width(), Some(Unit::percent(80)));
+        assert_eq!(s.dimensions.max_height(), Some(Unit::cells(30)));
+        assert_eq!(s.padding, Some(Padding::all(Unit::cells(1))));
+        assert_eq!(s.margin, Some(Margin::all(Unit::cells(4))));
+        assert_eq!(s.display, Some(Display::None));
+    }
+
+    #[test]
     fn has_layout_and_visuals() {
         let layout = Style::new().with_width(Unit::FULL);
         assert!(layout.has_layout());
@@ -933,5 +956,7 @@ mod tests {
     // Ratatui integration
     #[test]
     #[cfg(feature = "ratatui")]
-    fn convert_to_ratatui() { assert!(true) }
+    fn convert_to_ratatui() {
+        assert!(true)
+    }
 }
