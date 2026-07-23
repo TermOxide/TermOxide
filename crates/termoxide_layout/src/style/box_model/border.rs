@@ -145,10 +145,14 @@ impl Borders {
     }
 
     /// Borrow the underlying [`Edges`] for read access.
-    pub const fn edges(&self) -> &Edges<Border> { &self.0 }
+    pub const fn edges(&self) -> &Edges<Border> {
+        &self.0
+    }
 
     /// Consume the wrapper and return the underlying [`Edges`].
-    pub const fn into_edges(self) -> Edges<Border> { self.0 }
+    pub const fn into_edges(self) -> Edges<Border> {
+        self.0
+    }
 
     /// `true` if every side is [`Border::NONE`] — nothing is drawn anywhere.
     pub const fn is_none(&self) -> bool {

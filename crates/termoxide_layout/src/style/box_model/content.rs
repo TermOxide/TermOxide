@@ -110,17 +110,29 @@ impl Dimensions {
         self
     }
 
-    pub const fn width(&self) -> Option<Unit> { self.width }
+    pub const fn width(&self) -> Option<Unit> {
+        self.width
+    }
 
-    pub const fn height(&self) -> Option<Unit> { self.height }
+    pub const fn height(&self) -> Option<Unit> {
+        self.height
+    }
 
-    pub const fn min_width(&self) -> Option<Unit> { self.min_width }
+    pub const fn min_width(&self) -> Option<Unit> {
+        self.min_width
+    }
 
-    pub const fn min_height(&self) -> Option<Unit> { self.min_height }
+    pub const fn min_height(&self) -> Option<Unit> {
+        self.min_height
+    }
 
-    pub const fn max_width(&self) -> Option<Unit> { self.max_width }
+    pub const fn max_width(&self) -> Option<Unit> {
+        self.max_width
+    }
 
-    pub const fn max_height(&self) -> Option<Unit> { self.max_height }
+    pub const fn max_height(&self) -> Option<Unit> {
+        self.max_height
+    }
 
     /// `true` if no sub-field is declared.
     pub const fn is_empty(&self) -> bool {

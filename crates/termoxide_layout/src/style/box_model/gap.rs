@@ -53,17 +53,27 @@ const fn css_gap_value(v: Unit) -> Unit {
 impl Gap {
     pub const ZERO: Self = Self(Unit::ZERO);
 
-    pub const fn new(v: Unit) -> Self { Self(css_gap_value(v)) }
+    pub const fn new(v: Unit) -> Self {
+        Self(css_gap_value(v))
+    }
 
-    pub const fn cells(n: i32) -> Self { Self::new(Unit::Cells(n)) }
+    pub const fn cells(n: i32) -> Self {
+        Self::new(Unit::Cells(n))
+    }
 
-    pub const fn percent(p: u8) -> Self { Self(Unit::Percent(p)) }
+    pub const fn percent(p: u8) -> Self {
+        Self(Unit::Percent(p))
+    }
 
     /// Borrow the underlying [`Unit`].
-    pub const fn unit(self) -> Unit { self.0 }
+    pub const fn unit(self) -> Unit {
+        self.0
+    }
 }
 
 impl From<Unit> for Gap {
     /// Lift a raw [`Unit`] into a `Gap`, normalising the input.
-    fn from(v: Unit) -> Self { Self::new(v) }
+    fn from(v: Unit) -> Self {
+        Self::new(v)
+    }
 }

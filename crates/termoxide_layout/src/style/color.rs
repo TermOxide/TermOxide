@@ -53,10 +53,14 @@ pub enum Color {
 
 impl Color {
     #[cfg(feature = "future")]
-    pub const fn rgb(r: u8, g: u8, b: u8) -> Self { Self::Rgb(r, g, b) }
+    pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
+        Self::Rgb(r, g, b)
+    }
 
     #[cfg(feature = "future")]
-    pub const fn indexed(i: u8) -> Self { Self::Indexed(i) }
+    pub const fn indexed(i: u8) -> Self {
+        Self::Indexed(i)
+    }
 
     /// Parse a `#RRGGBB` hex color at compile time.
     ///
@@ -148,7 +152,9 @@ pub enum NamedColor {
 
 impl NamedColor {
     /// The ANSI palette index (0–15) for this color.
-    pub const fn ansi_index(self) -> u8 { self as u8 }
+    pub const fn ansi_index(self) -> u8 {
+        self as u8
+    }
 
     #[cfg(feature = "ratatui")]
     pub fn to_ratatui(self) -> ratatui::style::Color {

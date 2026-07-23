@@ -73,19 +73,12 @@
 //! ```
 
 use taffy::{
-    TaffyError,
-    TaffyTree,
+    TaffyError, TaffyTree,
     geometry::{Rect, Size},
     prelude::TaffyMaxContent,
     style::{
-        AlignItems,
-        AvailableSpace,
-        Dimension,
-        Display,
-        FlexDirection,
-        JustifyContent,
-        LengthPercentage,
-        LengthPercentageAuto,
+        AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
+        JustifyContent, LengthPercentage, LengthPercentageAuto,
     },
     tree::{Layout, NodeId},
 };
@@ -93,10 +86,7 @@ use taffy::{
 use crate::style::{
     Style,
     layout::{
-        Align,
-        Display as UiDisplay,
-        FlexDirection as UiFlexDirection,
-        Justify,
+        Align, Display as UiDisplay, FlexDirection as UiFlexDirection, Justify,
     },
     stylesheet::StyleSheet,
     unit::Unit,
@@ -226,7 +216,9 @@ pub enum UiStyleSource {
 }
 
 impl From<Style> for UiStyleSource {
-    fn from(s: Style) -> Self { Self::Inline(s) }
+    fn from(s: Style) -> Self {
+        Self::Inline(s)
+    }
 }
 
 /// Resolve a [`UiStyleSource`] into a concrete [`Style`].
@@ -544,10 +536,13 @@ impl LayoutEngine {
         available_width: f32,
         available_height: f32,
     ) -> Result<(), LayoutError> {
-        self.tree.compute_layout(root, Size {
-            width: AvailableSpace::Definite(available_width),
-            height: AvailableSpace::Definite(available_height),
-        })
+        self.tree.compute_layout(
+            root,
+            Size {
+                width: AvailableSpace::Definite(available_width),
+                height: AvailableSpace::Definite(available_height),
+            },
+        )
     }
 
     /// Resolve the layout for `root` against an **unbounded** available space
@@ -628,10 +623,14 @@ impl LayoutEngine {
     }
 
     /// Remove all nodes from the tree, resetting it to an empty state.
-    pub fn clear(&mut self) { self.tree.clear(); }
+    pub fn clear(&mut self) {
+        self.tree.clear();
+    }
 
     /// Return the total number of nodes currently in the tree.
-    pub fn node_count(&self) -> usize { self.tree.total_node_count() }
+    pub fn node_count(&self) -> usize {
+        self.tree.total_node_count()
+    }
 
     // ─────────────────────────────────────────────────────── //
     //  Style conversion (termoxide_layout → taffy)
@@ -704,27 +703,23 @@ impl LayoutEngine {
 
         // ── align_items ────────────────────────────────────────────────────
         // //
-        t.align_items = s.align_items.map(|a| {
-            match a {
-                Align::Start => AlignItems::Start,
-                Align::End => AlignItems::End,
-                Align::Center => AlignItems::Center,
-                Align::Baseline => AlignItems::Baseline,
-                Align::Stretch => AlignItems::Stretch,
-            }
+        t.align_items = s.align_items.map(|a| match a {
+            Align::Start => AlignItems::Start,
+            Align::End => AlignItems::End,
+            Align::Center => AlignItems::Center,
+            Align::Baseline => AlignItems::Baseline,
+            Align::Stretch => AlignItems::Stretch,
         });
 
         // ── justify_content ────────────────────────────────────────────────
         // //
-        t.justify_content = s.justify_content.map(|j| {
-            match j {
-                Justify::Start => JustifyContent::Start,
-                Justify::End => JustifyContent::End,
-                Justify::Center => JustifyContent::Center,
-                Justify::SpaceBetween => JustifyContent::SpaceBetween,
-                Justify::SpaceAround => JustifyContent::SpaceAround,
-                Justify::SpaceEvenly => JustifyContent::SpaceEvenly,
-            }
+        t.justify_content = s.justify_content.map(|j| match j {
+            Justify::Start => JustifyContent::Start,
+            Justify::End => JustifyContent::End,
+            Justify::Center => JustifyContent::Center,
+            Justify::SpaceBetween => JustifyContent::SpaceBetween,
+            Justify::SpaceAround => JustifyContent::SpaceAround,
+            Justify::SpaceEvenly => JustifyContent::SpaceEvenly,
         });
 
         // ── size ───────────────────────────────────────────────────────────
@@ -789,7 +784,9 @@ impl LayoutEngine {
 }
 
 impl Default for LayoutEngine {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ───────────────────────────────────────────────────────────────────────────

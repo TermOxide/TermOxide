@@ -69,12 +69,18 @@ impl Unit {
     pub const HALF: Self = Self::Percent(50);
     pub const ZERO: Self = Self::Cells(0);
 
-    pub const fn cells(n: i32) -> Self { Self::Cells(n) }
+    pub const fn cells(n: i32) -> Self {
+        Self::Cells(n)
+    }
 
-    pub const fn percent(n: u8) -> Self { Self::Percent(n) }
+    pub const fn percent(n: u8) -> Self {
+        Self::Percent(n)
+    }
 
     #[cfg(feature = "future")]
-    pub const fn fill(w: u16) -> Self { Self::Fill(w) }
+    pub const fn fill(w: u16) -> Self {
+        Self::Fill(w)
+    }
 
     /// `true` if the value is concrete and calculable without layout context
     /// (i.e. `Cells` or `Percent`).
@@ -115,5 +121,7 @@ impl Default for Unit {
     /// it is used as a *side value* in [`super::box_model::Edges`], which
     /// in turn drives the derived defaults of [`super::box_model::Padding`]
     /// and [`super::box_model::Margin`].
-    fn default() -> Self { Self::ZERO }
+    fn default() -> Self {
+        Self::ZERO
+    }
 }
