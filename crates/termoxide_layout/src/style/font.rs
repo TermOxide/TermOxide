@@ -61,31 +61,47 @@ impl FontStyle {
     pub const UNDERLINE: Self = Self(0b0000_0100);
 
     /// Return a new `FontStyle` with the flags from `other` added.
-    pub const fn with(self, other: Self) -> Self { Self(self.0 | other.0) }
+    pub const fn with(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
 
     /// Return a new `FontStyle` with the flags from `other` removed.
-    pub const fn without(self, other: Self) -> Self { Self(self.0 & !other.0) }
+    pub const fn without(self, other: Self) -> Self {
+        Self(self.0 & !other.0)
+    }
 
     /// `true` if **all** flags in `other` are set in `self`.
-    pub const fn has(self, other: Self) -> bool { self.0 & other.0 == other.0 }
+    pub const fn has(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
 
     /// `true` if **any** flag in `other` is set in `self`.
-    pub const fn has_any(self, other: Self) -> bool { self.0 & other.0 != 0 }
+    pub const fn has_any(self, other: Self) -> bool {
+        self.0 & other.0 != 0
+    }
 
     /// `true` if no flags are set — plain, unmodified text.
-    pub const fn is_normal(self) -> bool { self.0 == 0 }
+    pub const fn is_normal(self) -> bool {
+        self.0 == 0
+    }
 }
 
 impl std::ops::BitOr for FontStyle {
     type Output = Self;
 
-    fn bitor(self, rhs: Self) -> Self { self.with(rhs) }
+    fn bitor(self, rhs: Self) -> Self {
+        self.with(rhs)
+    }
 }
 impl std::ops::BitAnd for FontStyle {
     type Output = Self;
 
-    fn bitand(self, rhs: Self) -> Self { Self(self.0 & rhs.0) }
+    fn bitand(self, rhs: Self) -> Self {
+        Self(self.0 & rhs.0)
+    }
 }
 impl std::ops::BitOrAssign for FontStyle {
-    fn bitor_assign(&mut self, rhs: Self) { self.0 |= rhs.0; }
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
+    }
 }

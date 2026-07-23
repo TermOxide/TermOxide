@@ -46,7 +46,9 @@ pub struct MappedRect {
 
 impl MappedRect {
     /// `true` if both `width` and `height` are zero.
-    pub fn is_empty(self) -> bool { self.width == 0 || self.height == 0 }
+    pub fn is_empty(self) -> bool {
+        self.width == 0 || self.height == 0
+    }
 
     /// Apply a `(dx, dy)` offset and return a new `MappedRect`.
     ///
@@ -165,12 +167,15 @@ mod tests {
     fn whole_numbers_pass_through() {
         let l = make_layout(10.0, 5.0, 80.0, 24.0);
         let r = CoordMapper::map(&l);
-        assert_eq!(r, MappedRect {
-            x: 10,
-            y: 5,
-            width: 80,
-            height: 24
-        });
+        assert_eq!(
+            r,
+            MappedRect {
+                x: 10,
+                y: 5,
+                width: 80,
+                height: 24
+            }
+        );
     }
 
     #[test]
@@ -216,11 +221,14 @@ mod tests {
             height: 10,
         };
         let shifted = base.offset(10, 4);
-        assert_eq!(shifted, MappedRect {
-            x: 15,
-            y: 7,
-            width: 40,
-            height: 10
-        });
+        assert_eq!(
+            shifted,
+            MappedRect {
+                x: 15,
+                y: 7,
+                width: 40,
+                height: 10
+            }
+        );
     }
 }
