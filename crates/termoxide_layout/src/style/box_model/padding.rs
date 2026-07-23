@@ -69,9 +69,7 @@ const fn css_padding_value(v: Unit) -> Unit {
 impl Padding {
     pub const ZERO: Self = Self(Edges::all(Unit::ZERO));
 
-    pub const fn all(v: Unit) -> Self {
-        Self(Edges::all(css_padding_value(v)))
-    }
+    pub const fn all(v: Unit) -> Self { Self(Edges::all(css_padding_value(v))) }
 
     pub const fn symmetric(vertical: Unit, horizontal: Unit) -> Self {
         Self(Edges::symmetric(
@@ -90,19 +88,13 @@ impl Padding {
     }
 
     /// Borrow the underlying [`Edges`] for read access.
-    pub const fn edges(&self) -> &Edges {
-        &self.0
-    }
+    pub const fn edges(&self) -> &Edges { &self.0 }
 
     /// Consume the wrapper and return the underlying [`Edges`].
-    pub const fn into_edges(self) -> Edges {
-        self.0
-    }
+    pub const fn into_edges(self) -> Edges { self.0 }
 }
 
 impl From<Edges> for Padding {
     /// Lift a raw [`Edges`] into a `Padding`, normalising each side.
-    fn from(e: Edges) -> Self {
-        Self::new(e.top, e.right, e.bottom, e.left)
-    }
+    fn from(e: Edges) -> Self { Self::new(e.top, e.right, e.bottom, e.left) }
 }

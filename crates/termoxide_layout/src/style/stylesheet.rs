@@ -25,9 +25,7 @@ impl StyleSheet {
     }
 
     /// Get a style by name.
-    pub fn get(&self, name: &str) -> Option<&Style> {
-        self.map.get(name)
-    }
+    pub fn get(&self, name: &str) -> Option<&Style> { self.map.get(name) }
 
     /// Merge a named style onto a base style and return the resulting
     /// merged style. If the named style does not exist, `base` is
