@@ -14,7 +14,11 @@ pub mod layout_engine;
 pub use coord_mapper::{CoordMapper, MappedRect};
 #[cfg(feature = "future")]
 pub use layout_engine::{
-    LayoutEngine, LayoutError, LayoutNode, UiLayoutNode, UiStyleSource,
+    LayoutEngine,
+    LayoutError,
+    LayoutNode,
+    UiLayoutNode,
+    UiStyleSource,
 };
 
 #[cfg(test)]

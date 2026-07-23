@@ -73,12 +73,19 @@
 //! ```
 
 use taffy::{
-    TaffyError, TaffyTree,
+    TaffyError,
+    TaffyTree,
     geometry::{Rect, Size},
     prelude::TaffyMaxContent,
     style::{
-        AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
-        JustifyContent, LengthPercentage, LengthPercentageAuto,
+        AlignItems,
+        AvailableSpace,
+        Dimension,
+        Display,
+        FlexDirection,
+        JustifyContent,
+        LengthPercentage,
+        LengthPercentageAuto,
     },
     tree::{Layout, NodeId},
 };
@@ -86,7 +93,10 @@ use taffy::{
 use crate::style::{
     Style,
     layout::{
-        Align, Display as UiDisplay, FlexDirection as UiFlexDirection, Justify,
+        Align,
+        Display as UiDisplay,
+        FlexDirection as UiFlexDirection,
+        Justify,
     },
     stylesheet::StyleSheet,
     unit::Unit,
@@ -181,11 +191,7 @@ pub enum LayoutNode {
 /// ```rust
 /// use termoxide_layout::{
 ///     engine::layout_engine::UiStyleSource,
-///     style::{
-///         Style,
-///         stylesheet::StyleSheet,
-///         unit::Unit,
-///     }
+///     style::{Style, stylesheet::StyleSheet, unit::Unit},
 /// };
 ///
 /// // Inline:
@@ -216,9 +222,7 @@ pub enum UiStyleSource {
 }
 
 impl From<Style> for UiStyleSource {
-    fn from(s: Style) -> Self {
-        Self::Inline(s)
-    }
+    fn from(s: Style) -> Self { Self::Inline(s) }
 }
 
 /// Resolve a [`UiStyleSource`] into a concrete [`Style`].
@@ -250,7 +254,7 @@ fn resolve_ui_style(source: UiStyleSource) -> Style {
 ///         layout::Display as UiDisplay,
 ///         stylesheet::StyleSheet,
 ///         unit::Unit,
-///     }
+///     },
 /// };
 ///
 /// // Build a stylesheet and register a named style.
@@ -536,13 +540,10 @@ impl LayoutEngine {
         available_width: f32,
         available_height: f32,
     ) -> Result<(), LayoutError> {
-        self.tree.compute_layout(
-            root,
-            Size {
-                width: AvailableSpace::Definite(available_width),
-                height: AvailableSpace::Definite(available_height),
-            },
-        )
+        self.tree.compute_layout(root, Size {
+            width: AvailableSpace::Definite(available_width),
+            height: AvailableSpace::Definite(available_height),
+        })
     }
 
     /// Resolve the layout for `root` against an **unbounded** available space
@@ -623,14 +624,10 @@ impl LayoutEngine {
     }
 
     /// Remove all nodes from the tree, resetting it to an empty state.
-    pub fn clear(&mut self) {
-        self.tree.clear();
-    }
+    pub fn clear(&mut self) { self.tree.clear(); }
 
     /// Return the total number of nodes currently in the tree.
-    pub fn node_count(&self) -> usize {
-        self.tree.total_node_count()
-    }
+    pub fn node_count(&self) -> usize { self.tree.total_node_count() }
 
     // ─────────────────────────────────────────────────────── //
     //  Style conversion (termoxide_layout → taffy)
@@ -646,23 +643,33 @@ impl LayoutEngine {
     /// The table below lists every mapped field and the conversion rules for
     /// each [`Unit`] variant:
     ///
-    /// | Style field                  | taffy field         | Unit mapping                                              |
-    /// |------------------------------|---------------------|-----------------------------------------------------------|
-    /// | `display`                    | `display`           | `Block → Block`, `Flex → Flex`, `None → None`             |
-    /// | `flex_direction`             | `flex_direction`    | direct enum mapping                                       |
-    /// | `flex_grow`                  | `flex_grow`         | `Float.0`                                                 |
-    /// | `flex_shrink`                | `flex_shrink`       | `Float.0`                                                 |
-    /// | `align_items`                | `align_items`       | direct enum mapping (wrapped in `Some`)                   |
-    /// | `justify_content`            | `justify_content`   | direct enum mapping (wrapped in `Some`)                   |
-    /// | `dimensions.width`           | `size.width`        | `Cells(n) → length(n)`, `Percent(p) → percent(p/100)`, else `AUTO` |
-    /// | `dimensions.height`          | `size.height`       | same as width                                             |
-    /// | `dimensions.min_width`       | `min_size.width`    | same as width                                             |
-    /// | `dimensions.min_height`      | `min_size.height`   | same as width                                             |
-    /// | `dimensions.max_width`       | `max_size.width`    | same as width                                             |
-    /// | `dimensions.max_height`      | `max_size.height`   | same as width                                             |
-    /// | `padding` (via `.edges()`)   | `padding.*`         | `Cells(n) → length(n)`, `Percent(p) → percent(p/100)`, else `ZERO` |
-    /// | `margin` (via `.edges()`)    | `margin.*`          | `Cells(n) → length(n)`, `Percent(p) → percent(p/100)`, else `AUTO` |
-    /// | `gap`                        | `gap` (both axes)   | same as padding; `Fill`/`Auto → ZERO`                     |
+    /// | Style field                  | taffy field         | Unit mapping   |
+    /// |------------------------------|---------------------|----------------
+    /// | `display`                    | `display`           | `Block → Block`,
+    ///         `Flex → Flex`, `None → None`           |
+    /// | `flex_direction`             | `flex_direction`    |
+    ///         direct enum mapping                                     |
+    /// | `flex_grow`                  | `flex_grow`         | `Float.0`      |
+    /// | `flex_shrink`                | `flex_shrink`       | `Float.0`      |
+    /// | `align_items`                | `align_items`       |
+    ///         direct enum mapping (wrapped in `Some`)                 |
+    /// | `justify_content`            | `justify_content`   |
+    ///         direct enum mapping (wrapped in `Some`)                 |
+    /// | `dimensions.width`           | `size.width`        |
+    ///    `Cells(n) → length(n)`, `Percent(p) → percent(p/100)`, else `AUTO` |
+    /// | `dimensions.height`          | `size.height`       | same as width  |
+    /// | `dimensions.min_width`       | `min_size.width`    | same as width  |
+    /// | `dimensions.min_height`      | `min_size.height`   | same as width  |
+    /// | `dimensions.max_width`       | `max_size.width`    | same as width  |
+    /// | `dimensions.max_height`      | `max_size.height`   | same as width  |
+    /// | `padding` (via `.edges()`)   | `padding.*`         |
+    ///     `Cells(n) → length(n)`, `Percent(p) → percent(p/100)`,
+    ///     else `ZERO` |
+    /// | `margin` (via `.edges()`)    | `margin.*`          |
+    ///     `Cells(n) → length(n)`, `Percent(p) → percent(p/100)`,
+    ///     else `AUTO` |
+    /// | `gap`                        | `gap` (both axes)   |
+    ///     same as padding; `Fill`/`Auto → ZERO`                   |
     ///
     /// `Unit::Fill(w)` is not directly representable as a taffy `Dimension`;
     /// when used on `width` or `height` it converts to `AUTO`.  If you need
@@ -703,23 +710,27 @@ impl LayoutEngine {
 
         // ── align_items ────────────────────────────────────────────────────
         // //
-        t.align_items = s.align_items.map(|a| match a {
-            Align::Start => AlignItems::Start,
-            Align::End => AlignItems::End,
-            Align::Center => AlignItems::Center,
-            Align::Baseline => AlignItems::Baseline,
-            Align::Stretch => AlignItems::Stretch,
+        t.align_items = s.align_items.map(|a| {
+            match a {
+                Align::Start => AlignItems::Start,
+                Align::End => AlignItems::End,
+                Align::Center => AlignItems::Center,
+                Align::Baseline => AlignItems::Baseline,
+                Align::Stretch => AlignItems::Stretch,
+            }
         });
 
         // ── justify_content ────────────────────────────────────────────────
         // //
-        t.justify_content = s.justify_content.map(|j| match j {
-            Justify::Start => JustifyContent::Start,
-            Justify::End => JustifyContent::End,
-            Justify::Center => JustifyContent::Center,
-            Justify::SpaceBetween => JustifyContent::SpaceBetween,
-            Justify::SpaceAround => JustifyContent::SpaceAround,
-            Justify::SpaceEvenly => JustifyContent::SpaceEvenly,
+        t.justify_content = s.justify_content.map(|j| {
+            match j {
+                Justify::Start => JustifyContent::Start,
+                Justify::End => JustifyContent::End,
+                Justify::Center => JustifyContent::Center,
+                Justify::SpaceBetween => JustifyContent::SpaceBetween,
+                Justify::SpaceAround => JustifyContent::SpaceAround,
+                Justify::SpaceEvenly => JustifyContent::SpaceEvenly,
+            }
         });
 
         // ── size ───────────────────────────────────────────────────────────
@@ -784,9 +795,7 @@ impl LayoutEngine {
 }
 
 impl Default for LayoutEngine {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
 
 // ───────────────────────────────────────────────────────────────────────────

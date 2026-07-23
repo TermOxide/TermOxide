@@ -26,7 +26,13 @@ pub mod unit;
 #[cfg(feature = "future")]
 use box_model::Gap;
 use box_model::{
-    Border, Borders, BoxSizing, Dimensions, Margin, Overflow, Padding,
+    Border,
+    Borders,
+    BoxSizing,
+    Dimensions,
+    Margin,
+    Overflow,
+    Padding,
 };
 use color::Color;
 use font::FontStyle;
@@ -458,9 +464,7 @@ impl Style {
     // -----------------------------------------------------------------------
 
     /// `true` if no fields are set (all `None`).
-    pub fn is_empty(&self) -> bool {
-        *self == Style::default()
-    }
+    pub fn is_empty(&self) -> bool { *self == Style::default() }
 
     /// `true` if any dimension or spacing field is set.
     pub fn has_layout(&self) -> bool {
@@ -597,15 +601,12 @@ mod tests {
             Unit::cells(3),
             Unit::cells(4),
         );
-        assert_eq!(
-            e.as_array(),
-            [
-                Unit::cells(1),
-                Unit::cells(2),
-                Unit::cells(3),
-                Unit::cells(4),
-            ]
-        );
+        assert_eq!(e.as_array(), [
+            Unit::cells(1),
+            Unit::cells(2),
+            Unit::cells(3),
+            Unit::cells(4),
+        ]);
     }
 
     // --- Padding invariant: CSS forbids negatives and intrinsic keywords ---
@@ -956,7 +957,5 @@ mod tests {
     // Ratatui integration
     #[test]
     #[cfg(feature = "ratatui")]
-    fn convert_to_ratatui() {
-        assert!(true)
-    }
+    fn convert_to_ratatui() { assert!(true) }
 }

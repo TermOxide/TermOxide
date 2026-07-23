@@ -56,9 +56,7 @@ impl Margin {
     pub const AUTO: Self = Self(Edges::all(Unit::AUTO));
     pub const ZERO: Self = Self(Edges::all(Unit::ZERO));
 
-    pub const fn all(v: Unit) -> Self {
-        Self(Edges::all(css_margin_value(v)))
-    }
+    pub const fn all(v: Unit) -> Self { Self(Edges::all(css_margin_value(v))) }
 
     pub const fn symmetric(vertical: Unit, horizontal: Unit) -> Self {
         Self(Edges::symmetric(
@@ -82,19 +80,13 @@ impl Margin {
     }
 
     /// Borrow the underlying [`Edges`] for read access.
-    pub const fn edges(&self) -> &Edges {
-        &self.0
-    }
+    pub const fn edges(&self) -> &Edges { &self.0 }
 
     /// Consume the wrapper and return the underlying [`Edges`].
-    pub const fn into_edges(self) -> Edges {
-        self.0
-    }
+    pub const fn into_edges(self) -> Edges { self.0 }
 }
 
 impl From<Edges> for Margin {
     /// Lift a raw [`Edges`] into a `Margin`, normalising each side.
-    fn from(e: Edges) -> Self {
-        Self::new(e.top, e.right, e.bottom, e.left)
-    }
+    fn from(e: Edges) -> Self { Self::new(e.top, e.right, e.bottom, e.left) }
 }
