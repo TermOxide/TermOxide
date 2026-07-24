@@ -133,7 +133,22 @@ impl CoordMapper {
         layout: &Layout,
         parent_origin: (u16, u16),
     ) -> MappedRect {
-        Self::map(layout).offset(parent_origin.0, parent_origin.1)
+        let relative = Self::map(layout);
+        let x = (layout.location.x + parent_origin.0 as f32)
+            .floor()
+            .max(0.0)
+            .min(u16::MAX as f32) as u16;
+        let y = (layout.location.y + parent_origin.1 as f32)
+            .floor()
+            .max(0.0)
+            .min(u16::MAX as f32) as u16;
+
+        MappedRect {
+            x,
+            y,
+            width: relative.width,
+            height: relative.height,
+        }
     }
 }
 
