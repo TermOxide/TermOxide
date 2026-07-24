@@ -75,6 +75,15 @@ runs:
         restore-keys: |
           ${{ steps.cache-key.outputs.prefix }}-
 
+    # A `restore-keys` fallback match restores files but reports `cache-hit != 'true'`,
+    # leaving a stale/partial ~/.rustup from a different key on disk. Installing a fresh
+    # toolchain on top of that makes rustup fail with "Directory not empty" component
+    # conflicts, so wipe it first whenever we're about to (re)install.
+    - name: Clear stale rustup toolchain before install
+      if: inputs.action == 'push' && steps.cache-push.outputs.cache-hit != 'true'
+      shell: bash
+      run: rm -rf ~/.rustup
+
     - name: Setup Rust toolchain
       if: inputs.action == 'push' && steps.cache-push.outputs.cache-hit != 'true'
       uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # Pinned to avoid volatile tag, this is the latest commit as of 05/06/2026
