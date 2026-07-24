@@ -80,14 +80,14 @@ pub enum KeyCode {
 pub struct KeyModifiers(u8);
 
 impl KeyModifiers {
+    /// Alt (or Option) key held.
+    pub const ALT: Self = Self(1 << 2);
+    /// Control key held.
+    pub const CONTROL: Self = Self(1 << 1);
     /// No modifier held.
     pub const NONE: Self = Self(0);
     /// Shift key held.
     pub const SHIFT: Self = Self(1 << 0);
-    /// Control key held.
-    pub const CONTROL: Self = Self(1 << 1);
-    /// Alt (or Option) key held.
-    pub const ALT: Self = Self(1 << 2);
     /// Super key held (Windows key, Command).
     pub const SUPER: Self = Self(1 << 3);
 
