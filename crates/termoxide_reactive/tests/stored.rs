@@ -93,8 +93,7 @@ async fn update_does_not_trigger_reactive_effects() {
 fn debug_after_owner_dropped_does_not_panic() {
     // Debug must remain infallible even after disposal — it's relied on
     // by logging, panic formatters, and `dbg!`.
-    let stored =
-        termoxide_reactive::runtime::with_owner(|| StoredValue::new(42i32));
+    let stored = termoxide_reactive::runtime::with_owner(|| StoredValue::new(42i32));
     let s = format!("{:?}", stored);
     assert!(s.contains("<disposed>"), "got {s:?}");
 }
