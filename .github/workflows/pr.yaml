@@ -104,7 +104,7 @@ jobs:
       matrix:
         action:
           - name: lint
-            command: "clippy"
+            command: "clippy --all-targets --all-features -- -D warnings"
             toolchain: "stable"
             components: ""
           - name: format
