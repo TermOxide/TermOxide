@@ -1,13 +1,17 @@
 name: Update PR Codecov Review
 
 on:
-  workflow_run:
-    workflows: ["pr-validator"]
+  check_run:
     types: [completed]
+
+concurrency:
+  group: codecov-review-${{ github.event.check_run.head_sha }}
 
 jobs:
   update-codecov-section:
     runs-on: ubuntu-latest
+    # check_run has no trigger-level filter, so restrict to Codecov's own app here.
+    if: github.event.check_run.app.slug == 'codecov'
     permissions:
       pull-requests: write
       issues: write
@@ -20,8 +24,7 @@ jobs:
             const owner = context.repo.owner;
             const repo  = context.repo.repo;
 
-            const run = context.payload.workflow_run;
-            const sha = run.head_sha;
+            const sha = context.payload.check_run.head_sha;
 
             const MARKER        = '<!-- pr-quality-bot -->';
             const CODECOV_START = '<!-- codecov-section-start -->';
@@ -71,8 +74,11 @@ jobs:
               CODECOV_CTXS.includes(c.name)
             );
 
-            if (!codecov.length) {
-              core.info('No Codecov check runs found yet');
+            const missing = CODECOV_CTXS.filter(
+              name => !codecov.find(c => c.name === name)
+            );
+            if (missing.length) {
+              core.info(`Still waiting on: ${missing.join(', ')}`);
               return;
             }
 
