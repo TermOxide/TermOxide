@@ -1,13 +1,14 @@
 name: Update PR Codecov Review
 
 on:
-  workflow_run:
-    workflows: ["pr-validator"]
+  check_run:
     types: [completed]
 
 jobs:
   update-codecov-section:
     runs-on: ubuntu-latest
+    # check_run has no trigger-level filter, so restrict to Codecov's own app here.
+    if: github.event.check_run.app.slug == 'codecov'
     permissions:
       pull-requests: write
       issues: write
@@ -20,8 +21,7 @@ jobs:
             const owner = context.repo.owner;
             const repo  = context.repo.repo;
 
-            const run = context.payload.workflow_run;
-            const sha = run.head_sha;
+            const sha = context.payload.check_run.head_sha;
 
             const MARKER        = '<!-- pr-quality-bot -->';
             const CODECOV_START = '<!-- codecov-section-start -->';
