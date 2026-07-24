@@ -64,12 +64,11 @@
 //!
 //! ```rust
 //! use ratatui::layout::Rect;
-//! use termoxide_rendering::{
-//!     render_loop::App,
-//!     view_node::ViewNode,
-//! };
+//! use termoxide_rendering::{render_loop::App, view_node::ViewNode};
 //!
-//! struct Counter { value: u32 }
+//! struct Counter {
+//!     value: u32,
+//! }
 //!
 //! impl App for Counter {
 //!     fn build_view(&mut self, viewport: Rect) -> ViewNode {
@@ -98,13 +97,14 @@
 //!   application controls this), **or**
 //! - [`RenderLoop::quit`] sender is used from another thread.
 
-use crossbeam_channel::{Receiver, Sender, TryRecvError, bounded, select};
-use crossterm::event::{Event, KeyModifiers};
-use ratatui::{backend::Backend, layout::Rect};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+
+use crossbeam_channel::{Receiver, Sender, TryRecvError, bounded, select};
+use crossterm::event::{Event, KeyModifiers};
+use ratatui::{backend::Backend, layout::Rect};
 
 use crate::{
     event_router::EventRouter,
@@ -113,9 +113,10 @@ use crate::{
     view_node::{ComponentId, ViewNode},
 };
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  App trait
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  App trait
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// Interface between the render loop and the application's component tree.
 ///
@@ -140,17 +141,19 @@ pub trait App {
 
     /// Handle a routed crossterm event.
     ///
-    /// `id` is the [`ComponentId`] that the [`EventRouter`][crate::event_router::EventRouter]
-    /// determined should receive this event.  `None` means the event was not
-    /// claimed by any specific component (e.g. a global hotkey).
+    /// `id` is the [`ComponentId`] that the
+    /// [`EventRouter`][crate::event_router::EventRouter] determined should
+    /// receive this event.  `None` means the event was not claimed by any
+    /// specific component (e.g. a global hotkey).
     ///
     /// Return `true` to signal that the application should quit.
     fn handle_event(&mut self, id: Option<ComponentId>, event: Event) -> bool;
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  DirtySignal
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  DirtySignal
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// A pair of channels used to signal that the view is stale.
 ///
@@ -193,15 +196,12 @@ impl DirtyReceiver {
         matches!(self.0.try_recv(), Ok(()) | Err(TryRecvError::Disconnected))
     }
 
-    /// Consume a pending dirty notification, returning `true` if one was present.
-    pub fn try_recv(&self) -> bool {
-        self.0.try_recv().is_ok()
-    }
+    /// Consume a pending dirty notification, returning `true` if one was
+    /// present.
+    pub fn try_recv(&self) -> bool { self.0.try_recv().is_ok() }
 
     /// Borrow the inner [`Receiver`] so it can be used in a `select!` macro.
-    pub(crate) fn inner(&self) -> &Receiver<()> {
-        &self.0
-    }
+    pub(crate) fn inner(&self) -> &Receiver<()> { &self.0 }
 }
 
 /// Create a linked [`DirtySender`] / [`DirtyReceiver`] pair.
@@ -213,9 +213,10 @@ pub fn dirty_channel() -> (DirtySender, DirtyReceiver) {
     (DirtySender(tx), DirtyReceiver(rx))
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  RenderLoop
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  RenderLoop
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// Main application loop.
 ///
@@ -227,12 +228,15 @@ pub fn dirty_channel() -> (DirtySender, DirtyReceiver) {
 ///
 /// ```rust,no_run
 /// use std::io::stdout;
-/// use ratatui::{Terminal, backend::CrosstermBackend};
-/// use termoxide_rendering::render_loop::{RenderLoop, dirty_channel};
-/// use termoxide_rendering::renderer::Renderer;
-/// use termoxide_rendering::event_router::EventRouter;
 ///
-/// let backend  = CrosstermBackend::new(stdout());
+/// use ratatui::{Terminal, backend::CrosstermBackend};
+/// use termoxide_rendering::{
+///     event_router::EventRouter,
+///     render_loop::{RenderLoop, dirty_channel},
+///     renderer::Renderer,
+/// };
+///
+/// let backend = CrosstermBackend::new(stdout());
 /// let terminal = Terminal::new(backend).unwrap();
 /// let renderer = Renderer::new(terminal).unwrap();
 ///
@@ -254,10 +258,14 @@ impl<B: Backend> RenderLoop<B> {
     /// Create a new render loop.
     ///
     /// - `renderer` — the configured [`Renderer`] to paint frames.
-    /// - `event_router` — the [`EventRouter`] that maps raw crossterm events
-    ///   to component ids.
+    /// - `event_router` — the [`EventRouter`] that maps raw crossterm events to
+    ///   component ids.
     /// - `dirty_rx` — the dirty receiver produced by [`dirty_channel`].
-    pub fn new(renderer: Renderer<B>, event_router: EventRouter, dirty_rx: DirtyReceiver) -> Self {
+    pub fn new(
+        renderer: Renderer<B>,
+        event_router: EventRouter,
+        dirty_rx: DirtyReceiver,
+    ) -> Self {
         Self {
             renderer,
             event_router,
@@ -272,8 +280,8 @@ impl<B: Backend> RenderLoop<B> {
     ///
     /// ## Panics
     ///
-    /// Does not panic.  All internal errors are converted to [`RenderLoopError`]
-    /// and returned.
+    /// Does not panic.  All internal errors are converted to
+    /// [`RenderLoopError`] and returned.
     ///
     /// ## Terminal restoration
     ///
@@ -302,7 +310,7 @@ impl<B: Backend> RenderLoop<B> {
                                 return;
                             }
                         }
-                    }
+                    },
                     Err(_) => return,
                 }
             }
@@ -322,7 +330,8 @@ impl<B: Backend> RenderLoop<B> {
         result
     }
 
-    // ── Inner loop ─────────────────────────────────────────────────────────── //
+    // ── Inner loop ───────────────────────────────────────────────────────────
+    // //
 
     fn loop_body<A: App>(
         &mut self,
@@ -337,7 +346,8 @@ impl<B: Backend> RenderLoop<B> {
         self.event_router.sync_hit_map(&root);
 
         loop {
-            // Block until either an event arrives or a dirty notification fires.
+            // Block until either an event arrives or a dirty notification
+            // fires.
             select! {
                 recv(ev_rx) -> msg => {
                     let ev = msg.map_err(|_| RenderLoopError::EventThreadDied)?;
@@ -377,7 +387,8 @@ impl<B: Backend> RenderLoop<B> {
         }
     }
 
-    // ── Helpers ────────────────────────────────────────────────────────────── //
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    // //
 
     /// Returns `true` for the built-in quit bindings (Ctrl-C, Ctrl-D).
     ///
@@ -400,9 +411,10 @@ impl<B: Backend> RenderLoop<B> {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  RenderLoopError
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  RenderLoopError
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// Errors that can terminate the render loop.
 #[derive(Debug)]
@@ -417,7 +429,9 @@ impl std::fmt::Display for RenderLoopError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Render(e) => write!(f, "render error: {e}"),
-            Self::EventThreadDied => write!(f, "crossterm event thread exited unexpectedly"),
+            Self::EventThreadDied => {
+                write!(f, "crossterm event thread exited unexpectedly")
+            },
         }
     }
 }
@@ -432,22 +446,19 @@ impl std::error::Error for RenderLoopError {
 }
 
 impl From<RenderError> for RenderLoopError {
-    fn from(e: RenderError) -> Self {
-        Self::Render(e)
-    }
+    fn from(e: RenderError) -> Self { Self::Render(e) }
 }
 
 impl From<std::io::Error> for RenderLoopError {
-    fn from(e: std::io::Error) -> Self {
-        Self::Render(RenderError::Io(e))
-    }
+    fn from(e: std::io::Error) -> Self { Self::Render(RenderError::Io(e)) }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState};
     use ratatui::backend::TestBackend;
+
+    use super::*;
 
     fn key_event(code: KeyCode, modifiers: KeyModifiers) -> Event {
         Event::Key(KeyEvent {

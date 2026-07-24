@@ -11,7 +11,13 @@
 
 use std::time::Duration;
 
-use crossterm::event::{self, Event as CrosstermEvent, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{
+    self,
+    Event as CrosstermEvent,
+    KeyCode,
+    KeyEventKind,
+    KeyModifiers,
+};
 use termoxide_reactive::Signal;
 
 /// Default event polling timeout used by [`poll_events`].
@@ -51,9 +57,14 @@ impl Event {
     /// Returns `None` for non-key events and for key repeat/release events.
     pub fn from_crossterm(event: CrosstermEvent) -> Option<Self> {
         match event {
-            CrosstermEvent::Key(key_event) if key_event.kind == KeyEventKind::Press => Some(
-                Self::KeyPress(KeyPress::new(key_event.code, key_event.modifiers)),
-            ),
+            CrosstermEvent::Key(key_event)
+                if key_event.kind == KeyEventKind::Press =>
+            {
+                Some(Self::KeyPress(KeyPress::new(
+                    key_event.code,
+                    key_event.modifiers,
+                )))
+            },
             _ => None,
         }
     }
@@ -75,12 +86,16 @@ pub fn poll_events() -> Vec<Event> {
 ///
 /// The first event wait uses `timeout`; if one event is found, this function
 /// drains all remaining ready events with a zero timeout.
-pub(crate) fn poll_events_timeout(timeout: Duration) -> std::io::Result<Vec<Event>> {
+pub(crate) fn poll_events_timeout(
+    timeout: Duration,
+) -> std::io::Result<Vec<Event>> {
     let raw = poll_crossterm_events(timeout)?;
     Ok(to_framework_events(raw))
 }
 
-pub(crate) fn poll_crossterm_events(timeout: Duration) -> std::io::Result<Vec<CrosstermEvent>> {
+pub(crate) fn poll_crossterm_events(
+    timeout: Duration,
+) -> std::io::Result<Vec<CrosstermEvent>> {
     drain_events_with(timeout, event::poll, event::read)
 }
 
@@ -152,19 +167,13 @@ impl std::fmt::Debug for KeySignalBindings {
 
 impl KeySignalBindings {
     /// Create an empty key binding table.
-    pub fn new() -> Self {
-        Self::default()
-    }
+    pub fn new() -> Self { Self::default() }
 
     /// Number of installed bindings.
-    pub fn len(&self) -> usize {
-        self.bindings.len()
-    }
+    pub fn len(&self) -> usize { self.bindings.len() }
 
     /// Returns `true` when no binding is installed.
-    pub fn is_empty(&self) -> bool {
-        self.bindings.is_empty()
-    }
+    pub fn is_empty(&self) -> bool { self.bindings.is_empty() }
 
     /// Bind a key to a fixed signal value.
     pub fn bind_set<T>(&mut self, key: KeyBinding, signal: Signal<T>, value: T)
@@ -176,8 +185,12 @@ impl KeySignalBindings {
     }
 
     /// Bind a key to an in-place signal update closure.
-    pub fn bind_update<T, F>(&mut self, key: KeyBinding, signal: Signal<T>, updater: F)
-    where
+    pub fn bind_update<T, F>(
+        &mut self,
+        key: KeyBinding,
+        signal: Signal<T>,
+        updater: F,
+    ) where
         T: Send + Sync + 'static,
         F: Fn(&mut T) + Send + Sync + 'static,
     {
@@ -203,7 +216,7 @@ impl KeySignalBindings {
                     }
                 }
                 updates
-            }
+            },
         }
     }
 
@@ -217,12 +230,24 @@ impl KeySignalBindings {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crossterm::event::{KeyEvent, KeyEventState, MouseButton, MouseEvent, MouseEventKind};
     use std::io::{Error, ErrorKind};
+
+    use crossterm::event::{
+        KeyEvent,
+        KeyEventState,
+        MouseButton,
+        MouseEvent,
+        MouseEventKind,
+    };
     use termoxide_reactive::with_owner;
 
-    fn key_event(code: KeyCode, modifiers: KeyModifiers, kind: KeyEventKind) -> CrosstermEvent {
+    use super::*;
+
+    fn key_event(
+        code: KeyCode,
+        modifiers: KeyModifiers,
+        kind: KeyEventKind,
+    ) -> CrosstermEvent {
         CrosstermEvent::Key(KeyEvent {
             code,
             modifiers,
@@ -293,9 +318,9 @@ mod tests {
             Duration::from_millis(25),
             |_| poll_results.next().unwrap_or(Ok(false)),
             || {
-                read_results
-                    .next()
-                    .unwrap_or_else(|| Err(Error::new(ErrorKind::UnexpectedEof, "no event")))
+                read_results.next().unwrap_or_else(|| {
+                    Err(Error::new(ErrorKind::UnexpectedEof, "no event"))
+                })
             },
         )
         .expect("drain should succeed");
@@ -351,10 +376,9 @@ mod tests {
                 42,
             );
 
-            let updates = bindings.apply_event(&Event::KeyPress(KeyPress::new(
-                KeyCode::Char('k'),
-                KeyModifiers::NONE,
-            )));
+            let updates = bindings.apply_event(&Event::KeyPress(
+                KeyPress::new(KeyCode::Char('k'), KeyModifiers::NONE),
+            ));
 
             assert_eq!(updates, 1);
             assert_eq!(signal.get_untracked(), 42);
@@ -373,10 +397,9 @@ mod tests {
                 |value| *value += 1,
             );
 
-            let updates = bindings.apply_event(&Event::KeyPress(KeyPress::new(
-                KeyCode::Char('x'),
-                KeyModifiers::NONE,
-            )));
+            let updates = bindings.apply_event(&Event::KeyPress(
+                KeyPress::new(KeyCode::Char('x'), KeyModifiers::NONE),
+            ));
 
             assert_eq!(updates, 0);
             assert_eq!(signal.get_untracked(), 10);
@@ -394,10 +417,9 @@ mod tests {
             bindings.bind_update(key, a, |value| *value += 1);
             bindings.bind_update(key, b, |value| *value += 10);
 
-            let updates = bindings.apply_event(&Event::KeyPress(KeyPress::new(
-                KeyCode::Char('j'),
-                KeyModifiers::NONE,
-            )));
+            let updates = bindings.apply_event(&Event::KeyPress(
+                KeyPress::new(KeyCode::Char('j'), KeyModifiers::NONE),
+            ));
 
             assert_eq!(updates, 2);
             assert_eq!(a.get_untracked(), 1);
@@ -418,9 +440,18 @@ mod tests {
             );
 
             let events = vec![
-                Event::KeyPress(KeyPress::new(KeyCode::Char('a'), KeyModifiers::NONE)),
-                Event::KeyPress(KeyPress::new(KeyCode::Char('x'), KeyModifiers::NONE)),
-                Event::KeyPress(KeyPress::new(KeyCode::Char('a'), KeyModifiers::NONE)),
+                Event::KeyPress(KeyPress::new(
+                    KeyCode::Char('a'),
+                    KeyModifiers::NONE,
+                )),
+                Event::KeyPress(KeyPress::new(
+                    KeyCode::Char('x'),
+                    KeyModifiers::NONE,
+                )),
+                Event::KeyPress(KeyPress::new(
+                    KeyCode::Char('a'),
+                    KeyModifiers::NONE,
+                )),
             ];
 
             let updates = bindings.apply_events(&events);
