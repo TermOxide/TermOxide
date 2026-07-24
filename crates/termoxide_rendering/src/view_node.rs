@@ -32,9 +32,8 @@
 //! - **Spatial metadata**: every node carries the terminal area ([`Rect`]) assigned to it by the layout engine so that
 //!   the [`EventRouter`][crate::event_router::EventRouter] can perform O(nodes) hit-testing without re-running layout.
 //!
-//! - **Type-erased content**: [`ViewContent::Raw`] lets any component supply an
-//!   arbitrary draw closure, which keeps this crate decoupled from the full set
-//!   of ratatui built-in widgets.
+//! - **Type-erased content**: [`ViewContent::Raw`] lets any component supply an arbitrary draw closure, which keeps
+//!   this crate decoupled from the full set of ratatui built-in widgets.
 //!
 //! ## Example
 //!
@@ -144,9 +143,7 @@ impl std::fmt::Debug for ViewContent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Container => write!(f, "Container"),
-            Self::Text { text, .. } => {
-                f.debug_struct("Text").field("text", text).finish()
-            },
+            Self::Text { text, .. } => f.debug_struct("Text").field("text", text).finish(),
             Self::Raw(_) => write!(f, "Raw(<fn>)"),
         }
     }

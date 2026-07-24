@@ -60,13 +60,7 @@ use crossterm::{
     ExecutableCommand,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ratatui::{
-    Terminal,
-    backend::Backend,
-    buffer::Buffer,
-    layout::Rect,
-    style::Style,
-};
+use ratatui::{Terminal, backend::Backend, buffer::Buffer, layout::Rect, style::Style};
 
 use crate::view_node::{ViewContent, ViewNode};
 
