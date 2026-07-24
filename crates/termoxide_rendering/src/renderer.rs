@@ -39,14 +39,20 @@
 //! ## Example
 //!
 //! ```rust,no_run
-//! use ratatui::{backend::CrosstermBackend, Terminal};
-//! use termoxide_rendering::renderer::Renderer;
-//! use termoxide_rendering::view_node::{ViewNode, ViewContent};
-//! use ratatui::layout::Rect;
-//! use ratatui::style::{Style, Color};
 //! use std::io::stdout;
 //!
-//! let backend  = CrosstermBackend::new(stdout());
+//! use ratatui::{
+//!     Terminal,
+//!     backend::CrosstermBackend,
+//!     layout::Rect,
+//!     style::{Color, Style},
+//! };
+//! use termoxide_rendering::{
+//!     renderer::Renderer,
+//!     view_node::{ViewContent, ViewNode},
+//! };
+//!
+//! let backend = CrosstermBackend::new(stdout());
 //! let terminal = Terminal::new(backend).unwrap();
 //! let mut renderer = Renderer::new(terminal).unwrap();
 //!
@@ -59,18 +65,30 @@
 //! renderer.render_frame(&mut root).unwrap();
 //! ```
 
-use crossterm::ExecutableCommand;
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
-use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+use crossterm::{
+    ExecutableCommand,
+    event::{DisableMouseCapture, EnableMouseCapture},
+    terminal::{
+        EnterAlternateScreen,
+        LeaveAlternateScreen,
+        disable_raw_mode,
+        enable_raw_mode,
+    },
 };
-use ratatui::{Terminal, backend::Backend, buffer::Buffer, layout::Rect, style::Style};
+use ratatui::{
+    Terminal,
+    backend::Backend,
+    buffer::Buffer,
+    layout::Rect,
+    style::Style,
+};
 
 use crate::view_node::{ViewContent, ViewNode};
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Error type
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  Error type
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// Errors that can arise during a render pass.
 #[derive(Debug)]
@@ -101,14 +119,13 @@ impl std::error::Error for RenderError {
 }
 
 impl From<std::io::Error> for RenderError {
-    fn from(e: std::io::Error) -> Self {
-        Self::Io(e)
-    }
+    fn from(e: std::io::Error) -> Self { Self::Io(e) }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Renderer
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  Renderer
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// Walks the [`ViewNode`] tree and produces terminal output via ratatui.
 ///
@@ -126,7 +143,8 @@ impl From<std::io::Error> for RenderError {
 /// ## Thread safety
 ///
 /// `Renderer` is **not** `Sync`.  It must be owned and driven from a single
-/// thread (the render thread inside [`RenderLoop`][crate::render_loop::RenderLoop]).
+/// thread (the render thread inside
+/// [`RenderLoop`][crate::render_loop::RenderLoop]).
 pub struct Renderer<B: Backend> {
     /// Ratatui terminal — owns the backend and the two-frame diff buffer.
     terminal: Terminal<B>,
@@ -154,19 +172,18 @@ impl<B: Backend> Renderer<B> {
     ///
     /// This is the authoritative size the layout engine should use when
     /// computing node positions.
-    pub fn viewport(&self) -> Rect {
-        self.terminal.size().unwrap_or_default()
-    }
+    pub fn viewport(&self) -> Rect { self.terminal.size().unwrap_or_default() }
 
-    // ── Main render entry point ────────────────────────────────────────────── //
+    // ── Main render entry point ──────────────────────────────────────────────
+    // //
 
     /// Render one complete frame from `root` to the terminal.
     ///
     /// The method:
-    /// 1. Calls [`draw_node`][Self::draw_node] recursively on `root`, filling
-    ///    a temporary [`Buffer`] from the top of the tree down.
-    /// 2. Hands the filled buffer to ratatui's `Terminal::draw`, which diffs
-    ///    it against the previous frame and writes only the changed cells.
+    /// 1. Calls [`draw_node`][Self::draw_node] recursively on `root`, filling a
+    ///    temporary [`Buffer`] from the top of the tree down.
+    /// 2. Hands the filled buffer to ratatui's `Terminal::draw`, which diffs it
+    ///    against the previous frame and writes only the changed cells.
     /// 3. Calls [`ViewNode::mark_clean`] on `root` so that unchanged nodes are
     ///    skipped on the next call.
     ///
@@ -174,7 +191,10 @@ impl<B: Backend> Renderer<B> {
     ///
     /// Returns [`RenderError::Io`] on any I/O failure inside ratatui, or
     /// [`RenderError::DrawPanic`] if a raw draw callback panics.
-    pub fn render_frame(&mut self, root: &mut ViewNode) -> Result<(), RenderError> {
+    pub fn render_frame(
+        &mut self,
+        root: &mut ViewNode,
+    ) -> Result<(), RenderError> {
         let mut draw_error = None;
 
         // Draw directly into the frame buffer that ratatui provides.
@@ -200,7 +220,8 @@ impl<B: Backend> Renderer<B> {
         Ok(())
     }
 
-    // ── Recursive tree walk ────────────────────────────────────────────────── //
+    // ── Recursive tree walk ──────────────────────────────────────────────────
+    // //
 
     /// Recursively draw `node` into `buf`.
     ///
@@ -210,7 +231,10 @@ impl<B: Backend> Renderer<B> {
     ///
     /// The traversal is depth-first, parent before children, so that child
     /// content always appears on top of parent background fills.
-    pub fn draw_node(node: &ViewNode, buf: &mut Buffer) -> Result<(), RenderError> {
+    pub fn draw_node(
+        node: &ViewNode,
+        buf: &mut Buffer,
+    ) -> Result<(), RenderError> {
         // Fast path: nothing changed in this sub-tree.
         if !node.is_subtree_dirty() {
             return Ok(());
@@ -221,20 +245,22 @@ impl<B: Backend> Renderer<B> {
             ViewContent::Container => {
                 // Pure layout node — no visual output. Children are handled
                 // below.
-            }
+            },
 
             ViewContent::Text { text, style } => {
                 Self::draw_text(buf, node.area, text, *style);
-            }
+            },
 
             ViewContent::Raw(f) => {
-                let draw_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    f(buf, node.area);
-                }));
+                let draw_result = std::panic::catch_unwind(
+                    std::panic::AssertUnwindSafe(|| {
+                        f(buf, node.area);
+                    }),
+                );
                 if draw_result.is_err() {
                     return Err(RenderError::DrawPanic);
                 }
-            }
+            },
         }
 
         // Recurse into children (document order).
@@ -245,7 +271,8 @@ impl<B: Backend> Renderer<B> {
         Ok(())
     }
 
-    // ── Primitive draw helpers ─────────────────────────────────────────────── //
+    // ── Primitive draw helpers ───────────────────────────────────────────────
+    // //
 
     /// Write `text` into `buf` at `area.x, area.y`, applying `style`.
     ///
@@ -260,7 +287,8 @@ impl<B: Backend> Renderer<B> {
         let buf_right = buf_area.x.saturating_add(buf_area.width);
         let buf_bottom = buf_area.y.saturating_add(buf_area.height);
 
-        // Text nodes are single-line, so skip draws whose baseline row is off-screen.
+        // Text nodes are single-line, so skip draws whose baseline row is
+        // off-screen.
         if area.y < buf_area.y || area.y >= buf_bottom {
             return;
         }
@@ -278,7 +306,8 @@ impl<B: Backend> Renderer<B> {
         let skip_chars = visible_left.saturating_sub(node_left) as usize;
         let max_chars = visible_right.saturating_sub(visible_left) as usize;
 
-        let clipped: String = text.chars().skip(skip_chars).take(max_chars).collect();
+        let clipped: String =
+            text.chars().skip(skip_chars).take(max_chars).collect();
         if clipped.is_empty() {
             return;
         }
@@ -286,7 +315,8 @@ impl<B: Backend> Renderer<B> {
         buf.set_string(visible_left, area.y, &clipped, style);
     }
 
-    // ── Terminal lifecycle ─────────────────────────────────────────────────── //
+    // ── Terminal lifecycle ───────────────────────────────────────────────────
+    // //
 
     /// Restore the terminal to a clean state.
     ///
@@ -296,7 +326,8 @@ impl<B: Backend> Renderer<B> {
     /// # Errors
     ///
     /// Returns [`RenderError::Io`] if the restore operation fails.  The caller
-    /// should log the error but not panic — the process is about to exit anyway.
+    /// should log the error but not panic — the process is about to exit
+    /// anyway.
     pub fn restore(&mut self) -> Result<(), RenderError> {
         self.terminal.show_cursor()?;
         // Disable mouse capture and restore the alternate screen and raw mode.
@@ -307,25 +338,23 @@ impl<B: Backend> Renderer<B> {
     }
 
     /// Borrow the underlying [`Terminal`].
-    pub fn terminal(&self) -> &Terminal<B> {
-        &self.terminal
-    }
+    pub fn terminal(&self) -> &Terminal<B> { &self.terminal }
 
     /// Mutably borrow the underlying [`Terminal`].
-    pub fn terminal_mut(&mut self) -> &mut Terminal<B> {
-        &mut self.terminal
-    }
+    pub fn terminal_mut(&mut self) -> &mut Terminal<B> { &mut self.terminal }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use ratatui::backend::TestBackend;
+
+    use super::*;
 
     #[test]
     fn draw_text_truncates_to_node_width() {
         let mut buf = Buffer::empty(Rect::new(0, 0, 5, 1));
-        let node = ViewNode::text(Rect::new(0, 0, 3, 1), "abcdef", Style::default());
+        let node =
+            ViewNode::text(Rect::new(0, 0, 3, 1), "abcdef", Style::default());
 
         Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
 
@@ -338,7 +367,8 @@ mod tests {
     #[test]
     fn clean_subtree_is_skipped() {
         let mut buf = Buffer::empty(Rect::new(0, 0, 5, 1));
-        let mut node = ViewNode::text(Rect::new(0, 0, 5, 1), "hello", Style::default());
+        let mut node =
+            ViewNode::text(Rect::new(0, 0, 5, 1), "hello", Style::default());
         node.dirty = false;
 
         Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
@@ -372,7 +402,8 @@ mod tests {
     #[test]
     fn out_of_bounds_text_area_is_ignored() {
         let mut buf = Buffer::empty(Rect::new(0, 0, 10, 1));
-        let node = ViewNode::text(Rect::new(0, 50, 3, 1), "boom", Style::default());
+        let node =
+            ViewNode::text(Rect::new(0, 50, 3, 1), "boom", Style::default());
 
         Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
         assert_eq!(buf.get(0, 0).symbol(), " ");
@@ -392,7 +423,8 @@ mod tests {
     #[test]
     fn text_draw_clips_left_side_against_buffer_origin() {
         let mut buf = Buffer::empty(Rect::new(2, 0, 3, 1));
-        let node = ViewNode::text(Rect::new(0, 0, 5, 1), "abcde", Style::default());
+        let node =
+            ViewNode::text(Rect::new(0, 0, 5, 1), "abcde", Style::default());
 
         Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
 

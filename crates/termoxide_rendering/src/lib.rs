@@ -35,19 +35,17 @@
 //!
 //! ## Modules
 //!
-//! | Module                        | Responsibility                                       |
-//! |-------------------------------|------------------------------------------------------|
-//! | [`view_node`]                 | [`ViewNode`][view_node::ViewNode] — the intermediate |
-//! |                               | UI tree that components produce before rendering.    |
-//! | [`renderer`]                  | [`Renderer`][renderer::Renderer] — walks the tree,  |
-//! |                               | calls ratatui draw routines, accumulates into a      |
-//! |                               | `Buffer`, diffs against the previous frame.          |
-//! | [`render_loop`]               | [`RenderLoop`][render_loop::RenderLoop] — main loop; |
-//! |                               | blocks on crossterm events and reactive dirty         |
-//! |                               | notifications; triggers redraws.                     |
-//! | [`event_router`]              | [`EventRouter`][event_router::EventRouter] — maps    |
-//! |                               | raw crossterm events to component ids via focus      |
-//! |                               | tracking (keyboard) and spatial hit-testing (mouse). |
+//! - [`view_node`]: [`ViewNode`][view_node::ViewNode], the intermediate UI tree
+//!   that components produce before rendering.
+//! - [`renderer`]: [`Renderer`][renderer::Renderer] walks the tree, calls
+//!   ratatui draw routines, and accumulates into a `Buffer` diffed against the
+//!   previous frame.
+//! - [`render_loop`]: [`RenderLoop`][render_loop::RenderLoop], the main loop;
+//!   blocks on crossterm events and reactive dirty notifications, then triggers
+//!   redraws.
+//! - [`event_router`]: [`EventRouter`][event_router::EventRouter] maps raw
+//!   crossterm events to component ids via focus tracking (keyboard) and
+//!   spatial hit-testing (mouse).
 //!
 //! ## Render pipeline — data flow
 //!
@@ -70,13 +68,18 @@
 //!
 //! ```rust,no_run
 //! use std::io::stdout;
-//! use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect, style::Style};
-//! use crossterm::event::Event;
 //!
+//! use crossterm::event::Event;
+//! use ratatui::{
+//!     Terminal,
+//!     backend::CrosstermBackend,
+//!     layout::Rect,
+//!     style::Style,
+//! };
 //! use termoxide_rendering::{
+//!     event_router::EventRouter,
 //!     render_loop::{App, RenderLoop, dirty_channel},
 //!     renderer::Renderer,
-//!     event_router::EventRouter,
 //!     view_node::{ComponentId, ViewNode},
 //! };
 //!
@@ -86,13 +89,18 @@
 //!     fn build_view(&mut self, viewport: Rect) -> ViewNode {
 //!         ViewNode::text(viewport, "Hello, TermOxide!", Style::default())
 //!     }
-//!     fn handle_event(&mut self, _id: Option<ComponentId>, _ev: Event) -> bool {
+//!
+//!     fn handle_event(
+//!         &mut self,
+//!         _id: Option<ComponentId>,
+//!         _ev: Event,
+//!     ) -> bool {
 //!         false
 //!     }
 //! }
 //!
 //! fn main() {
-//!     let backend  = CrosstermBackend::new(stdout());
+//!     let backend = CrosstermBackend::new(stdout());
 //!     let terminal = Terminal::new(backend).unwrap();
 //!     let renderer = Renderer::new(terminal).unwrap();
 //!     let (dirty_tx, dirty_rx) = dirty_channel();

@@ -43,36 +43,53 @@
 //!
 //! ```rust
 //! use ratatui::layout::Rect;
-//! use termoxide_rendering::event_router::EventRouter;
-//! use termoxide_rendering::view_node::{ViewNode, ViewContent};
+//! use termoxide_rendering::{
+//!     event_router::EventRouter,
+//!     view_node::{ViewContent, ViewNode},
+//! };
 //!
 //! // Build a minimal tree: a container with two labelled children.
-//! let a = ViewNode::text(Rect::new(0, 0, 40, 12), "left", ratatui::style::Style::default())
-//!     .with_id(1);
-//! let b = ViewNode::text(Rect::new(40, 0, 40, 12), "right", ratatui::style::Style::default())
-//!     .with_id(2);
+//! let a = ViewNode::text(
+//!     Rect::new(0, 0, 40, 12),
+//!     "left",
+//!     ratatui::style::Style::default(),
+//! )
+//! .with_id(1);
+//! let b = ViewNode::text(
+//!     Rect::new(40, 0, 40, 12),
+//!     "right",
+//!     ratatui::style::Style::default(),
+//! )
+//! .with_id(2);
 //! let root = ViewNode::container(Rect::new(0, 0, 80, 24), vec![a, b]);
 //!
 //! let mut router = EventRouter::new();
-//! router.sync_hit_map(&root);          // build the spatial index
-//! router.set_focus(Some(1));           // focus the left panel
+//! router.sync_hit_map(&root); // build the spatial index
+//! router.set_focus(Some(1)); // focus the left panel
 //!
 //! // Keyboard events go to the focused component.
-//! use crossterm::event::{Event, KeyEvent, KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
+//! use crossterm::event::{
+//!     Event,
+//!     KeyCode,
+//!     KeyEvent,
+//!     KeyEventKind,
+//!     KeyEventState,
+//!     KeyModifiers,
+//! };
 //! let key_ev = Event::Key(KeyEvent {
-//!     code:      KeyCode::Char('j'),
+//!     code: KeyCode::Char('j'),
 //!     modifiers: KeyModifiers::NONE,
-//!     kind:      KeyEventKind::Press,
-//!     state:     KeyEventState::NONE,
+//!     kind: KeyEventKind::Press,
+//!     state: KeyEventState::NONE,
 //! });
 //! assert_eq!(router.route_event(&key_ev, &root), Some(1));
 //!
 //! // Mouse click in the right half → component 2.
-//! use crossterm::event::{MouseEvent, MouseEventKind, MouseButton};
+//! use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 //! let mouse_ev = Event::Mouse(MouseEvent {
-//!     kind:      MouseEventKind::Down(MouseButton::Left),
-//!     column:    60,
-//!     row:       5,
+//!     kind: MouseEventKind::Down(MouseButton::Left),
+//!     column: 60,
+//!     row: 5,
 //!     modifiers: KeyModifiers::NONE,
 //! });
 //! assert_eq!(router.route_event(&mouse_ev, &root), Some(2));
@@ -88,9 +105,10 @@ use crate::{
     view_node::{ComponentId, ViewNode},
 };
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  HitEntry
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  HitEntry
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// A single entry in the spatial hit map.
 ///
@@ -105,9 +123,10 @@ struct HitEntry {
     id: ComponentId,
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  EventRouter
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  EventRouter
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// Routes raw crossterm [`Event`]s to the component that should handle them.
 ///
@@ -115,10 +134,12 @@ struct HitEntry {
 /// routing algorithm and focus management.
 #[derive(Debug)]
 pub struct EventRouter {
-    /// Ordered list of focusable areas, updated by [`sync_hit_map`][Self::sync_hit_map].
+    /// Ordered list of focusable areas, updated by
+    /// [`sync_hit_map`][Self::sync_hit_map].
     hit_map: Vec<HitEntry>,
 
-    /// The [`ComponentId`] of the component that currently holds keyboard focus.
+    /// The [`ComponentId`] of the component that currently holds keyboard
+    /// focus.
     ///
     /// `None` when no component is focused (global hotkey mode).
     focused: Option<ComponentId>,
@@ -140,7 +161,8 @@ impl EventRouter {
         }
     }
 
-    // ── Hit-map management ─────────────────────────────────────────────────── //
+    // ── Hit-map management ───────────────────────────────────────────────────
+    // //
 
     /// Rebuild the spatial index from the current [`ViewNode`] tree.
     ///
@@ -171,44 +193,43 @@ impl EventRouter {
         }
     }
 
-    // ── Focus management ───────────────────────────────────────────────────── //
+    // ── Focus management ─────────────────────────────────────────────────────
+    // //
 
-    /// Return the [`ComponentId`] of the currently focused component, or `None`.
-    pub fn focused(&self) -> Option<ComponentId> {
-        self.focused
-    }
+    /// Return the [`ComponentId`] of the currently focused component, or
+    /// `None`.
+    pub fn focused(&self) -> Option<ComponentId> { self.focused }
 
     /// Programmatically set keyboard focus to `id`.
     ///
     /// Pass `None` to clear focus (global hotkey mode).
-    pub fn set_focus(&mut self, id: Option<ComponentId>) {
-        self.focused = id;
-    }
+    pub fn set_focus(&mut self, id: Option<ComponentId>) { self.focused = id; }
 
     /// Move focus to the next focusable component in document order.
     ///
     /// Wraps around from the last component to the first.  Does nothing when
     /// the hit map is empty.
-    pub fn focus_next(&mut self) {
-        self.focused = self.advance_focus(false);
-    }
+    pub fn focus_next(&mut self) { self.focused = self.advance_focus(false); }
 
     /// Move focus to the previous focusable component in document order.
     ///
     /// Wraps around from the first component to the last.  Does nothing when
     /// the hit map is empty.
-    pub fn focus_prev(&mut self) {
-        self.focused = self.advance_focus(true);
-    }
+    pub fn focus_prev(&mut self) { self.focused = self.advance_focus(true); }
 
-    // ── Key-to-signal bindings ───────────────────────────────────────────── //
+    // ── Key-to-signal bindings ─────────────────────────────────────────────
+    // //
 
     /// Bind a key to a fixed signal value.
     ///
     /// These bindings are executed from [`route_event`][Self::route_event], so
     /// keyboard handling has a single entry point.
-    pub fn bind_key_set<T>(&mut self, key: KeyBinding, signal: Signal<T>, value: T)
-    where
+    pub fn bind_key_set<T>(
+        &mut self,
+        key: KeyBinding,
+        signal: Signal<T>,
+        value: T,
+    ) where
         T: Clone + Send + Sync + 'static,
     {
         self.key_bindings.bind_set(key, signal, value);
@@ -218,8 +239,12 @@ impl EventRouter {
     ///
     /// These bindings are executed from [`route_event`][Self::route_event], so
     /// keyboard handling has a single entry point.
-    pub fn bind_key_update<T, F>(&mut self, key: KeyBinding, signal: Signal<T>, updater: F)
-    where
+    pub fn bind_key_update<T, F>(
+        &mut self,
+        key: KeyBinding,
+        signal: Signal<T>,
+        updater: F,
+    ) where
         T: Send + Sync + 'static,
         F: Fn(&mut T) + Send + Sync + 'static,
     {
@@ -231,7 +256,8 @@ impl EventRouter {
         &mut self.key_bindings
     }
 
-    /// Advance focus forward (`reverse = false`) or backward (`reverse = true`).
+    /// Advance focus forward (`reverse = false`) or backward (`reverse =
+    /// true`).
     fn advance_focus(&self, reverse: bool) -> Option<ComponentId> {
         if self.hit_map.is_empty() {
             return self.focused;
@@ -251,40 +277,49 @@ impl EventRouter {
                 } else {
                     0
                 }
-            }
+            },
             Some(pos) => {
                 if reverse {
                     if pos == 0 { len - 1 } else { pos - 1 }
                 } else {
                     (pos + 1) % len
                 }
-            }
+            },
         };
 
         Some(ids[next_pos])
     }
 
-    // ── Event routing ──────────────────────────────────────────────────────── //
+    // ── Event routing ────────────────────────────────────────────────────────
+    // //
 
     /// Determine which component should handle `event` and return its id.
     ///
-    /// - **Keyboard**: delivered to [`Self::focused`].  Tab / Shift-Tab
-    ///   advance or retreat focus before returning the new focused id.
+    /// - **Keyboard**: delivered to [`Self::focused`].  Tab / Shift-Tab advance
+    ///   or retreat focus before returning the new focused id.
     /// - **Mouse**: hit-tested against the spatial index.  Clicking also
     ///   transfers keyboard focus to the clicked component.
-    /// - **Resize / FocusGained / FocusLost / Paste**: returned as `None`
-    ///   so the application root handles them.
-    pub fn route_event(&mut self, event: &Event, _root: &ViewNode) -> Option<ComponentId> {
+    /// - **Resize / FocusGained / FocusLost / Paste**: returned as `None` so
+    ///   the application root handles them.
+    pub fn route_event(
+        &mut self,
+        event: &Event,
+        _root: &ViewNode,
+    ) -> Option<ComponentId> {
         match event {
             Event::Key(key_ev) => self.route_key(key_ev),
             Event::Mouse(mouse_ev) => self.route_mouse(mouse_ev),
-            // Resize, FocusGained, FocusLost, Paste → broadcast (no specific target).
+            // Resize, FocusGained, FocusLost, Paste → broadcast (no specific
+            // target).
             _ => None,
         }
     }
 
     /// Route a keyboard event.
-    fn route_key(&mut self, ev: &crossterm::event::KeyEvent) -> Option<ComponentId> {
+    fn route_key(
+        &mut self,
+        ev: &crossterm::event::KeyEvent,
+    ) -> Option<ComponentId> {
         use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 
         if ev.kind != KeyEventKind::Press {
@@ -294,9 +329,9 @@ impl EventRouter {
         // Keep Tab reserved for focus traversal. All other key presses can
         // drive global reactive bindings.
         if !matches!(ev.code, KeyCode::Tab) {
-            let _ = self
-                .key_bindings
-                .apply_event(&InputEvent::KeyPress(KeyPress::new(ev.code, ev.modifiers)));
+            let _ = self.key_bindings.apply_event(&InputEvent::KeyPress(
+                KeyPress::new(ev.code, ev.modifiers),
+            ));
         }
 
         match ev.code {
@@ -304,12 +339,12 @@ impl EventRouter {
             KeyCode::Tab if !ev.modifiers.contains(KeyModifiers::SHIFT) => {
                 self.focus_next();
                 self.focused
-            }
+            },
             // Shift-Tab → focus previous.
             KeyCode::Tab => {
                 self.focus_prev();
                 self.focused
-            }
+            },
             // Any other key → current focus.
             _ => self.focused,
         }
@@ -319,7 +354,10 @@ impl EventRouter {
     ///
     /// For button-down events the hit-tested component also steals keyboard
     /// focus, mirroring conventional GUI behavior.
-    fn route_mouse(&mut self, ev: &crossterm::event::MouseEvent) -> Option<ComponentId> {
+    fn route_mouse(
+        &mut self,
+        ev: &crossterm::event::MouseEvent,
+    ) -> Option<ComponentId> {
         let col = ev.column;
         let row = ev.row;
 
@@ -342,14 +380,13 @@ impl EventRouter {
 }
 
 impl Default for EventRouter {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Geometry helpers
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  Geometry helpers
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 /// Returns `true` if the terminal cell at (`col`, `row`) falls inside `rect`.
 ///
@@ -363,23 +400,35 @@ fn contains(rect: Rect, col: u16, row: u16) -> bool {
         && row < rect.y.saturating_add(rect.height)
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Tests
-// ─────────────────────────────────────────────────────────────────────────── //
+// ───────────────────────────────────────────────────────────────────────────
+// //  Tests
+// ───────────────────────────────────────────────────────────────────────────
+// //
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crossterm::event::{
-        KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MouseButton, MouseEvent,
+        KeyCode,
+        KeyEvent,
+        KeyEventKind,
+        KeyEventState,
+        KeyModifiers,
+        MouseButton,
+        MouseEvent,
         MouseEventKind,
     };
     use ratatui::style::Style;
     use termoxide_reactive::{Signal, with_owner};
 
+    use super::*;
+
     fn make_tree() -> ViewNode {
-        let left = ViewNode::text(Rect::new(0, 0, 40, 24), "left", Style::default()).with_id(1);
-        let right = ViewNode::text(Rect::new(40, 0, 40, 24), "right", Style::default()).with_id(2);
+        let left =
+            ViewNode::text(Rect::new(0, 0, 40, 24), "left", Style::default())
+                .with_id(1);
+        let right =
+            ViewNode::text(Rect::new(40, 0, 40, 24), "right", Style::default())
+                .with_id(2);
         ViewNode::container(Rect::new(0, 0, 80, 24), vec![left, right])
     }
 
@@ -574,9 +623,14 @@ mod tests {
 
     #[test]
     fn overlap_prefers_last_drawn_node() {
-        let bottom = ViewNode::text(Rect::new(0, 0, 10, 10), "bottom", Style::default()).with_id(1);
-        let top = ViewNode::text(Rect::new(0, 0, 10, 10), "top", Style::default()).with_id(2);
-        let root = ViewNode::container(Rect::new(0, 0, 10, 10), vec![bottom, top]);
+        let bottom =
+            ViewNode::text(Rect::new(0, 0, 10, 10), "bottom", Style::default())
+                .with_id(1);
+        let top =
+            ViewNode::text(Rect::new(0, 0, 10, 10), "top", Style::default())
+                .with_id(2);
+        let root =
+            ViewNode::container(Rect::new(0, 0, 10, 10), vec![bottom, top]);
 
         let mut router = EventRouter::new();
         router.sync_hit_map(&root);
@@ -593,7 +647,9 @@ mod tests {
 
     #[test]
     fn zero_sized_hitboxes_are_ignored() {
-        let zero = ViewNode::text(Rect::new(0, 0, 0, 0), "zero", Style::default()).with_id(10);
+        let zero =
+            ViewNode::text(Rect::new(0, 0, 0, 0), "zero", Style::default())
+                .with_id(10);
         let root = ViewNode::container(Rect::new(0, 0, 10, 10), vec![zero]);
 
         let mut router = EventRouter::new();
@@ -618,9 +674,12 @@ mod tests {
 
     #[test]
     fn duplicate_ids_can_make_focus_cycle_sticky() {
-        let a = ViewNode::text(Rect::new(0, 0, 10, 10), "a", Style::default()).with_id(1);
-        let b = ViewNode::text(Rect::new(10, 0, 10, 10), "b", Style::default()).with_id(1);
-        let c = ViewNode::text(Rect::new(20, 0, 10, 10), "c", Style::default()).with_id(2);
+        let a = ViewNode::text(Rect::new(0, 0, 10, 10), "a", Style::default())
+            .with_id(1);
+        let b = ViewNode::text(Rect::new(10, 0, 10, 10), "b", Style::default())
+            .with_id(1);
+        let c = ViewNode::text(Rect::new(20, 0, 10, 10), "c", Style::default())
+            .with_id(2);
         let root = ViewNode::container(Rect::new(0, 0, 30, 10), vec![a, b, c]);
 
         let mut router = EventRouter::new();
