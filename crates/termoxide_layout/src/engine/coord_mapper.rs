@@ -111,17 +111,10 @@ impl CoordMapper {
         let y = layout.location.y.floor().max(0.0).min(u16::MAX as f32) as u16;
 
         // Round sizes: this minimises the average error across elements.
-        let width =
-            layout.size.width.max(0.0).min(u16::MAX as f32).round() as u16;
-        let height =
-            layout.size.height.max(0.0).min(u16::MAX as f32).round() as u16;
+        let width = layout.size.width.max(0.0).min(u16::MAX as f32).round() as u16;
+        let height = layout.size.height.max(0.0).min(u16::MAX as f32).round() as u16;
 
-        MappedRect {
-            x,
-            y,
-            width,
-            height,
-        }
+        MappedRect { x, y, width, height }
     }
 
     /// Convert a `taffy::tree::Layout` to an **absolute** [`MappedRect`] by
@@ -129,10 +122,7 @@ impl CoordMapper {
     ///
     /// Call this with the cumulative parent origin while walking the render
     /// tree top-down.
-    pub fn map_absolute(
-        layout: &Layout,
-        parent_origin: (u16, u16),
-    ) -> MappedRect {
+    pub fn map_absolute(layout: &Layout, parent_origin: (u16, u16)) -> MappedRect {
         Self::map(layout).offset(parent_origin.0, parent_origin.1)
     }
 }
@@ -154,10 +144,7 @@ mod tests {
     fn make_layout(x: f32, y: f32, w: f32, h: f32) -> Layout {
         let mut l = Layout::new();
         l.location = Point { x, y };
-        l.size = Size {
-            width: w,
-            height: h,
-        };
+        l.size = Size { width: w, height: h };
         l
     }
 
@@ -165,12 +152,7 @@ mod tests {
     fn whole_numbers_pass_through() {
         let l = make_layout(10.0, 5.0, 80.0, 24.0);
         let r = CoordMapper::map(&l);
-        assert_eq!(r, MappedRect {
-            x: 10,
-            y: 5,
-            width: 80,
-            height: 24
-        });
+        assert_eq!(r, MappedRect { x: 10, y: 5, width: 80, height: 24 });
     }
 
     #[test]
@@ -209,18 +191,8 @@ mod tests {
 
     #[test]
     fn offset_adds_parent_origin() {
-        let base = MappedRect {
-            x: 5,
-            y: 3,
-            width: 40,
-            height: 10,
-        };
+        let base = MappedRect { x: 5, y: 3, width: 40, height: 10 };
         let shifted = base.offset(10, 4);
-        assert_eq!(shifted, MappedRect {
-            x: 15,
-            y: 7,
-            width: 40,
-            height: 10
-        });
+        assert_eq!(shifted, MappedRect { x: 15, y: 7, width: 40, height: 10 });
     }
 }

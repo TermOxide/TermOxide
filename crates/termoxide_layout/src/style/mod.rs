@@ -4,19 +4,16 @@
 //!
 //! ## Design philosophy
 //!
-//! - **Cheap to copy**: Terminal UIs redraw on every frame. Every type that
-//!   will live inside a [`Style`] struct implements `Copy` where possible.
+//! - **Cheap to copy**: Terminal UIs redraw on every frame. Every type that will live inside a [`Style`] struct
+//!   implements `Copy` where possible.
 //!
-//! - **`const`-constructible**: Proc_macros emit code that runs at compile
-//!   time. Where possible, constructors are marked `const` so that static style
-//!   definitions have zero runtime cost.
+//! - **`const`-constructible**: Proc_macros emit code that runs at compile time. Where possible, constructors are
+//!   marked `const` so that static style definitions have zero runtime cost.
 //!
-//! - **`Option<T>` for unset style fields**: Distinguishing "not set" from "set
-//!   to the default value" is critical for cascade and inheritance. A child
-//!   that doesn't set `color` must not reset the parent's `color` to the type
-//!   default. Almost every field in [`Style`] is `Option<T>`; the sole
-//!   exception is `dimensions`, which is itself a struct of six `Option<Unit>`
-//!   sub-fields and therefore doesn't need a second wrapper.
+//! - **`Option<T>` for unset style fields**: Distinguishing "not set" from "set to the default value" is critical for
+//!   cascade and inheritance. A child that doesn't set `color` must not reset the parent's `color` to the type default.
+//!   Almost every field in [`Style`] is `Option<T>`; the sole exception is `dimensions`, which is itself a struct of
+//!   six `Option<Unit>` sub-fields and therefore doesn't need a second wrapper.
 pub mod box_model;
 pub mod color;
 pub mod font;
@@ -25,15 +22,7 @@ pub mod unit;
 
 #[cfg(feature = "future")]
 use box_model::Gap;
-use box_model::{
-    Border,
-    Borders,
-    BoxSizing,
-    Dimensions,
-    Margin,
-    Overflow,
-    Padding,
-};
+use box_model::{Border, Borders, BoxSizing, Dimensions, Margin, Overflow, Padding};
 use color::Color;
 use font::FontStyle;
 use layout::Display;
@@ -46,15 +35,14 @@ use unit::Unit;
 /// Most fields are `Option<T>`. `None` means **"not declared on this
 /// element"**. This distinction drives three core behaviours:
 ///
-/// 1. **Cascade / inheritance** — a child's `None` field never resets a
-///    parent's value. Only `Some(x)` is an active declaration.
+/// 1. **Cascade / inheritance** — a child's `None` field never resets a parent's value. Only `Some(x)` is an active
+///    declaration.
 ///
-/// 2. **Style merging** — theme + component + inline styles are applied in
-///    priority order via [`Style::merge`]. Later `Some` values win; `None`
-///    values are silently skipped.
+/// 2. **Style merging** — theme + component + inline styles are applied in priority order via [`Style::merge`]. Later
+///    `Some` values win; `None` values are silently skipped.
 ///
-/// 3. **Proc_macro output** — `scss! { color: red; }` generates a `Style` with
-///    only `color` set to `Some`. Every other field is `None`.
+/// 3. **Proc_macro output** — `scss! { color: red; }` generates a `Style` with only `color` set to `Some`. Every other
+///    field is `None`.
 ///
 /// # Creating styles
 ///
@@ -69,9 +57,7 @@ use unit::Unit;
 ///
 /// // Direct struct construction
 /// let s = Style {
-///     dimensions: Dimensions::new()
-///         .with_width(Unit::percent(100))
-///         .with_height(Unit::cells(3)),
+///     dimensions: Dimensions::new().with_width(Unit::percent(100)).with_height(Unit::cells(3)),
 ///     background: Some(Color::Named(NamedColor::Blue)),
 ///     font_style: Some(FontStyle::BOLD),
 ///     ..Style::new()
@@ -91,14 +77,8 @@ use unit::Unit;
 ///     color::{Color, NamedColor},
 /// };
 ///
-/// let mut base = Style {
-///     color: Some(Color::Named(NamedColor::White)),
-///     ..Style::new()
-/// };
-/// let over = Style {
-///     color: Some(Color::Named(NamedColor::Red)),
-///     ..Style::new()
-/// };
+/// let mut base = Style { color: Some(Color::Named(NamedColor::White)), ..Style::new() };
+/// let over = Style { color: Some(Color::Named(NamedColor::Red)), ..Style::new() };
 /// base.merge(&over);
 /// assert_eq!(base.color, Some(Color::Named(NamedColor::Red)));
 /// ```
@@ -259,14 +239,8 @@ impl Style {
     ///     Style,
     ///     color::{Color, NamedColor},
     /// };
-    /// let mut s = Style {
-    ///     color: Some(Color::Named(NamedColor::White)),
-    ///     ..Style::new()
-    /// };
-    /// s.merge(&Style {
-    ///     color: Some(Color::Named(NamedColor::Red)),
-    ///     ..Style::new()
-    /// });
+    /// let mut s = Style { color: Some(Color::Named(NamedColor::White)), ..Style::new() };
+    /// s.merge(&Style { color: Some(Color::Named(NamedColor::Red)), ..Style::new() });
     /// // s.color == Some(Red)
     /// ```
     pub fn merge(&mut self, other: &Style) {
@@ -365,14 +339,10 @@ impl Style {
     }
 
     /// Convenience: uniform padding on all four sides.
-    pub fn with_padding_all(self, v: Unit) -> Self {
-        self.with_padding(Padding::all(v))
-    }
+    pub fn with_padding_all(self, v: Unit) -> Self { self.with_padding(Padding::all(v)) }
 
     /// Convenience: uniform margin on all four sides.
-    pub fn with_margin_all(self, v: Unit) -> Self {
-        self.with_margin(Margin::all(v))
-    }
+    pub fn with_margin_all(self, v: Unit) -> Self { self.with_margin(Margin::all(v)) }
 
     pub fn with_display(mut self, v: Display) -> Self {
         self.display = Some(v);
@@ -434,9 +404,7 @@ impl Style {
     }
 
     /// Convenience: uniform border on all four sides.
-    pub fn with_border_all(self, v: Border) -> Self {
-        self.with_border(Borders::all(v))
-    }
+    pub fn with_border_all(self, v: Border) -> Self { self.with_border(Borders::all(v)) }
 
     #[cfg(feature = "future")]
     pub fn with_text_align(mut self, v: TextAlign) -> Self {
@@ -468,9 +436,7 @@ impl Style {
 
     /// `true` if any dimension or spacing field is set.
     pub fn has_layout(&self) -> bool {
-        let base = !self.dimensions.is_empty()
-            || self.padding.is_some()
-            || self.margin.is_some();
+        let base = !self.dimensions.is_empty() || self.padding.is_some() || self.margin.is_some();
         #[cfg(feature = "future")]
         let base = base || self.gap.is_some();
         base
@@ -478,10 +444,8 @@ impl Style {
 
     /// `true` if any visual (non-layout) field is set.
     pub fn has_visuals(&self) -> bool {
-        let base = self.color.is_some()
-            || self.background.is_some()
-            || self.border.is_some()
-            || self.font_style.is_some();
+        let base =
+            self.color.is_some() || self.background.is_some() || self.border.is_some() || self.font_style.is_some();
         #[cfg(feature = "future")]
         let base = base || self.text_align.is_some();
         base
@@ -512,22 +476,10 @@ mod tests {
     #[cfg(feature = "future")]
     #[test]
     fn color_hex_valid() {
-        assert_eq!(
-            Color::from_hex_bytes(b"#ff5f00"),
-            Some(Color::Rgb(255, 95, 0))
-        );
-        assert_eq!(
-            Color::from_hex_bytes(b"#000000"),
-            Some(Color::Rgb(0, 0, 0))
-        );
-        assert_eq!(
-            Color::from_hex_bytes(b"#FFFFFF"),
-            Some(Color::Rgb(255, 255, 255))
-        );
-        assert_eq!(
-            Color::from_hex_bytes(b"#aAbBcC"),
-            Some(Color::Rgb(0xAA, 0xBB, 0xCC))
-        );
+        assert_eq!(Color::from_hex_bytes(b"#ff5f00"), Some(Color::Rgb(255, 95, 0)));
+        assert_eq!(Color::from_hex_bytes(b"#000000"), Some(Color::Rgb(0, 0, 0)));
+        assert_eq!(Color::from_hex_bytes(b"#FFFFFF"), Some(Color::Rgb(255, 255, 255)));
+        assert_eq!(Color::from_hex_bytes(b"#aAbBcC"), Some(Color::Rgb(0xAA, 0xBB, 0xCC)));
     }
 
     #[cfg(feature = "future")]
@@ -595,18 +547,8 @@ mod tests {
 
     #[test]
     fn edges_as_array() {
-        let e = Edges::new(
-            Unit::cells(1),
-            Unit::cells(2),
-            Unit::cells(3),
-            Unit::cells(4),
-        );
-        assert_eq!(e.as_array(), [
-            Unit::cells(1),
-            Unit::cells(2),
-            Unit::cells(3),
-            Unit::cells(4),
-        ]);
+        let e = Edges::new(Unit::cells(1), Unit::cells(2), Unit::cells(3), Unit::cells(4));
+        assert_eq!(e.as_array(), [Unit::cells(1), Unit::cells(2), Unit::cells(3), Unit::cells(4),]);
     }
 
     // --- Padding invariant: CSS forbids negatives and intrinsic keywords ---
@@ -626,12 +568,7 @@ mod tests {
 
     #[test]
     fn padding_preserves_non_negative_cells_and_percent() {
-        let p = Padding::new(
-            Unit::cells(1),
-            Unit::percent(50),
-            Unit::cells(0),
-            Unit::percent(25),
-        );
+        let p = Padding::new(Unit::cells(1), Unit::percent(50), Unit::cells(0), Unit::percent(25));
         assert_eq!(p.edges().top, Unit::cells(1));
         assert_eq!(p.edges().right, Unit::percent(50));
         assert_eq!(p.edges().bottom, Unit::cells(0));
@@ -641,12 +578,7 @@ mod tests {
     #[test]
     fn padding_from_edges_normalises() {
         // Bypassing the constructor via From must still apply the invariant.
-        let raw = Edges::new(
-            Unit::cells(-10),
-            Unit::AUTO,
-            Unit::percent(75),
-            Unit::cells(2),
-        );
+        let raw = Edges::new(Unit::cells(-10), Unit::AUTO, Unit::percent(75), Unit::cells(2));
         let p: Padding = raw.into();
         assert_eq!(p.edges().top, Unit::cells(0)); // clamped
         assert_eq!(p.edges().right, Unit::cells(0)); // Auto → 0
@@ -677,12 +609,7 @@ mod tests {
 
     #[test]
     fn margin_from_edges_normalises() {
-        let raw = Edges::new(
-            Unit::cells(-1),
-            Unit::AUTO,
-            Unit::percent(10),
-            Unit::cells(0),
-        );
+        let raw = Edges::new(Unit::cells(-1), Unit::AUTO, Unit::percent(10), Unit::cells(0));
         let m: Margin = raw.into();
         assert_eq!(m.edges().top, Unit::cells(-1));
         assert_eq!(m.edges().right, Unit::AUTO);
@@ -765,8 +692,7 @@ mod tests {
 
     #[test]
     fn font_style_remove() {
-        let s =
-            (FontStyle::BOLD | FontStyle::ITALIC).without(FontStyle::ITALIC);
+        let s = (FontStyle::BOLD | FontStyle::ITALIC).without(FontStyle::ITALIC);
         assert!(s.has(FontStyle::BOLD));
         assert!(!s.has(FontStyle::ITALIC));
     }
@@ -847,10 +773,7 @@ mod tests {
             background: Some(Color::Named(NamedColor::Black)),
             ..Style::new()
         };
-        base.merge(&Style {
-            color: Some(Color::Named(NamedColor::Red)),
-            ..Style::new()
-        });
+        base.merge(&Style { color: Some(Color::Named(NamedColor::Red)), ..Style::new() });
         // overridden
         assert_eq!(base.color, Some(Color::Named(NamedColor::Red)));
         // untouched
@@ -859,10 +782,7 @@ mod tests {
 
     #[test]
     fn merge_none_does_not_overwrite() {
-        let mut base = Style {
-            dimensions: Dimensions::new().with_width(Unit::cells(80)),
-            ..Style::new()
-        };
+        let mut base = Style { dimensions: Dimensions::new().with_width(Unit::cells(80)), ..Style::new() };
         base.merge(&Style::new());
         assert_eq!(base.dimensions.width(), Some(Unit::cells(80)));
     }
@@ -871,28 +791,16 @@ mod tests {
     fn merge_dimensions_per_field() {
         // Sibling dimensions should merge per sub-field — declaring `height`
         // on the overlay must not blank the base's `width`.
-        let mut base = Style {
-            dimensions: Dimensions::new().with_width(Unit::cells(80)),
-            ..Style::new()
-        };
-        base.merge(&Style {
-            dimensions: Dimensions::new().with_height(Unit::cells(24)),
-            ..Style::new()
-        });
+        let mut base = Style { dimensions: Dimensions::new().with_width(Unit::cells(80)), ..Style::new() };
+        base.merge(&Style { dimensions: Dimensions::new().with_height(Unit::cells(24)), ..Style::new() });
         assert_eq!(base.dimensions.width(), Some(Unit::cells(80)));
         assert_eq!(base.dimensions.height(), Some(Unit::cells(24)));
     }
 
     #[test]
     fn merged_with_is_non_mutating() {
-        let base = Style {
-            color: Some(Color::Named(NamedColor::White)),
-            ..Style::new()
-        };
-        let merged = base.merged_with(&Style {
-            color: Some(Color::Named(NamedColor::Red)),
-            ..Style::new()
-        });
+        let base = Style { color: Some(Color::Named(NamedColor::White)), ..Style::new() };
+        let merged = base.merged_with(&Style { color: Some(Color::Named(NamedColor::Red)), ..Style::new() });
         // untouched
         assert_eq!(base.color, Some(Color::Named(NamedColor::White)));
         assert_eq!(merged.color, Some(Color::Named(NamedColor::Red)));
@@ -957,7 +865,6 @@ mod tests {
     // Ratatui integration
     #[test]
     #[cfg(feature = "ratatui")]
-    #[ignore = "TDD: Style -> ratatui::style::Style conversion is not \
-                implemented yet"]
+    #[ignore = "TDD: Style -> ratatui::style::Style conversion is not implemented yet"]
     fn convert_to_ratatui() { todo!() }
 }

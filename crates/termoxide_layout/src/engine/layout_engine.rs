@@ -3,33 +3,22 @@
 //! [`LayoutEngine`] is the public entry point for the layout subsystem.
 //! It wraps a `TaffyTree<()>` and provides an ergonomic API to:
 //!
-//! 1. **Build** a tree of nodes (leaves and containers) from either raw
-//!    [`taffy::Style`] values or from [`crate::Style`] values via the built-in
-//!    conversion helper.
+//! 1. **Build** a tree of nodes (leaves and containers) from either raw [`taffy::Style`] values or from
+//!    [`crate::Style`] values via the built-in conversion helper.
 //!
-//! 2. **Build recursively** using the [`LayoutNode`] or [`UiLayoutNode`] enums,
-//!    which describe an arbitrarily deep tree in a single value. A container's
-//!    `children` field is itself a `Vec<LayoutNode>`, so sub-trees can be
-//!    composed before being handed to the engine.
+//! 2. **Build recursively** using the [`LayoutNode`] or [`UiLayoutNode`] enums, which describe an arbitrarily deep tree
+//!    in a single value. A container's `children` field is itself a `Vec<LayoutNode>`, so sub-trees can be composed
+//!    before being handed to the engine.
 //!
-//! 3. **Resolve** the Flexbox layout for a given viewport size by calling
-//!    [`LayoutEngine::compute`].
+//! 3. **Resolve** the Flexbox layout for a given viewport size by calling [`LayoutEngine::compute`].
 //!
-//! 4. **Read back** the computed position and size of every node via
-//!    [`LayoutEngine::layout_of`], which returns a copy of
-//!    [`taffy::tree::Layout`] containing `f32` coordinates relative to each
-//!    node's parent.
+//! 4. **Read back** the computed position and size of every node via [`LayoutEngine::layout_of`], which returns a copy
+//!    of [`taffy::tree::Layout`] containing `f32` coordinates relative to each node's parent.
 //!
 //! ## Example
 //!
 //! ```rust
-//! use taffy::{
-//!     Display,
-//!     FlexDirection,
-//!     Style,
-//!     geometry::Size,
-//!     style::Dimension,
-//! };
+//! use taffy::{Display, FlexDirection, Style, geometry::Size, style::Dimension};
 //! use termoxide_layout::engine::layout_engine::LayoutEngine;
 //!
 //! let mut engine = LayoutEngine::new();
@@ -37,10 +26,7 @@
 //! // A leaf node: 30 columns × 3 rows.
 //! let child = engine
 //!     .new_leaf(Style {
-//!         size: Size {
-//!             width: Dimension::length(30.0),
-//!             height: Dimension::length(3.0),
-//!         },
+//!         size: Size { width: Dimension::length(30.0), height: Dimension::length(3.0) },
 //!         ..Style::DEFAULT
 //!     })
 //!     .unwrap();
@@ -64,10 +50,7 @@
 //! if let Some(layout) = engine.layout_of(child) {
 //!     println!(
 //!         "child → x={} y={} w={} h={}",
-//!         layout.location.x,
-//!         layout.location.y,
-//!         layout.size.width,
-//!         layout.size.height
+//!         layout.location.x, layout.location.y, layout.size.width, layout.size.height
 //!     );
 //! }
 //! ```
@@ -92,12 +75,7 @@ use taffy::{
 
 use crate::style::{
     Style,
-    layout::{
-        Align,
-        Display as UiDisplay,
-        FlexDirection as UiFlexDirection,
-        Justify,
-    },
+    layout::{Align, Display as UiDisplay, FlexDirection as UiFlexDirection, Justify},
     stylesheet::StyleSheet,
     unit::Unit,
 };
@@ -139,22 +117,13 @@ pub type LayoutError = TaffyError;
 ///     },
 ///     children: vec![
 ///         LayoutNode::Leaf(taffy::Style {
-///             size: Size {
-///                 width: Dimension::length(80.0),
-///                 height: Dimension::length(3.0),
-///             },
+///             size: Size { width: Dimension::length(80.0), height: Dimension::length(3.0) },
 ///             ..taffy::Style::DEFAULT
 ///         }),
 ///         // Nested sub-tree:
 ///         LayoutNode::Container {
-///             style: taffy::Style {
-///                 display: Display::Flex,
-///                 ..taffy::Style::DEFAULT
-///             },
-///             children: vec![
-///                 LayoutNode::Leaf(taffy::Style::DEFAULT),
-///                 LayoutNode::Leaf(taffy::Style::DEFAULT),
-///             ],
+///             style: taffy::Style { display: Display::Flex, ..taffy::Style::DEFAULT },
+///             children: vec![LayoutNode::Leaf(taffy::Style::DEFAULT), LayoutNode::Leaf(taffy::Style::DEFAULT)],
 ///         },
 ///     ],
 /// };
@@ -202,10 +171,7 @@ pub enum LayoutNode {
 /// // Named (looks up "header" in the sheet at build time):
 /// let mut sheet = StyleSheet::new();
 /// sheet.register("header", Style::new().with_height(Unit::cells(3)));
-/// let src3 = UiStyleSource::Named {
-///     sheet,
-///     name: "header".into(),
-/// };
+/// let src3 = UiStyleSource::Named { sheet, name: "header".into() };
 /// ```
 #[derive(Debug, Clone)]
 pub enum UiStyleSource {
@@ -229,9 +195,7 @@ impl From<Style> for UiStyleSource {
 fn resolve_ui_style(source: UiStyleSource) -> Style {
     match source {
         UiStyleSource::Inline(s) => s,
-        UiStyleSource::Named { sheet, name } => {
-            sheet.get(&name).cloned().unwrap_or_default()
-        },
+        UiStyleSource::Named { sheet, name } => sheet.get(&name).cloned().unwrap_or_default(),
     }
 }
 
@@ -249,22 +213,12 @@ fn resolve_ui_style(source: UiStyleSource) -> Style {
 /// ```rust
 /// use termoxide_layout::{
 ///     engine::layout_engine::{LayoutEngine, UiLayoutNode, UiStyleSource},
-///     style::{
-///         Style,
-///         layout::Display as UiDisplay,
-///         stylesheet::StyleSheet,
-///         unit::Unit,
-///     },
+///     style::{Style, layout::Display as UiDisplay, stylesheet::StyleSheet, unit::Unit},
 /// };
 ///
 /// // Build a stylesheet and register a named style.
 /// let mut sheet = StyleSheet::new();
-/// sheet.register(
-///     "sidebar",
-///     Style::new()
-///         .with_width(Unit::cells(20))
-///         .with_height(Unit::cells(21)),
-/// );
+/// sheet.register("sidebar", Style::new().with_width(Unit::cells(20)).with_height(Unit::cells(21)));
 ///
 /// let tree = UiLayoutNode::Container {
 ///     style: Style::new().with_display(UiDisplay::Flex).into(),
@@ -272,10 +226,7 @@ fn resolve_ui_style(source: UiStyleSource) -> Style {
 ///         // Inline style:
 ///         UiLayoutNode::Leaf(Style::new().with_width(Unit::cells(40)).into()),
 ///         // Named style from a stylesheet:
-///         UiLayoutNode::Leaf(UiStyleSource::Named {
-///             sheet,
-///             name: "sidebar".into(),
-///         }),
+///         UiLayoutNode::Leaf(UiStyleSource::Named { sheet, name: "sidebar".into() }),
 ///     ],
 /// };
 ///
@@ -306,9 +257,8 @@ pub enum UiLayoutNode {
 /// # Lifecycle
 ///
 /// 1. Create an engine with [`LayoutEngine::new`].
-/// 2. Insert nodes in bottom-up order (leaves first, then their parents) with
-///    [`new_leaf`][Self::new_leaf] / [`new_container`][Self::new_container] or
-///    the `insert_ui_*` convenience methods.
+/// 2. Insert nodes in bottom-up order (leaves first, then their parents) with [`new_leaf`][Self::new_leaf] /
+///    [`new_container`][Self::new_container] or the `insert_ui_*` convenience methods.
 /// 3. Call [`compute`][Self::compute] with the terminal viewport dimensions.
 /// 4. Read results with [`layout_of`][Self::layout_of].
 ///
@@ -330,21 +280,13 @@ pub struct LayoutEngine {
 
 impl LayoutEngine {
     /// Create a new, empty layout engine with the default capacity (16 nodes).
-    pub fn new() -> Self {
-        Self {
-            tree: TaffyTree::new(),
-        }
-    }
+    pub fn new() -> Self { Self { tree: TaffyTree::new() } }
 
     /// Create a new engine that pre-allocates space for `capacity` nodes.
     ///
     /// Use when the approximate node count is known in advance to avoid
     /// internal re-allocations.
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            tree: TaffyTree::with_capacity(capacity),
-        }
-    }
+    pub fn with_capacity(capacity: usize) -> Self { Self { tree: TaffyTree::with_capacity(capacity) } }
 
     // ─────────────────────────────────────────────────────── //
     //  Node insertion
@@ -359,12 +301,7 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Returns [`LayoutError`] if the internal arena is exhausted.
-    pub fn new_leaf(
-        &mut self,
-        style: taffy::Style,
-    ) -> Result<NodeId, LayoutError> {
-        self.tree.new_leaf(style)
-    }
+    pub fn new_leaf(&mut self, style: taffy::Style) -> Result<NodeId, LayoutError> { self.tree.new_leaf(style) }
 
     /// Insert a **container node** with the given `children`.
     ///
@@ -377,11 +314,7 @@ impl LayoutEngine {
     ///
     /// Returns [`LayoutError`] if any `NodeId` in `children` is unknown to
     /// this engine.
-    pub fn new_container(
-        &mut self,
-        style: taffy::Style,
-        children: &[NodeId],
-    ) -> Result<NodeId, LayoutError> {
+    pub fn new_container(&mut self, style: taffy::Style, children: &[NodeId]) -> Result<NodeId, LayoutError> {
         self.tree.new_with_children(style, children)
     }
 
@@ -395,10 +328,7 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Propagates any [`LayoutError`] from the underlying tree insertion.
-    pub fn insert_ui_leaf(
-        &mut self,
-        style: &Style,
-    ) -> Result<NodeId, LayoutError> {
+    pub fn insert_ui_leaf(&mut self, style: &Style) -> Result<NodeId, LayoutError> {
         self.tree.new_leaf(Self::from_ui_style(style))
     }
 
@@ -408,13 +338,8 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Propagates any [`LayoutError`] from the underlying tree insertion.
-    pub fn insert_ui_container(
-        &mut self,
-        style: &Style,
-        children: &[NodeId],
-    ) -> Result<NodeId, LayoutError> {
-        self.tree
-            .new_with_children(Self::from_ui_style(style), children)
+    pub fn insert_ui_container(&mut self, style: &Style, children: &[NodeId]) -> Result<NodeId, LayoutError> {
+        self.tree.new_with_children(Self::from_ui_style(style), children)
     }
 
     /// Build a subtree from a recursive [`LayoutNode`] description and return
@@ -426,17 +351,12 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Returns [`LayoutError`] if any node insertion fails.
-    pub fn build_tree(
-        &mut self,
-        node: LayoutNode,
-    ) -> Result<NodeId, LayoutError> {
+    pub fn build_tree(&mut self, node: LayoutNode) -> Result<NodeId, LayoutError> {
         match node {
             LayoutNode::Leaf(style) => self.new_leaf(style),
             LayoutNode::Container { style, children } => {
-                let child_ids: Result<Vec<NodeId>, LayoutError> = children
-                    .into_iter()
-                    .map(|child| self.build_tree(child))
-                    .collect();
+                let child_ids: Result<Vec<NodeId>, LayoutError> =
+                    children.into_iter().map(|child| self.build_tree(child)).collect();
                 self.new_container(style, &child_ids?)
             },
         }
@@ -451,24 +371,16 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Returns [`LayoutError`] if any node insertion fails.
-    pub fn build_ui_tree(
-        &mut self,
-        node: UiLayoutNode,
-    ) -> Result<NodeId, LayoutError> {
+    pub fn build_ui_tree(&mut self, node: UiLayoutNode) -> Result<NodeId, LayoutError> {
         match node {
             UiLayoutNode::Leaf(source) => {
                 let style = resolve_ui_style(source);
                 self.insert_ui_leaf(&style)
             },
-            UiLayoutNode::Container {
-                style: source,
-                children,
-            } => {
+            UiLayoutNode::Container { style: source, children } => {
                 let style = resolve_ui_style(source);
-                let child_ids: Result<Vec<NodeId>, LayoutError> = children
-                    .into_iter()
-                    .map(|child| self.build_ui_tree(child))
-                    .collect();
+                let child_ids: Result<Vec<NodeId>, LayoutError> =
+                    children.into_iter().map(|child| self.build_ui_tree(child)).collect();
                 self.insert_ui_container(&style, &child_ids?)
             },
         }
@@ -486,11 +398,7 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Returns [`LayoutError`] if `node` is not known to this engine.
-    pub fn set_style(
-        &mut self,
-        node: NodeId,
-        style: taffy::Style,
-    ) -> Result<(), LayoutError> {
+    pub fn set_style(&mut self, node: NodeId, style: taffy::Style) -> Result<(), LayoutError> {
         self.tree.set_style(node, style)
     }
 
@@ -499,11 +407,7 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Returns [`LayoutError`] if `node` is not known to this engine.
-    pub fn set_ui_style(
-        &mut self,
-        node: NodeId,
-        style: &Style,
-    ) -> Result<(), LayoutError> {
+    pub fn set_ui_style(&mut self, node: NodeId, style: &Style) -> Result<(), LayoutError> {
         self.tree.set_style(node, Self::from_ui_style(style))
     }
 
@@ -534,12 +438,7 @@ impl LayoutEngine {
     /// // 80-column, 24-row terminal viewport.
     /// engine.compute(root, 80.0, 24.0).unwrap();
     /// ```
-    pub fn compute(
-        &mut self,
-        root: NodeId,
-        available_width: f32,
-        available_height: f32,
-    ) -> Result<(), LayoutError> {
+    pub fn compute(&mut self, root: NodeId, available_width: f32, available_height: f32) -> Result<(), LayoutError> {
         self.tree.compute_layout(root, Size {
             width: AvailableSpace::Definite(available_width),
             height: AvailableSpace::Definite(available_height),
@@ -556,10 +455,7 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Returns [`LayoutError`] if `root` is not a known node.
-    pub fn compute_unbounded(
-        &mut self,
-        root: NodeId,
-    ) -> Result<(), LayoutError> {
+    pub fn compute_unbounded(&mut self, root: NodeId) -> Result<(), LayoutError> {
         self.tree.compute_layout(root, Size::MAX_CONTENT)
     }
 
@@ -579,16 +475,12 @@ impl LayoutEngine {
     /// has not been called yet for this node's subtree.
     ///
     /// The value is a **copy** so it is safe to hold while mutating the tree.
-    pub fn layout_of(&self, node: NodeId) -> Option<Layout> {
-        self.tree.layout(node).ok().copied()
-    }
+    pub fn layout_of(&self, node: NodeId) -> Option<Layout> { self.tree.layout(node).ok().copied() }
 
     /// Return the taffy [`Style`] currently assigned to `node`.
     ///
     /// Returns `None` if the node does not exist.
-    pub fn style_of(&self, node: NodeId) -> Option<taffy::Style> {
-        self.tree.style(node).ok().cloned()
-    }
+    pub fn style_of(&self, node: NodeId) -> Option<taffy::Style> { self.tree.style(node).ok().cloned() }
 
     /// Mark `node` and all its ancestors as requiring a layout recompute.
     ///
@@ -599,18 +491,14 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Returns [`LayoutError`] if `node` is unknown.
-    pub fn mark_dirty(&mut self, node: NodeId) -> Result<(), LayoutError> {
-        self.tree.mark_dirty(node)
-    }
+    pub fn mark_dirty(&mut self, node: NodeId) -> Result<(), LayoutError> { self.tree.mark_dirty(node) }
 
     /// Return `true` if `node` has been marked dirty and needs a layout pass.
     ///
     /// # Errors
     ///
     /// Returns [`LayoutError`] if `node` is unknown.
-    pub fn is_dirty(&self, node: NodeId) -> Result<bool, LayoutError> {
-        self.tree.dirty(node)
-    }
+    pub fn is_dirty(&self, node: NodeId) -> Result<bool, LayoutError> { self.tree.dirty(node) }
 
     /// Remove a node and all its children from the tree.
     ///
@@ -619,9 +507,7 @@ impl LayoutEngine {
     /// # Errors
     ///
     /// Returns [`LayoutError`] if `node` is unknown.
-    pub fn remove(&mut self, node: NodeId) -> Result<NodeId, LayoutError> {
-        self.tree.remove(node)
-    }
+    pub fn remove(&mut self, node: NodeId) -> Result<NodeId, LayoutError> { self.tree.remove(node) }
 
     /// Remove all nodes from the tree, resetting it to an empty state.
     pub fn clear(&mut self) { self.tree.clear(); }
@@ -784,10 +670,7 @@ impl LayoutEngine {
         // the column (width) and row (height) axes.
         if let Some(g) = s.gap {
             let lp = unit_to_length_percentage(g.unit());
-            t.gap = Size {
-                width: lp,
-                height: lp,
-            };
+            t.gap = Size { width: lp, height: lp };
         }
 
         t
@@ -888,19 +771,13 @@ mod tests {
             style: taffy::Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
-                size: Size {
-                    width: Dimension::length(80.0),
-                    height: Dimension::length(24.0),
-                },
+                size: Size { width: Dimension::length(80.0), height: Dimension::length(24.0) },
                 ..taffy::Style::DEFAULT
             },
             children: vec![
                 // header leaf
                 LayoutNode::Leaf(taffy::Style {
-                    size: Size {
-                        width: Dimension::length(80.0),
-                        height: Dimension::length(3.0),
-                    },
+                    size: Size { width: Dimension::length(80.0), height: Dimension::length(3.0) },
                     ..taffy::Style::DEFAULT
                 }),
                 // nested inner sub-tree
@@ -908,25 +785,16 @@ mod tests {
                     style: taffy::Style {
                         display: Display::Flex,
                         flex_direction: FlexDirection::Row,
-                        size: Size {
-                            width: Dimension::length(80.0),
-                            height: Dimension::length(21.0),
-                        },
+                        size: Size { width: Dimension::length(80.0), height: Dimension::length(21.0) },
                         ..taffy::Style::DEFAULT
                     },
                     children: vec![
                         LayoutNode::Leaf(taffy::Style {
-                            size: Size {
-                                width: Dimension::length(20.0),
-                                height: Dimension::length(21.0),
-                            },
+                            size: Size { width: Dimension::length(20.0), height: Dimension::length(21.0) },
                             ..taffy::Style::DEFAULT
                         }),
                         LayoutNode::Leaf(taffy::Style {
-                            size: Size {
-                                width: Dimension::length(60.0),
-                                height: Dimension::length(21.0),
-                            },
+                            size: Size { width: Dimension::length(60.0), height: Dimension::length(21.0) },
                             ..taffy::Style::DEFAULT
                         }),
                     ],
@@ -947,18 +815,8 @@ mod tests {
     /// and a nested sub-tree.
     #[test]
     fn recursive_build_ui_tree() {
-        let sidebar = UiLayoutNode::Leaf(
-            Style::new()
-                .with_width(Unit::cells(20))
-                .with_height(Unit::cells(21))
-                .into(),
-        );
-        let content = UiLayoutNode::Leaf(
-            Style::new()
-                .with_width(Unit::cells(60))
-                .with_height(Unit::cells(21))
-                .into(),
-        );
+        let sidebar = UiLayoutNode::Leaf(Style::new().with_width(Unit::cells(20)).with_height(Unit::cells(21)).into());
+        let content = UiLayoutNode::Leaf(Style::new().with_width(Unit::cells(60)).with_height(Unit::cells(21)).into());
 
         // Compose a sub-tree separately and embed it inside the root.
         let inner = UiLayoutNode::Container {
@@ -979,12 +837,7 @@ mod tests {
                 .with_height(Unit::cells(24))
                 .into(),
             children: vec![
-                UiLayoutNode::Leaf(
-                    Style::new()
-                        .with_width(Unit::cells(80))
-                        .with_height(Unit::cells(3))
-                        .into(),
-                ),
+                UiLayoutNode::Leaf(Style::new().with_width(Unit::cells(80)).with_height(Unit::cells(3)).into()),
                 inner,
             ],
         };
@@ -1005,12 +858,7 @@ mod tests {
         use crate::style::stylesheet::StyleSheet;
 
         let mut sheet = StyleSheet::new();
-        sheet.register(
-            "header",
-            Style::new()
-                .with_width(Unit::cells(80))
-                .with_height(Unit::cells(3)),
-        );
+        sheet.register("header", Style::new().with_width(Unit::cells(80)).with_height(Unit::cells(3)));
         sheet.register(
             "body",
             Style::new()
@@ -1029,27 +877,15 @@ mod tests {
                 .into(),
             children: vec![
                 // Named lookup: style comes from the stylesheet.
-                UiLayoutNode::Leaf(UiStyleSource::Named {
-                    sheet: sheet.clone(),
-                    name: "header".into(),
-                }),
+                UiLayoutNode::Leaf(UiStyleSource::Named { sheet: sheet.clone(), name: "header".into() }),
                 UiLayoutNode::Container {
-                    style: UiStyleSource::Named {
-                        sheet,
-                        name: "body".into(),
-                    },
+                    style: UiStyleSource::Named { sheet, name: "body".into() },
                     children: vec![
                         UiLayoutNode::Leaf(
-                            Style::new()
-                                .with_width(Unit::cells(20))
-                                .with_height(Unit::cells(21))
-                                .into(),
+                            Style::new().with_width(Unit::cells(20)).with_height(Unit::cells(21)).into(),
                         ),
                         UiLayoutNode::Leaf(
-                            Style::new()
-                                .with_width(Unit::cells(60))
-                                .with_height(Unit::cells(21))
-                                .into(),
+                            Style::new().with_width(Unit::cells(60)).with_height(Unit::cells(21)).into(),
                         ),
                     ],
                 },
@@ -1074,10 +910,7 @@ mod tests {
         // Child A: 80 wide × 5 tall
         let a = engine
             .new_leaf(taffy::Style {
-                size: Size {
-                    width: Dimension::length(80.0),
-                    height: Dimension::length(5.0),
-                },
+                size: Size { width: Dimension::length(80.0), height: Dimension::length(5.0) },
                 ..taffy::Style::DEFAULT
             })
             .unwrap();
@@ -1085,10 +918,7 @@ mod tests {
         // Child B: 80 wide × 19 tall
         let b = engine
             .new_leaf(taffy::Style {
-                size: Size {
-                    width: Dimension::length(80.0),
-                    height: Dimension::length(19.0),
-                },
+                size: Size { width: Dimension::length(80.0), height: Dimension::length(19.0) },
                 ..taffy::Style::DEFAULT
             })
             .unwrap();
@@ -1099,10 +929,7 @@ mod tests {
                 taffy::Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Column,
-                    size: Size {
-                        width: Dimension::length(80.0),
-                        height: Dimension::length(24.0),
-                    },
+                    size: Size { width: Dimension::length(80.0), height: Dimension::length(24.0) },
                     ..taffy::Style::DEFAULT
                 },
                 &[a, b],
