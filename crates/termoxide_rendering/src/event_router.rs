@@ -39,18 +39,8 @@
 //! };
 //!
 //! // Build a minimal tree: a container with two labelled children.
-//! let a = ViewNode::text(
-//!     Rect::new(0, 0, 40, 12),
-//!     "left",
-//!     ratatui::style::Style::default(),
-//! )
-//! .with_id(1);
-//! let b = ViewNode::text(
-//!     Rect::new(40, 0, 40, 12),
-//!     "right",
-//!     ratatui::style::Style::default(),
-//! )
-//! .with_id(2);
+//! let a = ViewNode::text(Rect::new(0, 0, 40, 12), "left", ratatui::style::Style::default()).with_id(1);
+//! let b = ViewNode::text(Rect::new(40, 0, 40, 12), "right", ratatui::style::Style::default()).with_id(2);
 //! let root = ViewNode::container(Rect::new(0, 0, 80, 24), vec![a, b]);
 //!
 //! let mut router = EventRouter::new();
@@ -215,13 +205,7 @@ impl EventRouter {
     ///
     /// Call [`sync_hit_map`][Self::sync_hit_map] after the first render pass
     /// to populate the spatial index.
-    pub fn new() -> Self {
-        Self {
-            hit_map: Vec::new(),
-            focused: None,
-            key_bindings: KeySignalBindings::new(),
-        }
-    }
+    pub fn new() -> Self { Self { hit_map: Vec::new(), focused: None, key_bindings: KeySignalBindings::new() } }
 
     // ── Hit-map management ───────────────────────────────────────────────────
     // //
@@ -245,10 +229,7 @@ impl EventRouter {
     /// Depth-first collector — appends [`HitEntry`]s for nodes with an `id`.
     fn collect_hit_entries(node: &ViewNode, entries: &mut Vec<HitEntry>) {
         if let Some(id) = node.id {
-            entries.push(HitEntry {
-                area: node.area,
-                id,
-            });
+            entries.push(HitEntry { area: node.area, id });
         }
         for child in &node.children {
             Self::collect_hit_entries(child, entries);
@@ -262,12 +243,8 @@ impl EventRouter {
     ///
     /// These bindings are executed from [`route_event`][Self::route_event], so
     /// keyboard handling has a single entry point.
-    pub fn bind_key_set<T>(
-        &mut self,
-        key: KeyBinding,
-        signal: Signal<T>,
-        value: T,
-    ) where
+    pub fn bind_key_set<T>(&mut self, key: KeyBinding, signal: Signal<T>, value: T)
+    where
         T: Clone + Send + Sync + 'static,
     {
         self.key_bindings.bind_set(key, signal, value);
@@ -277,12 +254,8 @@ impl EventRouter {
     ///
     /// These bindings are executed from [`route_event`][Self::route_event], so
     /// keyboard handling has a single entry point.
-    pub fn bind_key_update<T, F>(
-        &mut self,
-        key: KeyBinding,
-        signal: Signal<T>,
-        updater: F,
-    ) where
+    pub fn bind_key_update<T, F>(&mut self, key: KeyBinding, signal: Signal<T>, updater: F)
+    where
         T: Send + Sync + 'static,
         F: Fn(&mut T) + Send + Sync + 'static,
     {
@@ -290,9 +263,7 @@ impl EventRouter {
     }
 
     /// Mutable access to the underlying key bindings table.
-    pub fn key_bindings_mut(&mut self) -> &mut KeySignalBindings {
-        &mut self.key_bindings
-    }
+    pub fn key_bindings_mut(&mut self) -> &mut KeySignalBindings { &mut self.key_bindings }
 
     // ── Event routing ────────────────────────────────────────────────────────
     // //
@@ -355,12 +326,8 @@ mod tests {
     use super::*;
 
     fn make_tree() -> ViewNode {
-        let left =
-            ViewNode::text(Rect::new(0, 0, 40, 24), "left", Style::default())
-                .with_id(1);
-        let right =
-            ViewNode::text(Rect::new(40, 0, 40, 24), "right", Style::default())
-                .with_id(2);
+        let left = ViewNode::text(Rect::new(0, 0, 40, 24), "left", Style::default()).with_id(1);
+        let right = ViewNode::text(Rect::new(40, 0, 40, 24), "right", Style::default()).with_id(2);
         ViewNode::container(Rect::new(0, 0, 80, 24), vec![left, right])
     }
 
@@ -374,11 +341,7 @@ mod tests {
             let mut router = EventRouter::new();
             let signal = Signal::new(0i32);
 
-            router.bind_key_set(
-                KeyBinding::new(KeyCode::Char('k'), KeyModifiers::NONE),
-                signal,
-                7,
-            );
+            router.bind_key_set(KeyBinding::new(KeyCode::Char('k'), KeyModifiers::NONE), signal, 7);
 
             assert_eq!(router.route_event(&press(KeyCode::Char('k')), &root), None);
             assert_eq!(signal.get_untracked(), 7);
@@ -401,11 +364,9 @@ mod tests {
             let mut router = EventRouter::new();
             let signal = Signal::new(0i32);
 
-            router.bind_key_update(
-                KeyBinding::new(KeyCode::Char('k'), KeyModifiers::NONE),
-                signal,
-                |value| *value += 1,
-            );
+            router.bind_key_update(KeyBinding::new(KeyCode::Char('k'), KeyModifiers::NONE), signal, |value| {
+                *value += 1
+            });
 
             assert_eq!(router.route_event(&Event::ChannelReady, &root), None);
             assert_eq!(signal.get_untracked(), 0);

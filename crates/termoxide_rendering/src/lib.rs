@@ -35,16 +35,14 @@
 //!
 //! ## Modules
 //!
-//! - [`view_node`]: [`ViewNode`][view_node::ViewNode], the intermediate UI tree
-//!   that components produce before rendering.
-//! - [`renderer`]: [`Renderer`][renderer::Renderer] walks the tree, calls
-//!   ratatui draw routines, and accumulates into a `Buffer` diffed against the
-//!   previous frame.
-//! - [`render_loop`]: [`RenderLoop`][render_loop::RenderLoop], the main loop;
-//!   blocks on `termoxide_event` events and redraws after input.
-//! - [`event_router`]: [`EventRouter`][event_router::EventRouter] maps
-//!   `termoxide_event` events to component ids and applies the global
-//!   key-to-signal bindings.
+//! - [`view_node`]: [`ViewNode`][view_node::ViewNode], the intermediate UI tree that components produce before
+//!   rendering.
+//! - [`renderer`]: [`Renderer`][renderer::Renderer] walks the tree, calls ratatui draw routines, and accumulates into a
+//!   `Buffer` diffed against the previous frame.
+//! - [`render_loop`]: [`RenderLoop`][render_loop::RenderLoop], the main loop; blocks on `termoxide_event` events and
+//!   redraws after input.
+//! - [`event_router`]: [`EventRouter`][event_router::EventRouter] maps `termoxide_event` events to component ids and
+//!   applies the global key-to-signal bindings.
 //!
 //! ## Render pipeline — data flow
 //!
@@ -68,12 +66,7 @@
 //! ```rust,no_run
 //! use std::io::stdout;
 //!
-//! use ratatui::{
-//!     Terminal,
-//!     backend::CrosstermBackend,
-//!     layout::Rect,
-//!     style::Style,
-//! };
+//! use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect, style::Style};
 //! use termoxide_event::{EventStream, event::Event};
 //! use termoxide_rendering::{
 //!     event_router::EventRouter,
@@ -89,13 +82,7 @@
 //!         ViewNode::text(viewport, "Hello, TermOxide!", Style::default())
 //!     }
 //!
-//!     fn handle_event(
-//!         &mut self,
-//!         _id: Option<ComponentId>,
-//!         _ev: Event,
-//!     ) -> bool {
-//!         false
-//!     }
+//!     fn handle_event(&mut self, _id: Option<ComponentId>, _ev: Event) -> bool { false }
 //! }
 //!
 //! fn main() {
