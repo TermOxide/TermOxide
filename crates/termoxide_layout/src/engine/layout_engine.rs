@@ -668,6 +668,8 @@ impl LayoutEngine {
     /// | `margin` (via `.edges()`)    | `margin.*`          |
     ///     `Cells(n) → length(n)`, `Percent(p) → percent(p/100)`,
     ///     else `AUTO` |
+    /// | `box_sizing`                 | `box_sizing`        |
+    ///  `BorderBox → BorderBox`,
     /// | `gap`                        | `gap` (both axes)   |
     ///     same as padding; `Fill`/`Auto → ZERO`                   |
     ///
@@ -776,6 +778,19 @@ impl LayoutEngine {
                 right: unit_to_length_percentage_auto(e.right),
                 top: unit_to_length_percentage_auto(e.top),
                 bottom: unit_to_length_percentage_auto(e.bottom),
+            };
+        }
+
+        // ── box_sizing ─────────────────────────────────────────────────────
+        // //
+        if let Some(bs) = s.box_sizing {
+            t.box_sizing = match bs {
+                crate::style::BoxSizing::BorderBox => {
+                    taffy::style::BoxSizing::BorderBox
+                },
+                crate::style::BoxSizing::ContentBox => {
+                    taffy::style::BoxSizing::ContentBox
+                },
             };
         }
 
