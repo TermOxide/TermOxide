@@ -143,7 +143,11 @@ jobs:
           failed=0
           for crate in $crates; do
             echo "::group::cargo ${{ matrix.action.command }} -p ${crate}"
-            cargo ${{ matrix.action.command }} -p "$crate" || failed=1
+            if [ ${{ matrix.action.command }} == "clippy --all-targets --all-features -- -D warnings" ]; then
+              cargo ${{ matrix.action.command }} || failed=1
+            else
+              cargo ${{ matrix.action.command }} -p "$crate" || failed=1
+            fi
             echo "::endgroup::"
           done
           exit $failed
