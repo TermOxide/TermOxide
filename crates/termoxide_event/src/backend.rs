@@ -17,7 +17,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode},
 };
 
-use crate::event::{Event, KeyCode};
+use crate::event::{Event, KeyCode, KeyEvent};
 
 /// Error returned by the reader loop when it cannot make progress.
 #[derive(Debug)]
@@ -64,7 +64,8 @@ fn translate(event: crossterm::event::Event) -> Option<Event> {
         crossterm::event::Event::Key(key)
             if key.kind == crossterm::event::KeyEventKind::Press =>
         {
-            to_keycode(key.code).map(Event::KeyPress)
+            to_keycode(key.code)
+                .map(|code| Event::KeyPress(KeyEvent::new(code, key.modifiers)))
         },
         _ => None,
     }
@@ -176,14 +177,8 @@ mod tests {
     use std::thread;
 
     use crossterm::event::{
-        KeyCode as Ct,
-        KeyEvent,
-        KeyEventKind,
-        KeyModifiers,
-        MediaKeyCode,
-        ModifierKeyCode,
-        MouseEvent,
-        MouseEventKind,
+        KeyCode as Ct, KeyEvent as CtKeyEvent, KeyEventKind, KeyModifiers,
+        MediaKeyCode, ModifierKeyCode, MouseEvent, MouseEventKind,
     };
 
     use super::*;
@@ -222,7 +217,7 @@ mod tests {
     /// the key code and the event kind — without repeating the modifier and
     /// wrapper boilerplate at every call site.
     fn key_event(code: Ct, kind: KeyEventKind) -> crossterm::event::Event {
-        crossterm::event::Event::Key(KeyEvent::new_with_kind(
+        crossterm::event::Event::Key(CtKeyEvent::new_with_kind(
             code,
             KeyModifiers::NONE,
             kind,
@@ -293,12 +288,6 @@ mod tests {
     }
 
     #[test]
-    fn translate_keeps_supported_key_press() {
-        let event = key_event(Ct::Char('x'), KeyEventKind::Press);
-        assert_eq!(translate(event), Some(Event::KeyPress(KeyCode::Char('x'))));
-    }
-
-    #[test]
     fn translate_drops_press_on_unsupported_key() {
         let event = key_event(Ct::CapsLock, KeyEventKind::Press);
         assert_eq!(translate(event), None);
@@ -310,6 +299,18 @@ mod tests {
             let event = key_event(Ct::Char('x'), kind);
             assert_eq!(translate(event), None, "expected None for {kind:?}");
         }
+    }
+
+    #[test]
+    fn translate_keeps_supported_key_press() {
+        let event = key_event(Ct::Char('x'), KeyEventKind::Press);
+        assert_eq!(
+            translate(event),
+            Some(Event::KeyPress(KeyEvent::new(
+                KeyCode::Char('x'),
+                KeyModifiers::NONE
+            )))
+        );
     }
 
     #[test]

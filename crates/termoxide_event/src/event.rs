@@ -56,6 +56,25 @@ pub enum KeyCode {
     Esc,
 }
 
+/// Keyboard modifiers attached to a key press.
+pub use crossterm::event::KeyModifiers;
+
+/// A backend-agnostic keyboard press.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct KeyEvent {
+    /// The key that was pressed.
+    pub code: KeyCode,
+    /// Active modifiers at the time of the press.
+    pub modifiers: KeyModifiers,
+}
+
+impl KeyEvent {
+    /// Create a new key press descriptor.
+    pub const fn new(code: KeyCode, modifiers: KeyModifiers) -> Self {
+        Self { code, modifiers }
+    }
+}
+
 /// An event delivered by an [`EventStream`](crate::EventStream).
 ///
 /// This is the single unit of communication flowing from the background
@@ -70,5 +89,5 @@ pub enum Event {
     ChannelReady,
     /// A key was pressed. Only key *presses* are reported — releases and
     /// repeats are filtered out by the backend.
-    KeyPress(KeyCode),
+    KeyPress(KeyEvent),
 }
