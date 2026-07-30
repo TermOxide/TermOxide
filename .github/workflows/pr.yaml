@@ -104,15 +104,18 @@ jobs:
       matrix:
         action:
           - name: lint
-            command: "clippy --all-targets --all-features -- -D warnings"
+            command: "clippy"
+            arguments: "--all-targets --all-features -- -D warnings"
             toolchain: "stable"
             components: ""
           - name: format
-            command: "fmt --check"
+            command: "fmt"
+            arguments: "--check"
             toolchain: "nightly"
             components: '["rustfmt"]'
           - name: build
             command: "build"
+            arguments: ""
             toolchain: "stable"
             components: ""
     steps:
@@ -142,8 +145,8 @@ jobs:
           fi
           failed=0
           for crate in $crates; do
-            echo "::group::cargo ${{ matrix.action.command }} -p ${crate}"
-            cargo ${{ matrix.action.command }} -p "$crate" || failed=1
+            echo "::group::cargo ${{ matrix.action.command }} -p ${crate} ${{ matrix.action.arguments }}"
+            cargo ${{ matrix.action.command }} -p "$crate" ${{ matrix.action.arguments }} || failed=1
             echo "::endgroup::"
           done
           exit $failed
