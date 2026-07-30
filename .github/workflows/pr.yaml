@@ -107,7 +107,7 @@ jobs:
             command: "clippy"
             arguments: "--all-targets --all-features -- -D warnings"
             toolchain: "stable"
-            components: ""
+            components: '["clippy"]'
           - name: format
             command: "fmt"
             arguments: "--check"
