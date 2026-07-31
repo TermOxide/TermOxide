@@ -1,13 +1,22 @@
 name: Update PR Codecov Review
 
 on:
-  workflow_run:
-    workflows: ["pr-validator"]
+  check_run:
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      pull_number:
+        description: "PR number to refresh the Codecov section for"
+        required: true
+
+concurrency:
+  group: codecov-review-${{ github.event.check_run.head_sha || github.event.inputs.pull_number }}
 
 jobs:
   update-codecov-section:
     runs-on: ubuntu-latest
+    # check_run has no trigger-level filter, so restrict to Codecov's own app here.
+    if: github.event_name == 'workflow_dispatch' || github.event.check_run.app.slug == 'codecov'
     permissions:
       pull-requests: write
       issues: write
@@ -15,34 +24,47 @@ jobs:
     steps:
       - name: Update Codecov section and post indicator review
         uses: actions/github-script@v9
+        env:
+          INPUT_PULL_NUMBER: ${{ github.event.inputs.pull_number }}
         with:
           script: |
             const owner = context.repo.owner;
             const repo  = context.repo.repo;
-
-            const run = context.payload.workflow_run;
-            const sha = run.head_sha;
 
             const MARKER        = '<!-- pr-quality-bot -->';
             const CODECOV_START = '<!-- codecov-section-start -->';
             const CODECOV_END   = '<!-- codecov-section-end -->';
             const CODECOV_CTXS  = ['codecov/project', 'codecov/patch'];
 
-            // -- Find the open PR for this SHA ---------------------------------
-            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-              owner,
-              repo,
-              commit_sha: sha,
-            });
+            // -- Resolve the target PR and commit SHA --------------------------
+            // workflow_dispatch already names the PR directly; check_run only
+            // gives us a commit, so look up which open PR it belongs to.
+            let sha;
+            let pull_number;
 
-            const pr = prs.find(p => p.state === 'open');
+            if (context.eventName === 'workflow_dispatch') {
+              pull_number = parseInt(process.env.INPUT_PULL_NUMBER, 10);
 
-            if (!pr) {
-              core.info(`No open PR for SHA ${sha}`);
-              return;
+              const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number });
+              sha = pr.head.sha;
+            } else {
+              sha = context.payload.check_run.head_sha;
+
+              const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner,
+                repo,
+                commit_sha: sha,
+              });
+
+              const pr = prs.find(p => p.state === 'open');
+
+              if (!pr) {
+                core.info(`No open PR for SHA ${sha}`);
+                return;
+              }
+
+              pull_number = pr.number;
             }
-
-            const pull_number = pr.number;
 
             // -- Find the comment ---------------------------------------
             const { data: comments } = await github.rest.issues.listComments({
@@ -71,27 +93,15 @@ jobs:
               CODECOV_CTXS.includes(c.name)
             );
 
-            if (!codecov.length) {
-              core.info('No Codecov check runs found yet');
-              return;
-            }
-
-            const pending = codecov.some(c => c.status !== 'completed');
-            if (pending) {
-              core.info('Codecov checks still running; will re-evaluate later.');
-              return;
-            }
-
-            // -- Build updated Codecov section --------------------------------
+            // Render each context independently instead of waiting for both:
+            // codecov/project can stay unavailable indefinitely on non-default
+            // branches, and blocking on it left the section stuck forever.
             const fmt = name => {
               const c = codecov.find(x => x.name === name);
-              if (!c) return `⚠️ \`${name}\``;
+              if (!c) return `⏳ \`${name}\` _(not yet reported)_`;
+              if (c.status !== 'completed') return `⏳ \`${name}\` _(running)_`;
 
-              const icon =
-                c.conclusion === 'success' ? '✅' :
-                c.conclusion === 'failure' ? '❌' :
-                '⏳';
-
+              const icon = c.conclusion === 'success' ? '✅' : '❌';
               return `${icon} \`${name}\``;
             };
 
