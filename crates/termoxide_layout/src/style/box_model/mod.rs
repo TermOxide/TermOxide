@@ -19,11 +19,9 @@
 //!
 //! ## Module split
 //!
-//! - [`edges`] — the **common concern** shared by every layer: a four-sided
-//!   shorthand container.
-//! - [`padding`], [`margin`], [`border`], [`content`] — one module per layer,
-//!   each capturing the **specific concerns** that distinguish it from the
-//!   others.
+//! - [`edges`] — the **common concern** shared by every layer: a four-sided shorthand container.
+//! - [`padding`], [`margin`], [`border`], [`content`] — one module per layer, each capturing the **specific concerns**
+//!   that distinguish it from the others.
 
 pub mod border;
 pub mod content;

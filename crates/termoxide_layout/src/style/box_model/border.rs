@@ -2,12 +2,10 @@
 //!
 //! Border is the *only* box-model layer with a visual concern of its own:
 //!
-//! - Its per-side value carries an **appearance** ([`BorderStyle`] + optional
-//!   [`Color`]) instead of a spatial [`Unit`](crate::unit::Unit).
-//! - In a TUI the **width** is binary — one character cell or nothing — so
-//!   there is no `border-width` analogue.
-//! - The colour falls back to the element's foreground (via [`Color::Inherit`]
-//!   semantics) when left unset.
+//! - Its per-side value carries an **appearance** ([`BorderStyle`] + optional [`Color`]) instead of a spatial
+//!   [`Unit`](crate::unit::Unit).
+//! - In a TUI the **width** is binary — one character cell or nothing — so there is no `border-width` analogue.
+//! - The colour falls back to the element's foreground (via [`Color::Inherit`] semantics) when left unset.
 
 use super::edges::Edges;
 use crate::style::color::Color;
@@ -39,27 +37,16 @@ pub struct Border {
 }
 
 impl Border {
-    pub const NONE: Self = Self {
-        style: BorderStyle::None,
-        color: None,
-    };
-    pub const ROUNDED: Self = Self {
-        style: BorderStyle::Rounded,
-        color: None,
-    };
-    pub const SOLID: Self = Self {
-        style: BorderStyle::Solid,
-        color: None,
-    };
+    pub const NONE: Self = Self { style: BorderStyle::None, color: None };
+    pub const ROUNDED: Self = Self { style: BorderStyle::Rounded, color: None };
+    pub const SOLID: Self = Self { style: BorderStyle::Solid, color: None };
 
     pub const fn with_color(mut self, color: Color) -> Self {
         self.color = Some(color);
         self
     }
 
-    pub const fn is_none(self) -> bool {
-        matches!(self.style, BorderStyle::None)
-    }
+    pub const fn is_none(self) -> bool { matches!(self.style, BorderStyle::None) }
 }
 
 /// Which family of Unicode box-drawing characters to use for a border.
@@ -112,30 +99,18 @@ pub enum BorderStyle {
 pub struct Borders(Edges<Border>);
 
 /// Normalise a [`Border`] to a canonical per-side value.
-const fn css_border_value(v: Border) -> Border {
-    if v.is_none() { Border::NONE } else { v }
-}
+const fn css_border_value(v: Border) -> Border { if v.is_none() { Border::NONE } else { v } }
 
 impl Borders {
     pub const NONE: Self = Self(Edges::all(Border::NONE));
 
-    pub const fn all(v: Border) -> Self {
-        Self(Edges::all(css_border_value(v)))
-    }
+    pub const fn all(v: Border) -> Self { Self(Edges::all(css_border_value(v))) }
 
     pub const fn symmetric(vertical: Border, horizontal: Border) -> Self {
-        Self(Edges::symmetric(
-            css_border_value(vertical),
-            css_border_value(horizontal),
-        ))
+        Self(Edges::symmetric(css_border_value(vertical), css_border_value(horizontal)))
     }
 
-    pub const fn new(
-        top: Border,
-        right: Border,
-        bottom: Border,
-        left: Border,
-    ) -> Self {
+    pub const fn new(top: Border, right: Border, bottom: Border, left: Border) -> Self {
         Self(Edges::new(
             css_border_value(top),
             css_border_value(right),
@@ -152,16 +127,11 @@ impl Borders {
 
     /// `true` if every side is [`Border::NONE`] — nothing is drawn anywhere.
     pub const fn is_none(&self) -> bool {
-        self.0.top.is_none()
-            && self.0.right.is_none()
-            && self.0.bottom.is_none()
-            && self.0.left.is_none()
+        self.0.top.is_none() && self.0.right.is_none() && self.0.bottom.is_none() && self.0.left.is_none()
     }
 }
 
 impl From<Edges<Border>> for Borders {
     /// Lift a raw [`Edges`] into a `Borders`, normalising each side.
-    fn from(e: Edges<Border>) -> Self {
-        Self::new(e.top, e.right, e.bottom, e.left)
-    }
+    fn from(e: Edges<Border>) -> Self { Self::new(e.top, e.right, e.bottom, e.left) }
 }
