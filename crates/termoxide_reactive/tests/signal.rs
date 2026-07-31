@@ -111,11 +111,7 @@ async fn write_guard_notifies_when_dropped() {
         *g = 7;
         // Mutation via DerefMut alone must not schedule the subscriber.
         common::flush_effects().await;
-        assert_eq!(
-            *runs.borrow(),
-            initial,
-            "guard must defer notification until drop"
-        );
+        assert_eq!(*runs.borrow(), initial, "guard must defer notification until drop");
         *g = 8;
         drop(g);
 

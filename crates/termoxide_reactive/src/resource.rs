@@ -20,13 +20,7 @@ impl<T> ResourceState<T> {
 
     pub fn is_ready(&self) -> bool { matches!(self, ResourceState::Ready(_)) }
 
-    pub fn value(&self) -> Option<&T> {
-        if let ResourceState::Ready(v) = self {
-            Some(v)
-        } else {
-            None
-        }
-    }
+    pub fn value(&self) -> Option<&T> { if let ResourceState::Ready(v) = self { Some(v) } else { None } }
 }
 
 /// Asynchronous data loading.
@@ -86,8 +80,7 @@ impl<T: Clone + 'static> Resource<T> {
         F: FnOnce() -> Fut + 'static,
         Fut: Future<Output = T> + 'static,
     {
-        let state: Signal<ResourceState<T>> =
-            Signal::new(ResourceState::Loading);
+        let state: Signal<ResourceState<T>> = Signal::new(ResourceState::Loading);
 
         any_spawner::Executor::spawn_local(async move {
             let result = fetcher().await;
@@ -113,8 +106,7 @@ impl<T: Clone + 'static> Resource<T> {
         Fut: Future<Output = Result<T, E>> + 'static,
         E: fmt::Display + 'static,
     {
-        let state: Signal<ResourceState<T>> =
-            Signal::new(ResourceState::Loading);
+        let state: Signal<ResourceState<T>> = Signal::new(ResourceState::Loading);
 
         any_spawner::Executor::spawn_local(async move {
             match fetcher().await {
@@ -130,9 +122,7 @@ impl<T: Clone + 'static> Resource<T> {
     pub fn state(&self) -> ResourceState<T> { self.state.get() }
 
     /// Returns the current state **without creating a dependency**.
-    pub fn state_untracked(&self) -> ResourceState<T> {
-        self.state.get_untracked()
-    }
+    pub fn state_untracked(&self) -> ResourceState<T> { self.state.get_untracked() }
 
     /// Returns `true` if loading is still in progress.
     ///
@@ -164,8 +154,6 @@ impl<T: Clone + 'static> Resource<T> {
 
 impl<T: fmt::Debug + Clone + 'static> fmt::Debug for Resource<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Resource")
-            .field("state", &self.state.get_untracked())
-            .finish()
+        f.debug_struct("Resource").field("state", &self.state.get_untracked()).finish()
     }
 }

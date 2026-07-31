@@ -21,20 +21,17 @@
 //!
 //! Three constraints stack to force this shape:
 //!
-//! 1. **`Effect::new` takes `Fn + 'static`, not `FnMut`.** The effect may
-//!    re-run any number of times, so the closure is called through a shared
-//!    reference — it cannot mutate its captures directly. Interior mutability
-//!    is required to record observations from inside.
+//! 1. **`Effect::new` takes `Fn + 'static`, not `FnMut`.** The effect may re-run any number of times, so the closure is
+//!    called through a shared reference — it cannot mutate its captures directly. Interior mutability is required to
+//!    record observations from inside.
 //!
-//! 2. **Effects run on the local set (`!Send`).** That makes `Rc` the right
-//!    reference-counted handle (no atomic overhead) and `RefCell` the right
-//!    cell (no locking). `Cell` would work for `Copy` types, but `RefCell`
-//!    handles `Vec`, `String`, etc. uniformly.
+//! 2. **Effects run on the local set (`!Send`).** That makes `Rc` the right reference-counted handle (no atomic
+//!    overhead) and `RefCell` the right cell (no locking). `Cell` would work for `Copy` types, but `RefCell` handles
+//!    `Vec`, `String`, etc. uniformly.
 //!
-//! 3. **The test body needs to read the recorded value after the effect has
-//!    run.** Moving the value into the closure would leave nothing to assert
-//!    against, so we share ownership: one `Rc` stays with the test, a clone is
-//!    moved into the closure.
+//! 3. **The test body needs to read the recorded value after the effect has run.** Moving the value into the closure
+//!    would leave nothing to assert against, so we share ownership: one `Rc` stays with the test, a clone is moved into
+//!    the closure.
 //!
 //! The clone is scoped to the closure with a block expression
 //! (`Effect::new({ let runs = runs.clone(); move |_| ... })`) so the

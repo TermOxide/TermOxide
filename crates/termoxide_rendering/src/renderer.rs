@@ -3,13 +3,11 @@
 //! [`Renderer`] is the bridge between the logical UI tree and raw terminal
 //! cells.  It performs two distinct jobs on every frame:
 //!
-//! 1. **Paint** — walk the [`ViewNode`] tree top-down, dispatching each node's
-//!    [`ViewContent`] to the appropriate draw routine, accumulating the results
-//!    in an in-memory [`Buffer`].
+//! 1. **Paint** — walk the [`ViewNode`] tree top-down, dispatching each node's [`ViewContent`] to the appropriate draw
+//!    routine, accumulating the results in an in-memory [`Buffer`].
 //!
-//! 2. **Diff & flush** — compare the freshly painted buffer against the
-//!    previous frame's buffer, encode only the *changed* cells as ANSI escape
-//!    sequences, and hand them to ratatui's [`Terminal::draw`] machinery.
+//! 2. **Diff & flush** — compare the freshly painted buffer against the previous frame's buffer, encode only the
+//!    *changed* cells as ANSI escape sequences, and hand them to ratatui's [`Terminal::draw`] machinery.
 //!
 //! ## Position in the pipeline
 //!
@@ -28,13 +26,10 @@
 //!         stdout  (escape sequences for changed cells only)
 //! ```
 //!
-//! ## Dirty-node optimisation
+//! ## Traversal model
 //!
-//! If [`ViewNode::is_subtree_dirty`] returns `false` for a sub-tree, the
-//! renderer skips that sub-tree entirely.  This means only the regions of the
-//! screen that actually changed incur any CPU work.  The diffing built into
-//! ratatui handles the rest: even if a node is re-drawn, only cells whose byte
-//! content changed produce output bytes.
+//! The renderer walks the full tree on each frame and relies on ratatui's
+//! diffing to avoid writing unchanged cells to the terminal.
 //!
 //! ## Example
 //!
@@ -56,32 +51,16 @@
 //! let terminal = Terminal::new(backend).unwrap();
 //! let mut renderer = Renderer::new(terminal).unwrap();
 //!
-//! let mut root = ViewNode::text(
-//!     Rect::new(0, 0, 80, 24),
-//!     "Hello, TermOxide!",
-//!     Style::default().fg(Color::Cyan),
-//! );
+//! let mut root = ViewNode::text(Rect::new(0, 0, 80, 24), "Hello, TermOxide!", Style::default().fg(Color::Cyan));
 //!
 //! renderer.render_frame(&mut root).unwrap();
 //! ```
 
 use crossterm::{
     ExecutableCommand,
-    event::{DisableMouseCapture, EnableMouseCapture},
-    terminal::{
-        EnterAlternateScreen,
-        LeaveAlternateScreen,
-        disable_raw_mode,
-        enable_raw_mode,
-    },
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ratatui::{
-    Terminal,
-    backend::Backend,
-    buffer::Buffer,
-    layout::Rect,
-    style::Style,
-};
+use ratatui::{Terminal, backend::Backend, buffer::Buffer, layout::Rect, style::Style};
 
 use crate::view_node::{ViewContent, ViewNode};
 
@@ -95,16 +74,12 @@ use crate::view_node::{ViewContent, ViewNode};
 pub enum RenderError {
     /// The underlying ratatui / crossterm I/O operation failed.
     Io(std::io::Error),
-
-    /// A user-provided raw draw closure panicked.
-    DrawPanic,
 }
 
 impl std::fmt::Display for RenderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Io(e) => write!(f, "render I/O error: {e}"),
-            Self::DrawPanic => write!(f, "render draw callback panicked"),
         }
     }
 }
@@ -113,7 +88,6 @@ impl std::error::Error for RenderError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Io(e) => Some(e),
-            Self::DrawPanic => None,
         }
     }
 }
@@ -130,9 +104,8 @@ impl From<std::io::Error> for RenderError {
 /// Walks the [`ViewNode`] tree and produces terminal output via ratatui.
 ///
 /// Each [`Renderer`] owns a ratatui [`Terminal`], which in turn manages the
-/// double-buffering and escape-sequence diffing.  The renderer adds a third
-/// layer on top: the [`ViewNode`] dirty-flag check, which skips sub-trees that
-/// have not changed since the last frame.
+/// double-buffering and escape-sequence diffing.  The renderer feeds the
+/// terminal a freshly painted buffer on every call.
 ///
 /// ## Generic parameter
 ///
@@ -148,6 +121,8 @@ impl From<std::io::Error> for RenderError {
 pub struct Renderer<B: Backend> {
     /// Ratatui terminal — owns the backend and the two-frame diff buffer.
     terminal: Terminal<B>,
+    /// Tracks whether terminal UI mode was enabled so it can be restored once.
+    terminal_mode_active: bool,
 }
 
 impl<B: Backend> Renderer<B> {
@@ -156,17 +131,34 @@ impl<B: Backend> Renderer<B> {
     /// The terminal's cursor is hidden immediately so that it does not
     /// flicker during rendering.
     ///
+    /// ## Raw mode
+    ///
+    /// The renderer does **not** manage raw mode: that belongs to
+    /// [`EventStream`][termoxide_event::EventStream], which needs it to read
+    /// input and restores it on drop. Create the stream before the renderer and
+    /// keep it alive for at least as long, otherwise this alternate screen will
+    /// be driven by a cooked terminal.
+    ///
     /// # Errors
     ///
-    /// Returns [`RenderError::Io`] if hiding the cursor fails.
+    /// Returns [`RenderError::Io`] if entering the alternate screen or hiding
+    /// the cursor fails.
     pub fn new(mut terminal: Terminal<B>) -> Result<Self, RenderError> {
-        enable_raw_mode()?;
-        std::io::stdout().execute(EnterAlternateScreen)?;
-        // Enable mouse capture so the application receives mouse events.
-        std::io::stdout().execute(EnableMouseCapture)?;
-        terminal.hide_cursor()?;
-        Ok(Self { terminal })
+        if let Err(e) = (|| -> std::io::Result<()> {
+            std::io::stdout().execute(EnterAlternateScreen)?;
+            terminal.hide_cursor()?;
+            Ok(())
+        })() {
+            let _ = std::io::stdout().execute(LeaveAlternateScreen);
+            return Err(RenderError::Io(e));
+        }
+        Ok(Self { terminal, terminal_mode_active: true })
     }
+
+    /// Create a `Renderer` for testing, which does not enter the alternate
+    /// screen.
+    #[cfg(test)]
+    pub(crate) fn new_for_test(terminal: Terminal<B>) -> Self { Self { terminal, terminal_mode_active: false } }
 
     /// Return the current terminal viewport size as a [`Rect`].
     ///
@@ -180,43 +172,24 @@ impl<B: Backend> Renderer<B> {
     /// Render one complete frame from `root` to the terminal.
     ///
     /// The method:
-    /// 1. Calls [`draw_node`][Self::draw_node] recursively on `root`, filling a
-    ///    temporary [`Buffer`] from the top of the tree down.
-    /// 2. Hands the filled buffer to ratatui's `Terminal::draw`, which diffs it
-    ///    against the previous frame and writes only the changed cells.
-    /// 3. Calls [`ViewNode::mark_clean`] on `root` so that unchanged nodes are
-    ///    skipped on the next call.
+    /// 1. Calls [`draw_node`][Self::draw_node] recursively on `root`, filling a temporary [`Buffer`] from the top of
+    ///    the tree down.
+    /// 2. Hands the filled buffer to ratatui's `Terminal::draw`, which diffs it against the previous frame and writes
+    ///    only the changed cells.
+    /// 3. Returns without additional bookkeeping; ratatui handles the diff against the previous frame.
     ///
     /// # Errors
     ///
-    /// Returns [`RenderError::Io`] on any I/O failure inside ratatui, or
-    /// [`RenderError::DrawPanic`] if a raw draw callback panics.
-    pub fn render_frame(
-        &mut self,
-        root: &mut ViewNode,
-    ) -> Result<(), RenderError> {
-        let mut draw_error = None;
-
+    /// Returns [`RenderError::Io`] on any I/O failure inside ratatui.
+    pub fn render_frame(&mut self, root: &mut ViewNode) -> Result<(), RenderError> {
         // Draw directly into the frame buffer that ratatui provides.
         // ratatui handles the diff against the previous frame and writes
         // only changed cells to stdout.
         self.terminal.draw(|frame| {
-            if draw_error.is_some() {
-                return;
-            }
-
             let buf = frame.buffer_mut();
-            if let Err(err) = Self::draw_node(root, buf) {
-                draw_error = Some(err);
-            }
+            Self::draw_node(root, buf);
         })?;
 
-        if let Some(err) = draw_error {
-            return Err(err);
-        }
-
-        // Clear dirty flags now that the frame is committed.
-        root.mark_clean();
         Ok(())
     }
 
@@ -225,21 +198,9 @@ impl<B: Backend> Renderer<B> {
 
     /// Recursively draw `node` into `buf`.
     ///
-    /// Sub-trees where [`ViewNode::is_subtree_dirty`] returns `false` are
-    /// skipped — this is the primary optimisation that keeps frame work O(dirty
-    /// nodes) rather than O(all nodes).
-    ///
     /// The traversal is depth-first, parent before children, so that child
     /// content always appears on top of parent background fills.
-    pub fn draw_node(
-        node: &ViewNode,
-        buf: &mut Buffer,
-    ) -> Result<(), RenderError> {
-        // Fast path: nothing changed in this sub-tree.
-        if !node.is_subtree_dirty() {
-            return Ok(());
-        }
-
+    pub fn draw_node(node: &ViewNode, buf: &mut Buffer) {
         // Draw this node's own content.
         match &node.content {
             ViewContent::Container => {
@@ -252,23 +213,14 @@ impl<B: Backend> Renderer<B> {
             },
 
             ViewContent::Raw(f) => {
-                let draw_result = std::panic::catch_unwind(
-                    std::panic::AssertUnwindSafe(|| {
-                        f(buf, node.area);
-                    }),
-                );
-                if draw_result.is_err() {
-                    return Err(RenderError::DrawPanic);
-                }
+                f(buf, node.area);
             },
         }
 
         // Recurse into children (document order).
         for child in &node.children {
-            Self::draw_node(child, buf)?;
+            Self::draw_node(child, buf);
         }
-
-        Ok(())
     }
 
     // ── Primitive draw helpers ───────────────────────────────────────────────
@@ -283,36 +235,10 @@ impl<B: Backend> Renderer<B> {
             return;
         }
 
-        let buf_area = *buf.area();
-        let buf_right = buf_area.x.saturating_add(buf_area.width);
-        let buf_bottom = buf_area.y.saturating_add(buf_area.height);
+        let max_chars = area.width as usize;
+        let truncated: String = text.chars().take(max_chars).collect();
 
-        // Text nodes are single-line, so skip draws whose baseline row is
-        // off-screen.
-        if area.y < buf_area.y || area.y >= buf_bottom {
-            return;
-        }
-
-        let node_left = area.x;
-        let node_right = area.x.saturating_add(area.width);
-        let visible_left = node_left.max(buf_area.x);
-        let visible_right = node_right.min(buf_right);
-
-        if visible_left >= visible_right {
-            return;
-        }
-
-        // If the node starts off-screen to the left, skip that many chars.
-        let skip_chars = visible_left.saturating_sub(node_left) as usize;
-        let max_chars = visible_right.saturating_sub(visible_left) as usize;
-
-        let clipped: String =
-            text.chars().skip(skip_chars).take(max_chars).collect();
-        if clipped.is_empty() {
-            return;
-        }
-
-        buf.set_string(visible_left, area.y, &clipped, style);
+        buf.set_string(area.x, area.y, &truncated, style);
     }
 
     // ── Terminal lifecycle ───────────────────────────────────────────────────
@@ -321,7 +247,8 @@ impl<B: Backend> Renderer<B> {
     /// Restore the terminal to a clean state.
     ///
     /// Must be called before the process exits (or panics) to avoid leaving
-    /// the user's terminal in raw mode without a visible cursor.
+    /// the user staring at the alternate screen without a visible cursor.
+    /// Raw mode is not touched here — see [`Self::new`].
     ///
     /// # Errors
     ///
@@ -329,11 +256,13 @@ impl<B: Backend> Renderer<B> {
     /// should log the error but not panic — the process is about to exit
     /// anyway.
     pub fn restore(&mut self) -> Result<(), RenderError> {
+        if !self.terminal_mode_active {
+            return Ok(());
+        }
+
         self.terminal.show_cursor()?;
-        // Disable mouse capture and restore the alternate screen and raw mode.
-        std::io::stdout().execute(DisableMouseCapture)?;
         std::io::stdout().execute(LeaveAlternateScreen)?;
-        disable_raw_mode()?;
+        self.terminal_mode_active = false;
         Ok(())
     }
 
@@ -344,92 +273,89 @@ impl<B: Backend> Renderer<B> {
     pub fn terminal_mut(&mut self) -> &mut Terminal<B> { &mut self.terminal }
 }
 
+impl<B: Backend> Drop for Renderer<B> {
+    fn drop(&mut self) { let _ = self.restore(); }
+}
+
 #[cfg(test)]
 mod tests {
-    use ratatui::backend::TestBackend;
+    use std::io::IsTerminal;
+
+    use ratatui::{
+        backend::{CrosstermBackend, TestBackend},
+        layout::Rect,
+        style::Style,
+    };
 
     use super::*;
 
     #[test]
-    fn draw_text_truncates_to_node_width() {
-        let mut buf = Buffer::empty(Rect::new(0, 0, 5, 1));
-        let node =
-            ViewNode::text(Rect::new(0, 0, 3, 1), "abcdef", Style::default());
+    fn draw_node_truncates_text_to_area() {
+        let area = Rect::new(0, 0, 3, 1);
+        let node = ViewNode::text(area, "abcdef", Style::default());
+        let mut buf = Buffer::empty(area);
 
-        Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
+        Renderer::<TestBackend>::draw_node(&node, &mut buf);
 
         assert_eq!(buf.get(0, 0).symbol(), "a");
         assert_eq!(buf.get(1, 0).symbol(), "b");
         assert_eq!(buf.get(2, 0).symbol(), "c");
-        assert_eq!(buf.get(3, 0).symbol(), " ");
     }
 
     #[test]
-    fn clean_subtree_is_skipped() {
-        let mut buf = Buffer::empty(Rect::new(0, 0, 5, 1));
-        let mut node =
-            ViewNode::text(Rect::new(0, 0, 5, 1), "hello", Style::default());
-        node.dirty = false;
+    fn draw_node_renders_children_after_parent() {
+        let area = Rect::new(0, 0, 1, 1);
+        let parent = ViewNode::raw(area, |buf, rect| {
+            buf.get_mut(rect.x, rect.y).set_symbol("A");
+        })
+        .with_children(vec![ViewNode::text(area, "B", Style::default())]);
 
-        Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
+        let mut buf = Buffer::empty(area);
+        Renderer::<TestBackend>::draw_node(&parent, &mut buf);
 
-        assert_eq!(buf.get(0, 0).symbol(), " ");
+        assert_eq!(buf.get(0, 0).symbol(), "B");
     }
 
     #[test]
-    fn zero_area_text_node_is_noop() {
-        let mut buf = Buffer::empty(Rect::new(0, 0, 1, 1));
-        let node = ViewNode::text(Rect::new(0, 0, 0, 1), "x", Style::default());
+    fn render_frame_writes_to_backend_buffer() {
+        let backend = TestBackend::new(4, 1);
+        let terminal = Terminal::new(backend).expect("terminal");
+        let mut renderer = Renderer::new_for_test(terminal);
+        let area = Rect::new(0, 0, 4, 1);
+        let mut root = ViewNode::text(area, "hey!", Style::default());
 
-        Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
+        renderer.render_frame(&mut root).expect("render");
 
-        assert_eq!(buf.get(0, 0).symbol(), " ");
+        let buffer = renderer.terminal().backend().buffer();
+        assert_eq!(buffer.get(0, 0).symbol(), "h");
+        assert_eq!(buffer.get(1, 0).symbol(), "e");
+        assert_eq!(buffer.get(2, 0).symbol(), "y");
+        assert_eq!(buffer.get(3, 0).symbol(), "!");
     }
 
     #[test]
-    fn raw_node_can_write_into_buffer() {
-        let mut buf = Buffer::empty(Rect::new(0, 0, 5, 1));
-        let node = ViewNode::raw(Rect::new(0, 0, 5, 1), |buf, area| {
-            buf.set_string(area.x, area.y, "ok", Style::default());
-        });
+    fn restore_is_noop_when_inactive() {
+        let backend = TestBackend::new(2, 1);
+        let terminal = Terminal::new(backend).expect("terminal");
+        let mut renderer = Renderer::new_for_test(terminal);
 
-        Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
-
-        assert_eq!(buf.get(0, 0).symbol(), "o");
-        assert_eq!(buf.get(1, 0).symbol(), "k");
+        assert!(!renderer.terminal_mode_active);
+        assert!(renderer.restore().is_ok());
+        assert!(!renderer.terminal_mode_active);
     }
 
     #[test]
-    fn out_of_bounds_text_area_is_ignored() {
-        let mut buf = Buffer::empty(Rect::new(0, 0, 10, 1));
-        let node =
-            ViewNode::text(Rect::new(0, 50, 3, 1), "boom", Style::default());
+    fn new_and_restore_work_on_terminal() {
+        if !std::io::stdout().is_terminal() {
+            return;
+        }
 
-        Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
-        assert_eq!(buf.get(0, 0).symbol(), " ");
-    }
+        let backend = CrosstermBackend::new(std::io::stdout());
+        let terminal = Terminal::new(backend).expect("terminal");
+        let mut renderer = Renderer::new(terminal).expect("renderer");
 
-    #[test]
-    fn raw_draw_closure_panic_becomes_error() {
-        let mut buf = Buffer::empty(Rect::new(0, 0, 10, 1));
-        let node = ViewNode::raw(Rect::new(0, 0, 1, 1), |_, _| {
-            panic!("renderer raw closure panic");
-        });
-
-        let result = Renderer::<TestBackend>::draw_node(&node, &mut buf);
-        assert!(matches!(result, Err(RenderError::DrawPanic)));
-    }
-
-    #[test]
-    fn text_draw_clips_left_side_against_buffer_origin() {
-        let mut buf = Buffer::empty(Rect::new(2, 0, 3, 1));
-        let node =
-            ViewNode::text(Rect::new(0, 0, 5, 1), "abcde", Style::default());
-
-        Renderer::<TestBackend>::draw_node(&node, &mut buf).unwrap();
-
-        assert_eq!(buf.get(2, 0).symbol(), "c");
-        assert_eq!(buf.get(3, 0).symbol(), "d");
-        assert_eq!(buf.get(4, 0).symbol(), "e");
+        assert!(renderer.terminal_mode_active);
+        renderer.restore().expect("restore");
+        assert!(!renderer.terminal_mode_active);
     }
 }

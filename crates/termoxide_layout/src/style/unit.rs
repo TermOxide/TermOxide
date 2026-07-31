@@ -78,9 +78,7 @@ impl Unit {
 
     /// `true` if the value is concrete and calculable without layout context
     /// (i.e. `Cells` or `Percent`).
-    pub const fn is_definite(self) -> bool {
-        matches!(self, Self::Cells(_) | Self::Percent(_))
-    }
+    pub const fn is_definite(self) -> bool { matches!(self, Self::Cells(_) | Self::Percent(_)) }
 
     /// `true` if the value requires layout context to resolve
     /// (`Fill` needs remaining space; `Auto` needs content size).

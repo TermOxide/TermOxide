@@ -23,12 +23,7 @@ use reactive_graph::{
 /// # Example
 ///
 /// ```no_run
-/// use termoxide_reactive::{
-///     Effect,
-///     StoredValue,
-///     Trigger,
-///     runtime::with_owner,
-/// };
+/// use termoxide_reactive::{Effect, StoredValue, Trigger, runtime::with_owner};
 ///
 /// with_owner(|| {
 ///     let counter = StoredValue::new(0u32);

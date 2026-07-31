@@ -22,23 +22,18 @@
 //!
 //! ## Design principles
 //!
-//! - **Owned, heap-allocated tree**: unlike ratatui `Widget` which is consumed
-//!   on render, `ViewNode` is a plain data structure that can be inspected,
-//!   diffed, or logged independently of the render pass.
+//! - **Owned, heap-allocated tree**: unlike ratatui `Widget` which is consumed on render, `ViewNode` is a plain data
+//!   structure that can be inspected, diffed, or logged independently of the render pass.
 //!
-//! - **Dirty tracking**: the [`ViewNode::dirty`] flag is set by the reactive
-//!   layer whenever a signal that the node depends on changes.  The
-//!   [`RenderLoop`][crate::render_loop::RenderLoop] only re-renders the
-//!   sub-tree containing at least one dirty node, keeping frame work low.
+//! - **Dirty tracking**: the [`ViewNode::dirty`] flag is set by the reactive layer whenever a signal that the node
+//!   depends on changes.  The [`RenderLoop`][crate::render_loop::RenderLoop] only re-renders the sub-tree containing at
+//!   least one dirty node, keeping frame work low. (note implemented yet)
 //!
-//! - **Spatial metadata**: every node carries the terminal area ([`Rect`])
-//!   assigned to it by the layout engine so that the
-//!   [`EventRouter`][crate::event_router::EventRouter] can perform O(nodes)
-//!   hit-testing without re-running layout.
+//! - **Spatial metadata**: every node carries the terminal area ([`Rect`]) assigned to it by the layout engine so that
+//!   the [`EventRouter`][crate::event_router::EventRouter] can perform O(nodes) hit-testing without re-running layout.
 //!
-//! - **Type-erased content**: [`ViewContent::Raw`] lets any component supply an
-//!   arbitrary draw closure, which keeps this crate decoupled from the full set
-//!   of ratatui built-in widgets.
+//! - **Type-erased content**: [`ViewContent::Raw`] lets any component supply an arbitrary draw closure, which keeps
+//!   this crate decoupled from the full set of ratatui built-in widgets.
 //!
 //! ## Example
 //!
@@ -50,11 +45,7 @@
 //! use termoxide_rendering::view_node::{ViewContent, ViewNode};
 //!
 //! // A simple text label node.
-//! let label = ViewNode::text(
-//!     Rect::new(0, 0, 20, 1),
-//!     "Hello, TermOxide!",
-//!     Style::default().fg(Color::Yellow),
-//! );
+//! let label = ViewNode::text(Rect::new(0, 0, 20, 1), "Hello, TermOxide!", Style::default().fg(Color::Yellow));
 //!
 //! // A container wrapping it.
 //! let root = ViewNode::container(Rect::new(0, 0, 80, 24), vec![label]);
@@ -79,6 +70,9 @@ use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 ///
 /// `0` is reserved and used as the sentinel "no component" value.
 pub type ComponentId = u64;
+
+/// Closure used by [`ViewContent::Raw`].
+pub type RawDrawFn = dyn Fn(&mut Buffer, Rect) + Send;
 
 // ───────────────────────────────────────────────────────────────────────────
 // //  ViewContent
@@ -142,16 +136,14 @@ pub enum ViewContent {
     ///     Block::default().borders(Borders::ALL).render(rect, buf);
     /// });
     /// ```
-    Raw(Box<dyn Fn(&mut Buffer, Rect) + Send>),
+    Raw(Box<RawDrawFn>),
 }
 
 impl std::fmt::Debug for ViewContent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Container => write!(f, "Container"),
-            Self::Text { text, .. } => {
-                f.debug_struct("Text").field("text", text).finish()
-            },
+            Self::Text { text, .. } => f.debug_struct("Text").field("text", text).finish(),
             Self::Raw(_) => write!(f, "Raw(<fn>)"),
         }
     }
@@ -209,14 +201,6 @@ pub struct ViewNode {
     /// Child nodes in document order (top-to-bottom, left-to-right for
     /// `FlexDirection::Row`).
     pub children: Vec<ViewNode>,
-
-    /// Whether this node (or any node in its sub-tree) needs to be redrawn.
-    ///
-    /// The reactive layer sets this to `true` whenever a signal read during
-    /// the node's last render changes.  The
-    /// [`RenderLoop`][crate::render_loop::RenderLoop] clears it after a
-    /// successful render pass.
-    pub dirty: bool,
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -229,15 +213,7 @@ impl ViewNode {
     ///
     /// Prefer the typed constructors ([`container`][Self::container],
     /// [`text`][Self::text], [`raw`][Self::raw]) for common use-cases.
-    pub fn new(area: Rect, content: ViewContent) -> Self {
-        Self {
-            id: None,
-            area,
-            content,
-            children: Vec::new(),
-            dirty: true,
-        }
-    }
+    pub fn new(area: Rect, content: ViewContent) -> Self { Self { id: None, area, content, children: Vec::new() } }
 
     /// Create a layout-only container with the given children.
     ///
@@ -246,19 +222,10 @@ impl ViewNode {
     /// use termoxide_rendering::view_node::ViewNode;
     ///
     /// let root = ViewNode::container(Rect::new(0, 0, 80, 24), vec![]);
-    /// assert!(matches!(
-    ///     root.content,
-    ///     termoxide_rendering::view_node::ViewContent::Container
-    /// ));
+    /// assert!(matches!(root.content, termoxide_rendering::view_node::ViewContent::Container));
     /// ```
     pub fn container(area: Rect, children: Vec<ViewNode>) -> Self {
-        Self {
-            id: None,
-            area,
-            content: ViewContent::Container,
-            children,
-            dirty: true,
-        }
+        Self { id: None, area, content: ViewContent::Container, children }
     }
 
     /// Create a single-line text node.
@@ -274,12 +241,8 @@ impl ViewNode {
         Self {
             id: None,
             area,
-            content: ViewContent::Text {
-                text: text.into(),
-                style,
-            },
+            content: ViewContent::Text { text: text.into(), style },
             children: Vec::new(),
-            dirty: true,
         }
     }
 
@@ -290,13 +253,7 @@ impl ViewNode {
     where
         F: Fn(&mut Buffer, Rect) + Send + 'static,
     {
-        Self {
-            id: None,
-            area,
-            content: ViewContent::Raw(Box::new(f)),
-            children: Vec::new(),
-            dirty: true,
-        }
+        Self { id: None, area, content: ViewContent::Raw(Box::new(f)), children: Vec::new() }
     }
 
     // ── Builder methods ──────────────────────────────────────────────────────
@@ -331,98 +288,5 @@ impl ViewNode {
     pub fn with_area(mut self, area: Rect) -> Self {
         self.area = area;
         self
-    }
-
-    // ── Dirty-tracking helpers ───────────────────────────────────────────────
-    // //
-
-    /// Returns `true` if this node or any descendant is dirty.
-    ///
-    /// The [`RenderLoop`][crate::render_loop::RenderLoop] calls this before
-    /// deciding whether to redraw.
-    pub fn is_subtree_dirty(&self) -> bool {
-        self.dirty || self.children.iter().any(|c| c.is_subtree_dirty())
-    }
-
-    /// Recursively clear the dirty flag on this node and all descendants.
-    ///
-    /// Called by the renderer after a successful render pass so that the next
-    /// poll of [`is_subtree_dirty`][Self::is_subtree_dirty] reflects only new
-    /// changes.
-    pub fn mark_clean(&mut self) {
-        self.dirty = false;
-        for child in &mut self.children {
-            child.mark_clean();
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn constructors_start_dirty() {
-        let container = ViewNode::container(Rect::new(0, 0, 10, 10), vec![]);
-        let text =
-            ViewNode::text(Rect::new(0, 0, 10, 1), "x", Style::default());
-        let raw = ViewNode::raw(Rect::new(0, 0, 1, 1), |_, _| {});
-
-        assert!(container.dirty);
-        assert!(text.dirty);
-        assert!(raw.dirty);
-    }
-
-    #[test]
-    fn mark_clean_is_recursive() {
-        let child =
-            ViewNode::text(Rect::new(0, 0, 5, 1), "child", Style::default());
-        let mut root = ViewNode::container(Rect::new(0, 0, 10, 5), vec![child]);
-
-        root.mark_clean();
-
-        assert!(!root.dirty);
-        assert!(!root.children[0].dirty);
-        assert!(!root.is_subtree_dirty());
-    }
-
-    #[test]
-    fn subtree_dirty_detects_dirty_descendant_when_root_is_clean() {
-        let mut child =
-            ViewNode::text(Rect::new(0, 0, 5, 1), "child", Style::default());
-        child.dirty = true;
-
-        let mut root = ViewNode::container(Rect::new(0, 0, 10, 5), vec![child]);
-        root.dirty = false;
-
-        assert!(root.is_subtree_dirty());
-    }
-
-    #[test]
-    fn with_children_replaces_existing_children() {
-        let original = ViewNode::container(Rect::new(0, 0, 10, 5), vec![]);
-        let child =
-            ViewNode::text(Rect::new(0, 0, 2, 1), "x", Style::default());
-
-        let replaced = original.with_children(vec![child]);
-        assert_eq!(replaced.children.len(), 1);
-    }
-
-    #[test]
-    fn deep_tree_mark_clean_does_not_panic() {
-        let mut root =
-            ViewNode::text(Rect::new(0, 0, 1, 1), "leaf", Style::default());
-        for _ in 0..1024 {
-            root = ViewNode::container(Rect::new(0, 0, 1, 1), vec![root]);
-        }
-
-        let outcome =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                root.mark_clean();
-                root.is_subtree_dirty()
-            }));
-
-        assert!(outcome.is_ok(), "deep recursive traversal panicked");
-        assert!(!outcome.unwrap());
     }
 }

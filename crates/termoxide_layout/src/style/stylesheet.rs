@@ -11,18 +11,16 @@ pub struct StyleSheet {
     map: HashMap<String, Style>,
 }
 
+impl Default for StyleSheet {
+    fn default() -> Self { Self::new() }
+}
+
 impl StyleSheet {
     /// Create an empty stylesheet.
-    pub fn new() -> Self {
-        Self {
-            map: HashMap::new(),
-        }
-    }
+    pub fn new() -> Self { Self { map: HashMap::new() } }
 
     /// Register or replace a named style.
-    pub fn register(&mut self, name: impl Into<String>, style: Style) {
-        self.map.insert(name.into(), style);
-    }
+    pub fn register(&mut self, name: impl Into<String>, style: Style) { self.map.insert(name.into(), style); }
 
     /// Get a style by name.
     pub fn get(&self, name: &str) -> Option<&Style> { self.map.get(name) }

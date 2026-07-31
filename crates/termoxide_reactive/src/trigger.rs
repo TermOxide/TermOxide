@@ -52,7 +52,5 @@ impl Default for Trigger {
 }
 
 impl fmt::Debug for Trigger {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Trigger").finish_non_exhaustive()
-    }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.debug_struct("Trigger").finish_non_exhaustive() }
 }

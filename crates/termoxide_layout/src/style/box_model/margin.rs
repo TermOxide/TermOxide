@@ -8,10 +8,9 @@
 //!
 //! Compared to its siblings:
 //!
-//! - It **permits negative values** (unlike [`super::padding::Padding`]) so
-//!   elements can be pulled toward or overlap their neighbours.
-//! - It supports the **`auto` keyword** ([`Unit::Auto`]) which lets the layout
-//!   engine distribute remaining axis space.
+//! - It **permits negative values** (unlike [`super::padding::Padding`]) so elements can be pulled toward or overlap
+//!   their neighbours.
+//! - It supports the **`auto` keyword** ([`Unit::Auto`]) which lets the layout engine distribute remaining axis space.
 
 use super::edges::Edges;
 use crate::style::unit::Unit;
@@ -59,10 +58,7 @@ impl Margin {
     pub const fn all(v: Unit) -> Self { Self(Edges::all(css_margin_value(v))) }
 
     pub const fn symmetric(vertical: Unit, horizontal: Unit) -> Self {
-        Self(Edges::symmetric(
-            css_margin_value(vertical),
-            css_margin_value(horizontal),
-        ))
+        Self(Edges::symmetric(css_margin_value(vertical), css_margin_value(horizontal)))
     }
 
     pub const fn new(top: Unit, right: Unit, bottom: Unit, left: Unit) -> Self {
@@ -75,9 +71,7 @@ impl Margin {
     }
 
     /// Centre horizontally along the main axis.
-    pub const fn horizontal_auto(vertical: Unit) -> Self {
-        Self::symmetric(vertical, Unit::AUTO)
-    }
+    pub const fn horizontal_auto(vertical: Unit) -> Self { Self::symmetric(vertical, Unit::AUTO) }
 
     /// Borrow the underlying [`Edges`] for read access.
     pub const fn edges(&self) -> &Edges { &self.0 }

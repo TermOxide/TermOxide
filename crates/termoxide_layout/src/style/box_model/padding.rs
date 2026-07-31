@@ -8,10 +8,9 @@
 //!
 //! Compared to its siblings:
 //!
-//! - It **forbids negative values** (unlike [`super::margin::Margin`]) — there
-//!   is no semantic meaning to "negative inner spacing" in CSS.
-//! - It has **no `auto` keyword** (unlike [`super::margin::Margin`]) — the only
-//!   intrinsic value for padding is zero.
+//! - It **forbids negative values** (unlike [`super::margin::Margin`]) — there is no semantic meaning to "negative
+//!   inner spacing" in CSS.
+//! - It has **no `auto` keyword** (unlike [`super::margin::Margin`]) — the only intrinsic value for padding is zero.
 
 use super::edges::Edges;
 use crate::style::unit::Unit;
@@ -35,12 +34,7 @@ use crate::style::unit::Unit;
 ///
 /// let p = Padding::all(Unit::cells(1));
 /// let p = Padding::symmetric(Unit::cells(1), Unit::cells(2));
-/// let p = Padding::new(
-///     Unit::cells(1),
-///     Unit::cells(2),
-///     Unit::cells(1),
-///     Unit::cells(2),
-/// );
+/// let p = Padding::new(Unit::cells(1), Unit::cells(2), Unit::cells(1), Unit::cells(2));
 /// assert_eq!(p.edges().left, Unit::cells(2));
 ///
 /// // Negative cells are clamped:
@@ -72,10 +66,7 @@ impl Padding {
     pub const fn all(v: Unit) -> Self { Self(Edges::all(css_padding_value(v))) }
 
     pub const fn symmetric(vertical: Unit, horizontal: Unit) -> Self {
-        Self(Edges::symmetric(
-            css_padding_value(vertical),
-            css_padding_value(horizontal),
-        ))
+        Self(Edges::symmetric(css_padding_value(vertical), css_padding_value(horizontal)))
     }
 
     pub const fn new(top: Unit, right: Unit, bottom: Unit, left: Unit) -> Self {

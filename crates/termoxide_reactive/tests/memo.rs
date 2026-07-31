@@ -76,10 +76,7 @@ fn skips_recompute_when_equal_value_set() {
         src.set(2);
         let _ = downstream.get();
         let after = calls.load(Ordering::SeqCst);
-        assert_eq!(
-            after, before,
-            "downstream must not recompute on equal value"
-        );
+        assert_eq!(after, before, "downstream must not recompute on equal value");
     });
 }
 
@@ -139,8 +136,7 @@ fn prev_argument_carries_last_computed_value() {
     with_owner(|| {
         let src = Signal::new(1i32);
         // Sum-of-inputs accumulator: prev + current.
-        let acc =
-            Memo::new(move |prev: Option<i32>| prev.unwrap_or(0) + src.get());
+        let acc = Memo::new(move |prev: Option<i32>| prev.unwrap_or(0) + src.get());
         assert_eq!(acc.get(), 1); // None + 1
         src.set(2);
         assert_eq!(acc.get(), 3); // 1 + 2
@@ -168,11 +164,7 @@ async fn memo_propagates_changes_to_subscribed_effect() {
 
         src.set(5);
         common::flush_effects().await;
-        assert_eq!(
-            *observed.borrow(),
-            vec![2, 10],
-            "memo change re-runs the effect"
-        );
+        assert_eq!(*observed.borrow(), vec![2, 10], "memo change re-runs the effect");
     })
     .await;
 }

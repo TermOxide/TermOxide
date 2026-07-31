@@ -56,36 +56,15 @@ pub struct Edges<T: EdgeValue = Unit> {
 }
 
 impl<T: EdgeValue> Edges<T> {
-    pub const fn all(v: T) -> Self {
-        Self {
-            top: v,
-            right: v,
-            bottom: v,
-            left: v,
-        }
-    }
+    pub const fn all(v: T) -> Self { Self { top: v, right: v, bottom: v, left: v } }
 
     pub const fn symmetric(vertical: T, horizontal: T) -> Self {
-        Self {
-            top: vertical,
-            right: horizontal,
-            bottom: vertical,
-            left: horizontal,
-        }
+        Self { top: vertical, right: horizontal, bottom: vertical, left: horizontal }
     }
 
-    pub const fn new(top: T, right: T, bottom: T, left: T) -> Self {
-        Self {
-            top,
-            right,
-            bottom,
-            left,
-        }
-    }
+    pub const fn new(top: T, right: T, bottom: T, left: T) -> Self { Self { top, right, bottom, left } }
 
     /// Iterate over the four sides in CSS shorthand order
     /// (top, right, bottom, left).
-    pub const fn as_array(self) -> [T; 4] {
-        [self.top, self.right, self.bottom, self.left]
-    }
+    pub const fn as_array(self) -> [T; 4] { [self.top, self.right, self.bottom, self.left] }
 }

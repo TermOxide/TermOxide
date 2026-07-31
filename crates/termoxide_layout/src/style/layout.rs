@@ -53,19 +53,13 @@ pub enum FlexDirection {
 #[cfg(feature = "future")]
 impl FlexDirection {
     /// `true` for `Row` or `RowReverse`.
-    pub const fn is_horizontal(self) -> bool {
-        matches!(self, Self::Row | Self::RowReverse)
-    }
+    pub const fn is_horizontal(self) -> bool { matches!(self, Self::Row | Self::RowReverse) }
 
     /// `true` for `Column` or `ColumnReverse`.
-    pub const fn is_vertical(self) -> bool {
-        matches!(self, Self::Column | Self::ColumnReverse)
-    }
+    pub const fn is_vertical(self) -> bool { matches!(self, Self::Column | Self::ColumnReverse) }
 
     /// `true` if the order is reversed.
-    pub const fn is_reversed(self) -> bool {
-        matches!(self, Self::RowReverse | Self::ColumnReverse)
-    }
+    pub const fn is_reversed(self) -> bool { matches!(self, Self::RowReverse | Self::ColumnReverse) }
 }
 
 /// Alignment of children along the **cross axis**. CSS `align-items`.

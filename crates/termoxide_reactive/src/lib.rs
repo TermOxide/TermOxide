@@ -20,13 +20,7 @@
 //! ## Quickstart
 //!
 //! ```no_run
-//! use termoxide_reactive::{
-//!     Effect,
-//!     Memo,
-//!     Signal,
-//!     Trigger,
-//!     runtime::with_owner,
-//! };
+//! use termoxide_reactive::{Effect, Memo, Signal, Trigger, runtime::with_owner};
 //!
 //! with_owner(|| {
 //!     let count = Signal::new(0i32);

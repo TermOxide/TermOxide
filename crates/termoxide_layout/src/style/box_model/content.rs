@@ -3,10 +3,9 @@
 //! Content is the rectangle that owns some concerns no other box-model
 //! layer has:
 //!
-//! - **Dimensions** — explicit and bounded sizes (`width`, `height`,
-//!   `min/max-*`).
-//! - **Box sizing** — whether `width`/`height` include the padding and border
-//!   (CSS `box-sizing: border-box`) or just the content (`content-box`).
+//! - **Dimensions** — explicit and bounded sizes (`width`, `height`, `min/max-*`).
+//! - **Box sizing** — whether `width`/`height` include the padding and border (CSS `box-sizing: border-box`) or just
+//!   the content (`content-box`).
 //! - **Overflow** — what happens when content is larger than its bounds.
 
 use crate::style::unit::Unit;
@@ -31,9 +30,7 @@ use crate::style::unit::Unit;
 /// ```rust
 /// use termoxide_layout::style::{box_model::Dimensions, unit::Unit};
 ///
-/// let d = Dimensions::new()
-///     .with_width(Unit::cells(40))
-///     .with_max_width(Unit::cells(80));
+/// let d = Dimensions::new().with_width(Unit::cells(40)).with_max_width(Unit::cells(80));
 /// assert_eq!(d.width(), Some(Unit::cells(40)));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

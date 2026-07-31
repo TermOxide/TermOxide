@@ -38,8 +38,7 @@ async fn starts_in_loading_state() {
 #[tokio::test(flavor = "current_thread")]
 async fn transitions_to_ready_after_fetcher_resolves() {
     common::run_reactive(async {
-        let r: Resource<String> =
-            Resource::new(|| async { String::from("Alice") });
+        let r: Resource<String> = Resource::new(|| async { String::from("Alice") });
         common::flush_effects().await;
         let state = r.state_untracked();
         assert!(state.is_ready(), "state should be Ready, got {:?}", state);
@@ -52,9 +51,7 @@ async fn transitions_to_ready_after_fetcher_resolves() {
 #[tokio::test(flavor = "current_thread")]
 async fn fallible_resource_records_error_on_err() {
     common::run_reactive(async {
-        let r: Resource<i32> = Resource::new_fallible(|| {
-            async { Err::<i32, &'static str>("boom") }
-        });
+        let r: Resource<i32> = Resource::new_fallible(|| async { Err::<i32, &'static str>("boom") });
         common::flush_effects().await;
         assert_eq!(r.error().as_deref(), Some("boom"));
         assert_eq!(r.get(), None);
@@ -66,8 +63,7 @@ async fn fallible_resource_records_error_on_err() {
 #[tokio::test(flavor = "current_thread")]
 async fn fallible_resource_records_value_on_ok() {
     common::run_reactive(async {
-        let r: Resource<i32> =
-            Resource::new_fallible(|| async { Ok::<i32, &'static str>(123) });
+        let r: Resource<i32> = Resource::new_fallible(|| async { Ok::<i32, &'static str>(123) });
         common::flush_effects().await;
         assert_eq!(r.get(), Some(123));
         assert_eq!(r.error(), None);
@@ -82,8 +78,7 @@ async fn fallible_resource_records_value_on_ok() {
 // `Resource::new` should be cancelled (its body dropped mid-await) so no
 // further work happens.
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "TDD: Resource does not cancel its spawned fetcher when its owner \
-            is disposed"]
+#[ignore = "TDD: Resource does not cancel its spawned fetcher when its owner is disposed"]
 async fn dropping_owner_cancels_pending_fetcher() {
     common::run_reactive(async {
         let body_polled = Rc::new(Cell::new(false));
@@ -109,8 +104,8 @@ async fn dropping_owner_cancels_pending_fetcher() {
         common::flush_effects().await;
         assert!(
             !body_polled.get(),
-            "fetcher body was polled after its owner was disposed — expected \
-             the spawned task to be cancelled and the future dropped"
+            "fetcher body was polled after its owner was disposed — expected the spawned task to be cancelled and the \
+             future dropped"
         );
     })
     .await;

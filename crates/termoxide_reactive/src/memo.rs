@@ -63,22 +63,16 @@ impl<T: Clone + Send + Sync + PartialEq + 'static> Memo<T> {
     pub fn get_untracked(&self) -> T { self.0.get_untracked() }
 
     /// Returns a read guard **registering a dependency**.
-    pub fn read(&self) -> impl std::ops::Deref<Target = T> + '_ {
-        self.0.read()
-    }
+    pub fn read(&self) -> impl std::ops::Deref<Target = T> + '_ { self.0.read() }
 
     /// Returns a read guard **without creating a dependency**.
-    pub fn read_untracked(&self) -> impl std::ops::Deref<Target = T> + '_ {
-        self.0.read_untracked()
-    }
+    pub fn read_untracked(&self) -> impl std::ops::Deref<Target = T> + '_ { self.0.read_untracked() }
 
     /// Direct access to the inner `reactive_graph` memo.
     pub fn inner(&self) -> &InnerMemo<T> { &self.0 }
 }
 
-impl<T: fmt::Debug + Clone + Send + Sync + PartialEq + 'static> fmt::Debug
-    for Memo<T>
-{
+impl<T: fmt::Debug + Clone + Send + Sync + PartialEq + 'static> fmt::Debug for Memo<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let val = self.0.read_untracked();
         f.debug_tuple("Memo").field(&*val).finish()
@@ -88,6 +82,6 @@ impl<T: fmt::Debug + Clone + Send + Sync + PartialEq + 'static> fmt::Debug
 impl<T: fmt::Display + Send + Sync + 'static> fmt::Display for Memo<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let val = self.0.read_untracked();
-        write!(f, "{}", &*val)
+        write!(f, "{}", *val)
     }
 }

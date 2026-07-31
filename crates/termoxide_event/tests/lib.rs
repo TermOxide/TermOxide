@@ -32,8 +32,7 @@ fn wait_for_events(events: &EventStream) -> Vec<Event> {
         }
         assert!(
             Instant::now() < deadline,
-            "EventStream::poll_events() never yielded an event within the \
-             timeout"
+            "EventStream::poll_events() never yielded an event within the timeout"
         );
         thread::sleep(Duration::from_millis(10));
     }

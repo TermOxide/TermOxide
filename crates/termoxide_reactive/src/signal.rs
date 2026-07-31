@@ -8,16 +8,7 @@ use std::fmt;
 use reactive_graph::{
     owner::LocalStorage,
     signal::RwSignal as InnerSignal,
-    traits::{
-        Get,
-        GetUntracked,
-        Read,
-        ReadUntracked,
-        Set,
-        Update,
-        UpdateUntracked,
-        Write,
-    },
+    traits::{Get, GetUntracked, Read, ReadUntracked, Set, Update, UpdateUntracked, Write},
 };
 
 /// Mutable state.
@@ -74,28 +65,20 @@ impl<T: 'static> Signal<T> {
     pub fn update(&self, f: impl FnOnce(&mut T)) { self.0.update(f); }
 
     /// Modifies the value **without notifying** subscribers.
-    pub fn update_untracked(&self, f: impl FnOnce(&mut T)) {
-        self.0.update_untracked(f);
-    }
+    pub fn update_untracked(&self, f: impl FnOnce(&mut T)) { self.0.update_untracked(f); }
 
     /// Returns a read guard.
     ///
     /// Registers a dependency in the current reactive context.
-    pub fn read(&self) -> impl std::ops::Deref<Target = T> + '_ {
-        self.0.read()
-    }
+    pub fn read(&self) -> impl std::ops::Deref<Target = T> + '_ { self.0.read() }
 
     /// Returns a read guard **without creating a dependency**.
-    pub fn read_untracked(&self) -> impl std::ops::Deref<Target = T> + '_ {
-        self.0.read_untracked()
-    }
+    pub fn read_untracked(&self) -> impl std::ops::Deref<Target = T> + '_ { self.0.read_untracked() }
 
     /// Returns a write guard.
     ///
     /// Subscribers are notified when the guard is released.
-    pub fn write(&self) -> impl std::ops::DerefMut<Target = T> + '_ {
-        self.0.write()
-    }
+    pub fn write(&self) -> impl std::ops::DerefMut<Target = T> + '_ { self.0.write() }
 
     pub fn inner(&self) -> &InnerSignal<T, LocalStorage> { &self.0 }
 }
@@ -110,6 +93,6 @@ impl<T: fmt::Debug + 'static> fmt::Debug for Signal<T> {
 impl<T: fmt::Display + 'static> fmt::Display for Signal<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let val = self.0.read_untracked();
-        write!(f, "{}", &*val)
+        write!(f, "{}", *val)
     }
 }

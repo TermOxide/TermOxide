@@ -80,9 +80,7 @@ impl Color {
 
     /// Returns `true` if this color carries no concrete color information
     /// (`None` or `Inherit`).
-    pub const fn is_abstract(self) -> bool {
-        matches!(self, Self::None | Self::Inherit)
-    }
+    pub const fn is_abstract(self) -> bool { matches!(self, Self::None | Self::Inherit) }
 
     /// Convert to `ratatui::style::Color`. Lossy — `Inherit` and `None`
     /// both map to `Reset`.
