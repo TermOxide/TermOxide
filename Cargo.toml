@@ -2,9 +2,9 @@
 resolver = "3" # Setup cargo to use latest resolver for workspaces
 members = [
     "crates/termoxide",
-    "crates/oxidui_style",
     "crates/termoxide_macros",
     "crates/termoxide_reactive",
+    "crates/termoxide_layout",
     "crates/termoxide_event",
     "crates/cargo-extract",
 ]

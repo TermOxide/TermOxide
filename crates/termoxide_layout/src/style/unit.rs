@@ -11,15 +11,14 @@
 /// | `Percent(n)` | `N%`                    | `width: 50%`      |
 /// | `Fill(w)`    | `Nfr` / `flex: N`       | `width: 1fr`      |
 /// | `Auto`       | `auto`                  | `width: auto`     |
-/// | `Unset`      | not specified (internal)| (default sentinel)|
 ///
 /// # TUI specifics
 ///
 /// In a terminal, "pixels" are character cells — `Cells(1)` is the smallest
 /// addressable unit (one glyph wide, one line tall).
 ///
-/// `Percent` is relative to the **parent's inner size** (after padding),
-/// matching `box-sizing: border-box` semantics.
+/// `Percent` resolves against the **parent's content box**.
+/// This is independent of the child's own [`super::box_model::BoxSizing`].
 ///
 /// `Fill(weight)` distributes remaining space proportionally among siblings.
 /// Two children `Fill(1)` + `Fill(2)` share space as 1/3 and 2/3.
@@ -27,19 +26,20 @@
 /// # Examples
 ///
 /// ```rust
-/// use oxidui_style::unit::Unit;
+/// use termoxide_layout::style::unit::Unit;
+///
 /// let w = Unit::cells(40); // exactly 40 columns
 /// let h = Unit::percent(50); // 50% of parent height
-/// let flex = Unit::fill(1); // take 1 share of remaining space
 /// let auto = Unit::AUTO; // size to content
+/// //
+/// # #[cfg(feature = "future")] {
+/// let flex = Unit::fill(1); // take 1 share of remaining space
+/// //
+/// # }
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Unit {
     /// Absolute size in terminal character cells.
-    ///
-    /// Negative values are valid for offset-style properties
-    /// (e.g. `margin: Cells(-1)` to overlap a border) but are
-    /// invalid for `width` / `height`.
     Cells(i32),
 
     /// Percentage of the parent container's inner dimension (0–100).
@@ -51,6 +51,7 @@ pub enum Unit {
     ///
     /// The `u16` is the weight relative to sibling `Fill` elements.
     /// `Fill(0)` is treated as `Auto`.
+    #[cfg(feature = "future")]
     Fill(u16),
 
     /// Size to fit the element's content.
@@ -58,39 +59,21 @@ pub enum Unit {
     /// For text nodes: the natural width/height of the text.
     /// For containers: the smallest bounding box of all children.
     Auto,
-
-    /// Property is absent — use inherited value or layout default.
-    ///
-    /// This is an internal sentinel. User-facing SCSS syntax should
-    /// never emit `Unset` directly; the parser produces `None` at the
-    /// `Style` field level instead. Exists for `Edges<Unit>` where a
-    /// `Unit` must be present but is logically absent.
-    #[default]
-    Unset,
 }
 
 impl Unit {
-    // Common constants
-    /// `Auto` — size to content.
     pub const AUTO: Self = Self::Auto;
-    /// `Fill(1)` — take all remaining space (flex: 1).
+    #[cfg(feature = "future")]
     pub const FILL: Self = Self::Fill(1);
-    /// `100%` — fill the entire parent dimension.
     pub const FULL: Self = Self::Percent(100);
-    /// `50%`  — half the parent dimension.
     pub const HALF: Self = Self::Percent(50);
-    /// `Unset` — logically absent.
-    pub const UNSET: Self = Self::Unset;
-    /// `0` cells.
     pub const ZERO: Self = Self::Cells(0);
 
-    /// Absolute cell-count value.
     pub const fn cells(n: i32) -> Self { Self::Cells(n) }
 
-    /// Percentage value (0–100).
     pub const fn percent(n: u8) -> Self { Self::Percent(n) }
 
-    /// Proportional fill with the given weight.
+    #[cfg(feature = "future")]
     pub const fn fill(w: u16) -> Self { Self::Fill(w) }
 
     /// `true` if the value is concrete and calculable without layout context
@@ -102,13 +85,14 @@ impl Unit {
     /// `true` if the value requires layout context to resolve
     /// (`Fill` needs remaining space; `Auto` needs content size).
     pub const fn is_intrinsic(self) -> bool {
-        matches!(self, Self::Fill(_) | Self::Auto)
+        match self {
+            #[cfg(feature = "future")]
+            Self::Fill(_) => true,
+            Self::Auto => true,
+            _ => false,
+        }
     }
 
-    /// `true` if the value is logically absent.
-    pub const fn is_unset(self) -> bool { matches!(self, Self::Unset) }
-
-    /// Extract `Cells(n)` → `Some(n)`, anything else → `None`.
     pub const fn as_cells(self) -> Option<i32> {
         match self {
             Self::Cells(n) => Some(n),
@@ -116,11 +100,20 @@ impl Unit {
         }
     }
 
-    /// Extract `Percent(n)` → `Some(n)`, anything else → `None`.
     pub const fn as_percent(self) -> Option<u8> {
         match self {
             Self::Percent(n) => Some(n),
             _ => None,
         }
     }
+}
+
+impl Default for Unit {
+    /// Default is [`Unit::ZERO`].
+    ///
+    /// `Unit` is not itself a CSS property — its default only matters when
+    /// it is used as a *side value* in [`super::box_model::Edges`], which
+    /// in turn drives the derived defaults of [`super::box_model::Padding`]
+    /// and [`super::box_model::Margin`].
+    fn default() -> Self { Self::ZERO }
 }
