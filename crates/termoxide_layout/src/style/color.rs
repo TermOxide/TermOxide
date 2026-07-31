@@ -4,12 +4,11 @@ use std::hash::Hash;
 ///
 /// Terminal color support comes in three tiers:
 ///
-/// tier are in bit
-/// | Tier | Type               | Support                                    |
-/// |------|--------------------|--------------------------------------------|
-/// | 3/4  | [`NamedColor`]     | Universal — every terminal                 |
-/// | 8    | [`Color::Indexed`] | xterm-256color and above                   |
-/// | 24   | [`Color::Rgb`]     | Modern terminals (kitty, iTerm2, WinTerm…) |
+/// | Tier   | Type              | Support                                    |
+/// |--------|-------------------|--------------------------------------------|
+/// | 3/4-bit | [`NamedColor`]   | Universal — every terminal                 |
+/// | 8-bit  | [`Color::Indexed`] | xterm-256color and above                  |
+/// | 24-bit | [`Color::Rgb`]    | Modern terminals (kitty, iTerm2, WinTerm…) |
 ///
 /// When converting to `ratatui::style::Color`, degrade gracefully:
 /// prefer `Rgb`, fall back to `Indexed`, fall back to `Named`.
@@ -17,10 +16,12 @@ use std::hash::Hash;
 /// # Examples
 ///
 /// ```rust
-/// use oxidui_style::color::{Color, NamedColor};
+/// use termoxide_layout::style::color::{Color, NamedColor};
 /// let red = Color::Named(NamedColor::Red);
+/// # #[cfg(feature = "future")] {
 /// let coral = Color::rgb(255, 127, 80);
 /// let grey = Color::indexed(240);
+/// # }
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Color {
@@ -33,8 +34,8 @@ pub enum Color {
     /// A 24-bit RGB "true color" value (r, g, b).
     ///
     /// Requires `COLORTERM=truecolor`. Most modern terminals support this,
-    /// but SSH sessions or older emulators may not — fall back to `Indexed`
-    /// if you need wider compatibility.
+    /// but SSH sessions or older emulators may not.
+    #[cfg(feature = "future")]
     Rgb(u8, u8, u8),
 
     /// An index into the xterm 256-color palette (0–255).
@@ -42,46 +43,26 @@ pub enum Color {
     /// - 0–15:   Standard + bright ANSI colors (mirrors [`NamedColor`])
     /// - 16–231: 6×6×6 RGB color cube
     /// - 232–255: Greyscale ramp from dark to light
+    #[cfg(feature = "future")]
     Indexed(u8),
 
-    /// Inherit the color from the nearest ancestor that declares one.
-    ///
-    /// Equivalent to `color: inherit` in CSS. Children pick up the
-    /// container's foreground without repeating the declaration.
     Inherit,
 
-    /// No color — the terminal default shows through.
-    ///
-    /// For backgrounds: the terminal background color.
-    /// For foregrounds: the terminal default text color.
     None,
 }
 
 impl Color {
-    /// Construct a true-color RGB value.
-    ///
-    /// `const` so proc_macro output has zero runtime cost:
-    /// ```rust
-    /// const CORAL: Color = Color::rgb(255, 127, 80);
-    /// ```
+    #[cfg(feature = "future")]
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self { Self::Rgb(r, g, b) }
 
-    /// Construct a 256-palette indexed color.
-    ///
-    /// ```rust
-    /// const MID_GREY: Color = Color::indexed(244);
-    /// ```
+    #[cfg(feature = "future")]
     pub const fn indexed(i: u8) -> Self { Self::Indexed(i) }
 
     /// Parse a `#RRGGBB` hex color at compile time.
     ///
     /// Accepts exactly 7 ASCII bytes (including the leading `#`).
-    /// Returns `None` on any malformed input — never panics.
-    ///
-    /// `const` so the proc_macro can emit:
-    /// ```rust
-    /// const C: Color = Color::from_hex_bytes(b"#ff5f00").unwrap();
-    /// ```
+    /// Returns `None` on any malformed input.
+    #[cfg(feature = "future")]
     pub const fn from_hex_bytes(bytes: &[u8]) -> Option<Self> {
         match bytes {
             [b'#', r1, r2, g1, g2, b1, b2] => {
@@ -109,7 +90,9 @@ impl Color {
     pub fn to_ratatui(self) -> ratatui::style::Color {
         match self {
             Self::Named(n) => n.to_ratatui(),
+            #[cfg(feature = "future")]
             Self::Rgb(r, g, b) => ratatui::style::Color::Rgb(r, g, b),
+            #[cfg(feature = "future")]
             Self::Indexed(i) => ratatui::style::Color::Indexed(i),
             Self::Inherit => ratatui::style::Color::Reset,
             Self::None => ratatui::style::Color::Reset,
@@ -117,11 +100,8 @@ impl Color {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Compile-time hex parsing helpers (private)
-// ---------------------------------------------------------------------------
-
-/// Decode one ASCII hex nibble into 0–15. `const`-compatible.
+/// Decode one ASCII hex nibble into 0–15.
+#[cfg(feature = "future")]
 const fn hex_nibble(b: u8) -> Option<u8> {
     match b {
         b'0'..=b'9' => Some(b - b'0'),
@@ -133,6 +113,7 @@ const fn hex_nibble(b: u8) -> Option<u8> {
 
 /// Combine two nibble bytes (`hi`, `lo`) into a full byte.
 /// Returns `None` if either nibble is invalid.
+#[cfg(feature = "future")]
 const fn hex_byte(hi: u8, lo: u8) -> Option<u8> {
     match (hex_nibble(hi), hex_nibble(lo)) {
         (Some(h), Some(l)) => Some((h << 4) | l),
@@ -140,21 +121,13 @@ const fn hex_byte(hi: u8, lo: u8) -> Option<u8> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Named (ANSI) colors
-// ---------------------------------------------------------------------------
-
 /// The 16 standard ANSI terminal colors.
-///
-/// Discriminants match ANSI color indices 0–15, making escape-code
-/// generation trivial: `\x1b[30m` = `Black`, `\x1b[31m` = `Red`, …
 ///
 /// The precise RGB rendered is **theme-defined** — these are semantic
 /// names, not absolute colors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum NamedColor {
-    // Normal (ANSI 30–37 fg / 40–47 bg)
     Black = 0,
     Red = 1,
     Green = 2,
@@ -163,9 +136,7 @@ pub enum NamedColor {
     Magenta = 5,
     Cyan = 6,
     White = 7,
-
-    // Bright (ANSI 90–97 fg / 100–107 bg)
-    BrightBlack = 8, // typically rendered as dark grey
+    BrightBlack = 8,
     BrightRed = 9,
     BrightGreen = 10,
     BrightYellow = 11,
