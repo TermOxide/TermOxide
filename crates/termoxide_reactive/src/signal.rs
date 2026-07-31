@@ -93,6 +93,6 @@ impl<T: fmt::Debug + 'static> fmt::Debug for Signal<T> {
 impl<T: fmt::Display + 'static> fmt::Display for Signal<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let val = self.0.read_untracked();
-        write!(f, "{}", &*val)
+        write!(f, "{}", *val)
     }
 }
