@@ -398,6 +398,7 @@ jobs:
     permissions:
       pull-requests: write
       issues: write
+      checks: read
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v8
@@ -494,32 +495,69 @@ jobs:
             const coverageSkipped     = coverageJobOk && process.env.COVERAGE_RAN === 'false';
             const coverageUnavailable = !coverageJobOk;
 
-            const codecovSection = coveragePending ? [
-              CODECOV_START,
-              '## 📊 Codecov',
-              '',
-              '### Requirements',
-              '',
-              '⏳ `codecov/project`',
-              '⏳ `codecov/patch`',
-              '',
-              '### Errors',
-              '',
-              '_Awaiting Codecov report..._',
-              CODECOV_END,
-            ].join('\n') : coverageSkipped ? [
-              CODECOV_START,
-              '## 📊 Codecov',
-              '',
-              '_No crates changed — coverage checks skipped for this PR._',
-              CODECOV_END,
-            ].join('\n') : [
-              CODECOV_START,
-              '## 📊 Codecov',
-              '',
-              `_Coverage status unavailable — check [CI logs](${runUrl})._`,
-              CODECOV_END,
-            ].join('\n');
+            const CODECOV_CTXS = ['codecov/project', 'codecov/patch'];
+
+            let codecovSection;
+
+            if (coveragePending) {
+              // Codecov's check-runs post asynchronously after the upload
+              // finishes and can land before this job gets around to creating
+              // the comment. Query the live state here instead of always
+              // assuming pending: pr-codecov-review.yml only reacts to later
+              // check_run events, so a fast Codecov response would otherwise
+              // have nothing left to trigger the update and get stuck on
+              // "Awaiting Codecov report" forever.
+              const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number });
+              const { data: checks } = await github.rest.checks.listForRef({
+                owner,
+                repo,
+                ref: pr.head.sha,
+              });
+              const codecov = checks.check_runs.filter(c => CODECOV_CTXS.includes(c.name));
+
+              const fmt = name => {
+                const c = codecov.find(x => x.name === name);
+                if (!c) return `⏳ \`${name}\` _(not yet reported)_`;
+                if (c.status !== 'completed') return `⏳ \`${name}\` _(running)_`;
+                return `${c.conclusion === 'success' ? '✅' : '❌'} \`${name}\``;
+              };
+
+              const errors = codecov
+                .filter(c => c.conclusion === 'failure')
+                .map(c => `- \`${c.name}\`: ${c.output?.summary || 'Failed'}`)
+                .join('\n');
+
+              codecovSection = [
+                CODECOV_START,
+                '## 📊 Codecov',
+                '',
+                '### Requirements',
+                '',
+                fmt('codecov/project'),
+                fmt('codecov/patch'),
+                '',
+                '### Errors',
+                '',
+                errors || '_No errors_',
+                CODECOV_END,
+              ].join('\n');
+            } else if (coverageSkipped) {
+              codecovSection = [
+                CODECOV_START,
+                '## 📊 Codecov',
+                '',
+                '_No crates changed — coverage checks skipped for this PR._',
+                CODECOV_END,
+              ].join('\n');
+            } else {
+              codecovSection = [
+                CODECOV_START,
+                '## 📊 Codecov',
+                '',
+                `_Coverage status unavailable — check [CI logs](${runUrl})._`,
+                CODECOV_END,
+              ].join('\n');
+            }
 
             // -- Overall header -----------------------------------------------
             const hasNonCodecovErrors =
@@ -527,7 +565,12 @@ jobs:
               coverageUnavailable ||
               process.env.METADATA_RESULT === 'failure';
 
-            const headerIcon = hasNonCodecovErrors ? '❌' : (coveragePending ? '⏳' : '✅');
+            const codecovStillPending = codecovSection.includes('⏳');
+            const codecovFailed       = codecovSection.includes('❌');
+
+            const headerIcon = (hasNonCodecovErrors || codecovFailed)
+              ? '❌'
+              : (codecovStillPending ? '⏳' : '✅');
 
             // -- Assemble full comment body ------------------------------------
             const body = [
