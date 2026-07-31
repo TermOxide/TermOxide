@@ -26,17 +26,28 @@ msg_file="$1"
 # Read first line and full message (without CRLF)
 msg="$(head -n 1 "$msg_file" | tr -d '\r')"
 
-# Max length <= 72
-# We use POSIX compatible string length calculation
-len=${#msg}
-if [ "$len" -gt 72 ]; then
-    printf "${RED_BOLD}Commit message exceeds 72 characters (actual: $len).${RESET}\n"
-    exit 1
+# GitHub appends this to the subject on squash merge, e.g. "fix bug (#42)".
+# Keep in sync with SQUASH_SUFFIX in .github/commitlint/commitlint.config.mjs.
+is_squash_merge=0
+msg_no_suffix="$msg"
+if echo "$msg" | grep -Eq ' \(#[0-9]+\)$'; then
+    is_squash_merge=1
+    msg_no_suffix="${msg% (#*)}"
+fi
+
+# Max length <= 72 (squash-merge commits are exempt — a merge can bundle
+# several original commits' worth of subject text)
+if [ "$is_squash_merge" -eq 0 ]; then
+    len=${#msg}
+    if [ "$len" -gt 72 ]; then
+        printf "${RED_BOLD}Commit message exceeds 72 characters (actual: $len).${RESET}\n"
+        exit 1
+    fi
 fi
 
 # Format strict regex
 # Using POSIX grep
-if ! echo "$msg" | grep -Eq '^([a-z0-9\-\/]+): (.*)$'; then
+if ! echo "$msg" | grep -Eq '^([a-z0-9/-]+): (.*)$'; then
     printf "${RED_BOLD}Commit message does not match the strict format: <scope>: <subject>${RESET}\n"
     exit 1
 fi
@@ -47,8 +58,8 @@ if echo "$msg" | grep -Eq '  +'; then
     exit 1
 fi
 
-# Last character must be a letter or a number
-if ! echo "$msg" | grep -Eq '[a-zA-Z0-9]$'; then
+# Last character must be a letter or a number (ignoring a squash-merge suffix)
+if ! echo "$msg_no_suffix" | grep -Eq '[a-zA-Z0-9]$'; then
     printf "${RED_BOLD}Commit message must end with a letter or a number.${RESET}\n"
     exit 1
 fi
