@@ -82,6 +82,6 @@ impl<T: fmt::Debug + Clone + Send + Sync + PartialEq + 'static> fmt::Debug for M
 impl<T: fmt::Display + Send + Sync + 'static> fmt::Display for Memo<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let val = self.0.read_untracked();
-        write!(f, "{}", &*val)
+        write!(f, "{}", *val)
     }
 }
