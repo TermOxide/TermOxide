@@ -1,0 +1,15 @@
+[package]
+name = "termoxide_rendering"
+version = "0.1.0"
+edition = "2024"
+description = "Reactive rendering pipeline for TermOxide: ViewNode tree, render loop, buffer diffing, and event routing"
+
+[dependencies]
+ratatui = { version = "0.26", features = ["crossterm"] }
+crossterm = "0.27"
+crossbeam-channel = "0.5"
+termoxide_layout = { path = "../termoxide_layout" }
+termoxide_reactive = { path = "../termoxide_reactive" }
+
+[features]
+default = []
