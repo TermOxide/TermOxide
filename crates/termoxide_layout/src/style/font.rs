@@ -21,10 +21,7 @@
 /// assert!(heading.has(FontStyle::BOLD));
 /// assert!(!heading.has(FontStyle::ITALIC));
 ///
-/// let style = Style {
-///     font_style: Some(FontStyle::BOLD | FontStyle::ITALIC),
-///     ..Style::new()
-/// };
+/// let style = Style { font_style: Some(FontStyle::BOLD | FontStyle::ITALIC), ..Style::new() };
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct FontStyle(pub u8);

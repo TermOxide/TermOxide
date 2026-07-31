@@ -11,7 +11,9 @@
 //! |------|------|
 //! |[`EventStream`]|Handle owning the reader thread|
 //! |[`Event`]|A single event (handshake or key press) delivered by the stream|
+//! |[`KeyEvent`](event::KeyEvent)|A key press: a key code plus its modifiers|
 //! |[`KeyCode`](event::KeyCode)|Backend-agnostic key identifier|
+//! |[`KeyModifiers`](event::KeyModifiers)|Modifier keys held during a press|
 //! |[`SendEventError`](backend::SendEventError)|Error from the reader loop|
 //!
 //! Raw mode is enabled while the stream is alive and restored when it is
@@ -33,8 +35,8 @@
 //!     for event in events.poll_events() {
 //!         match event {
 //!             Event::ChannelReady => println!("stream ready"),
-//!             Event::KeyPress(code) => {
-//!                 println!("key pressed: {code:?}");
+//!             Event::KeyPress(key) => {
+//!                 println!("key pressed: {:?} with {:?}", key.code, key.modifiers);
 //!                 break 'run;
 //!             },
 //!         }
@@ -93,17 +95,11 @@ impl EventStream {
         let (shutdown_tx, shutdown_rx) = mpsc::sync_channel(1);
 
         let thread = thread::spawn(move || -> Result<(), SendEventError> {
-            events_tx
-                .send(Event::ChannelReady)
-                .map_err(SendEventError::ChannelError)?;
+            events_tx.send(Event::ChannelReady).map_err(SendEventError::ChannelError)?;
             read_events(events_tx, shutdown_rx)
         });
 
-        Self {
-            receiver: events_rx,
-            shutdown: Some(shutdown_tx),
-            thread: Some(thread),
-        }
+        Self { receiver: events_rx, shutdown: Some(shutdown_tx), thread: Some(thread) }
     }
 
     /// Poll for all events currently available.
@@ -135,9 +131,7 @@ impl EventStream {
     /// rather than ignored. The outer [`thread::Result`] is `Err` only if the
     /// reader thread panicked; the inner `Result` carries the
     /// [`SendEventError`] the reader loop stopped on, if any.
-    pub fn teardown(mut self) -> thread::Result<Result<(), SendEventError>> {
-        self.stop()
-    }
+    pub fn teardown(mut self) -> thread::Result<Result<(), SendEventError>> { self.stop() }
 
     /// Signal the reader thread to stop and join it, at most once.
     ///

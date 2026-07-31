@@ -72,11 +72,7 @@ async fn notifies_coalesce_until_flushed() {
         t.notify();
         t.notify();
         common::flush_effects().await;
-        assert_eq!(
-            *runs.borrow(),
-            2,
-            "three notifies between flushes collapse into one re-run"
-        );
+        assert_eq!(*runs.borrow(), 2, "three notifies between flushes collapse into one re-run");
     })
     .await;
 }
@@ -123,8 +119,7 @@ async fn copies_share_underlying_trigger() {
         assert_eq!(
             *runs.borrow(),
             2,
-            "notify via the copy must wake the effect tracking via the \
-             original"
+            "notify via the copy must wake the effect tracking via the original"
         );
     })
     .await;

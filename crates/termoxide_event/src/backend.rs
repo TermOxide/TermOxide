@@ -17,7 +17,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode},
 };
 
-use crate::event::{Event, KeyCode};
+use crate::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
 /// Error returned by the reader loop when it cannot make progress.
 #[derive(Debug)]
@@ -61,13 +61,34 @@ impl std::error::Error for SendEventError {
 /// `None`.
 fn translate(event: crossterm::event::Event) -> Option<Event> {
     match event {
-        crossterm::event::Event::Key(key)
-            if key.kind == crossterm::event::KeyEventKind::Press =>
-        {
-            to_keycode(key.code).map(Event::KeyPress)
+        crossterm::event::Event::Key(key) if key.kind == crossterm::event::KeyEventKind::Press => {
+            let code = to_keycode(key.code)?;
+            Some(Event::KeyPress(KeyEvent::new(code, to_modifiers(key.modifiers))))
         },
         _ => None,
     }
+}
+
+/// Map `crossterm` modifier flags onto the crate's [`KeyModifiers`].
+///
+/// Unlike [`to_keycode`], an unrecognised flag cannot fail the whole
+/// translation: modifiers combine, so any flag without a counterpart here is
+/// simply left out of the resulting set.
+fn to_modifiers(modifiers: crossterm::event::KeyModifiers) -> KeyModifiers {
+    use crossterm::event::KeyModifiers as Ct;
+
+    let mut translated = KeyModifiers::NONE;
+    for (raw, mapped) in [
+        (Ct::SHIFT, KeyModifiers::SHIFT),
+        (Ct::CONTROL, KeyModifiers::CONTROL),
+        (Ct::ALT, KeyModifiers::ALT),
+        (Ct::SUPER, KeyModifiers::SUPER),
+    ] {
+        if modifiers.contains(raw) {
+            translated |= mapped;
+        }
+    }
+    translated
 }
 
 /// Map a `crossterm` key code onto the crate's [`KeyCode`].
@@ -115,26 +136,19 @@ fn to_keycode(code: crossterm::event::KeyCode) -> Option<KeyCode> {
 /// # Errors
 ///
 /// - [`SendEventError::TerminalError`] if polling or reading fails.
-/// - [`SendEventError::ChannelError`] if the receiver has been dropped and a
-///   translated event can no longer be delivered.
-fn send_events(
-    events_tx: &mpsc::Sender<Event>,
-    shutdown: &mpsc::Receiver<()>,
-) -> Result<(), SendEventError> {
+/// - [`SendEventError::ChannelError`] if the receiver has been dropped and a translated event can no longer be
+///   delivered.
+fn send_events(events_tx: &mpsc::Sender<Event>, shutdown: &mpsc::Receiver<()>) -> Result<(), SendEventError> {
     loop {
         match shutdown.try_recv() {
             Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
             Err(mpsc::TryRecvError::Empty) => {},
         }
 
-        if poll(Duration::from_millis(100))
-            .map_err(SendEventError::TerminalError)?
-        {
+        if poll(Duration::from_millis(100)).map_err(SendEventError::TerminalError)? {
             let event = read().map_err(SendEventError::TerminalError)?;
             if let Some(translated_event) = translate(event) {
-                events_tx
-                    .send(translated_event)
-                    .map_err(SendEventError::ChannelError)?;
+                events_tx.send(translated_event).map_err(SendEventError::ChannelError)?;
             }
         }
     }
@@ -175,11 +189,13 @@ pub(crate) fn read_events(
 mod tests {
     use std::thread;
 
+    // `crossterm` types are aliased so they never shadow the crate's own
+    // `KeyEvent` / `KeyModifiers` pulled in by `use super::*`.
     use crossterm::event::{
         KeyCode as Ct,
-        KeyEvent,
+        KeyEvent as CtKeyEvent,
         KeyEventKind,
-        KeyModifiers,
+        KeyModifiers as CtModifiers,
         MediaKeyCode,
         ModifierKeyCode,
         MouseEvent,
@@ -194,10 +210,7 @@ mod tests {
         let (events_tx, _events_rx) = mpsc::channel();
         // Signal shutdown up front, so the loop must exit on its very first
         // iteration without ever blocking on a terminal poll.
-        assert!(
-            shutdown_tx.send(()).is_ok(),
-            "Failed to send shutdown signal"
-        );
+        assert!(shutdown_tx.send(()).is_ok(), "Failed to send shutdown signal");
 
         // Run the loop on a side thread and wait with a timeout: if it fails to
         // honour the pre-set shutdown signal and blocks, the test fails after
@@ -209,11 +222,7 @@ mod tests {
         });
 
         let result = done_rx.recv_timeout(Duration::from_secs(2));
-        assert!(
-            result.is_ok(),
-            "send_events returned an error: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "send_events returned an error: {:?}", result.err());
     }
 
     /// Wrap a `crossterm` key code and kind into a full terminal event.
@@ -222,11 +231,12 @@ mod tests {
     /// the key code and the event kind — without repeating the modifier and
     /// wrapper boilerplate at every call site.
     fn key_event(code: Ct, kind: KeyEventKind) -> crossterm::event::Event {
-        crossterm::event::Event::Key(KeyEvent::new_with_kind(
-            code,
-            KeyModifiers::NONE,
-            kind,
-        ))
+        key_event_with(code, CtModifiers::NONE, kind)
+    }
+
+    /// Same as [`key_event`], but with explicit modifiers.
+    fn key_event_with(code: Ct, modifiers: CtModifiers, kind: KeyEventKind) -> crossterm::event::Event {
+        crossterm::event::Event::Key(CtKeyEvent::new_with_kind(code, modifiers, kind))
     }
 
     #[test]
@@ -251,11 +261,7 @@ mod tests {
         ];
 
         for (input, expected) in cases {
-            assert_eq!(
-                to_keycode(input),
-                Some(expected),
-                "unexpected mapping for {input:?}"
-            );
+            assert_eq!(to_keycode(input), Some(expected), "unexpected mapping for {input:?}");
         }
     }
 
@@ -293,9 +299,55 @@ mod tests {
     }
 
     #[test]
+    fn to_modifiers_maps_every_supported_modifier() {
+        let cases = [
+            (CtModifiers::NONE, KeyModifiers::NONE),
+            (CtModifiers::SHIFT, KeyModifiers::SHIFT),
+            (CtModifiers::CONTROL, KeyModifiers::CONTROL),
+            (CtModifiers::ALT, KeyModifiers::ALT),
+            (CtModifiers::SUPER, KeyModifiers::SUPER),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(to_modifiers(input), expected, "unexpected mapping for {input:?}");
+        }
+    }
+
+    #[test]
+    fn to_modifiers_preserves_combinations() {
+        let translated = to_modifiers(CtModifiers::CONTROL | CtModifiers::SHIFT | CtModifiers::ALT);
+
+        assert_eq!(translated, KeyModifiers::CONTROL | KeyModifiers::SHIFT | KeyModifiers::ALT);
+        assert!(!translated.contains(KeyModifiers::SUPER));
+    }
+
+    #[test]
+    fn to_modifiers_drops_unsupported_flags() {
+        // HYPER and META have no counterpart, so they must vanish without
+        // dragging the recognised flags down with them.
+        let translated = to_modifiers(CtModifiers::HYPER | CtModifiers::META | CtModifiers::CONTROL);
+
+        assert_eq!(translated, KeyModifiers::CONTROL);
+    }
+
+    #[test]
     fn translate_keeps_supported_key_press() {
         let event = key_event(Ct::Char('x'), KeyEventKind::Press);
-        assert_eq!(translate(event), Some(Event::KeyPress(KeyCode::Char('x'))));
+        assert_eq!(
+            translate(event),
+            Some(Event::KeyPress(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE)))
+        );
+    }
+
+    #[test]
+    fn translate_carries_modifiers_alongside_the_key() {
+        let event = key_event_with(Ct::Char('c'), CtModifiers::CONTROL, KeyEventKind::Press);
+
+        assert_eq!(
+            translate(event),
+            Some(Event::KeyPress(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))),
+            "Ctrl+C must stay distinguishable from a plain 'c'"
+        );
     }
 
     #[test]
@@ -323,7 +375,7 @@ mod tests {
                 kind: MouseEventKind::Moved,
                 column: 0,
                 row: 0,
-                modifiers: KeyModifiers::NONE,
+                modifiers: CtModifiers::NONE,
             }),
         ];
 
@@ -335,8 +387,7 @@ mod tests {
 
     #[test]
     fn display_channel_error_describes_dropped_receiver() {
-        let error =
-            SendEventError::ChannelError(mpsc::SendError(Event::ChannelReady));
+        let error = SendEventError::ChannelError(mpsc::SendError(Event::ChannelReady));
         assert_eq!(
             format!("{error}"),
             "event channel receiver was dropped: sending on a closed channel"
@@ -354,8 +405,7 @@ mod tests {
     fn source_exposes_the_inner_error() {
         use std::error::Error as _;
 
-        let channel =
-            SendEventError::ChannelError(mpsc::SendError(Event::ChannelReady));
+        let channel = SendEventError::ChannelError(mpsc::SendError(Event::ChannelReady));
         assert!(
             channel
                 .source()
@@ -366,10 +416,7 @@ mod tests {
 
         let terminal = SendEventError::TerminalError(io::Error::other("boom"));
         assert!(
-            terminal
-                .source()
-                .and_then(|s| s.downcast_ref::<io::Error>())
-                .is_some(),
+            terminal.source().and_then(|s| s.downcast_ref::<io::Error>()).is_some(),
             "TerminalError source should be the inner io::Error"
         );
     }
