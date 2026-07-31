@@ -74,30 +74,15 @@ jobs:
               CODECOV_CTXS.includes(c.name)
             );
 
-            const missing = CODECOV_CTXS.filter(
-              name => !codecov.find(c => c.name === name)
-            );
-            if (missing.length) {
-              core.info(`Still waiting on: ${missing.join(', ')}`);
-              return;
-            }
-
-            const pending = codecov.some(c => c.status !== 'completed');
-            if (pending) {
-              core.info('Codecov checks still running; will re-evaluate later.');
-              return;
-            }
-
-            // -- Build updated Codecov section --------------------------------
+            // Render each context independently instead of waiting for both:
+            // codecov/project can stay unavailable indefinitely on non-default
+            // branches, and blocking on it left the section stuck forever.
             const fmt = name => {
               const c = codecov.find(x => x.name === name);
-              if (!c) return `⚠️ \`${name}\``;
+              if (!c) return `⏳ \`${name}\` _(not yet reported)_`;
+              if (c.status !== 'completed') return `⏳ \`${name}\` _(running)_`;
 
-              const icon =
-                c.conclusion === 'success' ? '✅' :
-                c.conclusion === 'failure' ? '❌' :
-                '⏳';
-
+              const icon = c.conclusion === 'success' ? '✅' : '❌';
               return `${icon} \`${name}\``;
             };
 

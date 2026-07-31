@@ -167,6 +167,8 @@ jobs:
     if: always() && needs.detect.result == 'success'
     environment: codecov
     runs-on: ubuntu-latest
+    outputs:
+      ran: ${{ steps.tests.outputs.ran }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -200,8 +202,10 @@ jobs:
           crates=$(echo "$CRATES" | jq -r '.[]')
           if [[ -z "$crates" ]]; then
             echo "No changed crates detected, skipping."
+            echo "ran=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "ran=true" >> "$GITHUB_OUTPUT"
           # Build -p flags for tarpaulin
           pkg_args=""
           for crate in $crates; do
@@ -209,8 +213,12 @@ jobs:
           done
           cargo tarpaulin $pkg_args --out Lcov --output-dir ./coverage
 
+      # Only upload when tarpaulin actually ran: on the no-crates-changed skip
+      # path, no fresh lcov.info exists and codecov-action falls back to a
+      # stale target/tarpaulin/coverage.json restored from cache, which gets
+      # uploaded under the current commit's SHA with mismatched data.
       - name: Upload results to Codecov
-        if: always()
+        if: always() && steps.tests.outputs.ran == 'true'
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -401,6 +409,7 @@ jobs:
         env:
           PULL_NUMBER: ${{ needs.resolve-inputs.outputs.pull_number }}
           COVERAGE_RESULT: ${{ needs.verify-code-coverage.result }}
+          COVERAGE_RAN: ${{ needs.verify-code-coverage.outputs.ran }}
           METADATA_RESULT: ${{ needs.verify-pr-metadata.result }}
         with:
           script: |
@@ -475,7 +484,12 @@ jobs:
               '## 📋 PR Metadata\n\n_Section unavailable — check [CI logs](' + runUrl + ')._';
 
             // -- Codecov placeholder ------------------------------------------
-            const codecovSection = [
+            // No changed crates means verify-code-coverage never ran tarpaulin
+            // or uploaded a report, so Codecov will never post check-runs for
+            // this commit — treat it as N/A instead of waiting forever.
+            const coverageRan = process.env.COVERAGE_RAN === 'true';
+
+            const codecovSection = coverageRan ? [
               CODECOV_START,
               '## 📊 Codecov',
               '',
@@ -488,6 +502,12 @@ jobs:
               '',
               '_Awaiting Codecov report..._',
               CODECOV_END,
+            ].join('\n') : [
+              CODECOV_START,
+              '## 📊 Codecov',
+              '',
+              '_No crates changed — coverage checks skipped for this PR._',
+              CODECOV_END,
             ].join('\n');
 
             // -- Overall header -----------------------------------------------
@@ -496,7 +516,7 @@ jobs:
               process.env.COVERAGE_RESULT === 'failure' ||
               process.env.METADATA_RESULT  === 'failure';
 
-            const headerIcon = hasNonCodecovErrors ? '❌' : '⏳';
+            const headerIcon = hasNonCodecovErrors ? '❌' : (coverageRan ? '⏳' : '✅');
 
             // -- Assemble full comment body ------------------------------------
             const body = [
