@@ -218,7 +218,7 @@ jobs:
       # stale target/tarpaulin/coverage.json restored from cache, which gets
       # uploaded under the current commit's SHA with mismatched data.
       - name: Upload results to Codecov
-        if: always() && steps.tests.outputs.ran == 'true'
+        if: steps.tests.outcome == 'success' && steps.tests.outputs.ran == 'true'
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -484,12 +484,17 @@ jobs:
               '## 📋 PR Metadata\n\n_Section unavailable — check [CI logs](' + runUrl + ')._';
 
             // -- Codecov placeholder ------------------------------------------
-            // No changed crates means verify-code-coverage never ran tarpaulin
-            // or uploaded a report, so Codecov will never post check-runs for
-            // this commit — treat it as N/A instead of waiting forever.
-            const coverageRan = process.env.COVERAGE_RAN === 'true';
+            // coverage.outputs.ran is only meaningful when the job itself
+            // completed successfully. If verify-code-coverage was skipped or
+            // failed upstream (e.g. needs.detect didn't succeed), `ran` is
+            // empty — don't mistake that for the legitimate "no crates
+            // changed" skip and render a false green status.
+            const coverageJobOk       = process.env.COVERAGE_RESULT === 'success';
+            const coveragePending     = coverageJobOk && process.env.COVERAGE_RAN === 'true';
+            const coverageSkipped     = coverageJobOk && process.env.COVERAGE_RAN === 'false';
+            const coverageUnavailable = !coverageJobOk;
 
-            const codecovSection = coverageRan ? [
+            const codecovSection = coveragePending ? [
               CODECOV_START,
               '## 📊 Codecov',
               '',
@@ -502,21 +507,27 @@ jobs:
               '',
               '_Awaiting Codecov report..._',
               CODECOV_END,
-            ].join('\n') : [
+            ].join('\n') : coverageSkipped ? [
               CODECOV_START,
               '## 📊 Codecov',
               '',
               '_No crates changed — coverage checks skipped for this PR._',
+              CODECOV_END,
+            ].join('\n') : [
+              CODECOV_START,
+              '## 📊 Codecov',
+              '',
+              `_Coverage status unavailable — check [CI logs](${runUrl})._`,
               CODECOV_END,
             ].join('\n');
 
             // -- Overall header -----------------------------------------------
             const hasNonCodecovErrors =
               guidelinesFailed ||
-              process.env.COVERAGE_RESULT === 'failure' ||
-              process.env.METADATA_RESULT  === 'failure';
+              coverageUnavailable ||
+              process.env.METADATA_RESULT === 'failure';
 
-            const headerIcon = hasNonCodecovErrors ? '❌' : (coverageRan ? '⏳' : '✅');
+            const headerIcon = hasNonCodecovErrors ? '❌' : (coveragePending ? '⏳' : '✅');
 
             // -- Assemble full comment body ------------------------------------
             const body = [
