@@ -1,18 +1,17 @@
 use proc_macro::TokenStream;
 
+mod ast;
+mod codegen;
+mod parser;
+
 #[proc_macro]
 pub fn rsx(input: TokenStream) -> TokenStream {
-    // For now just return the input unchanged
-    input
-}
+    let input = proc_macro2::TokenStream::from(input);
 
-#[cfg(test)]
-mod tests {
-    use super::rsx;
+    let node = match parser::parse(input) {
+        Ok(node) => node,
+        Err(e) => return e.to_compile_error().into(),
+    };
 
-    #[test]
-    fn dummy_test() {
-        let result = rsx(proc_macro::TokenStream::new());
-        assert_eq!(result.to_string(), "");
-    }
+    codegen::generate(&node).into()
 }

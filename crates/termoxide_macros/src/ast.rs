@@ -67,13 +67,9 @@ pub enum Lit {
 pub struct RsxExpr(pub String);
 
 impl RsxExpr {
-    pub fn new(raw: impl Into<String>) -> Self {
-        Self(raw.into())
-    }
+    pub fn new(raw: impl Into<String>) -> Self { Self(raw.into()) }
 
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
+    pub fn as_str(&self) -> &str { &self.0 }
 }
 
 impl RsxNode {
@@ -81,19 +77,13 @@ impl RsxNode {
         Self::Element(Element { tag: tag.into(), attrs, children })
     }
 
-    pub fn text(content: impl Into<String>) -> Self {
-        Self::Text(content.into())
-    }
+    pub fn text(content: impl Into<String>) -> Self { Self::Text(content.into()) }
 
-    pub fn expr(raw: impl Into<String>) -> Self {
-        Self::Expr(RsxExpr::new(raw))
-    }
+    pub fn expr(raw: impl Into<String>) -> Self { Self::Expr(RsxExpr::new(raw)) }
 }
 
 impl Attribute {
-    pub fn new(key: impl Into<String>, value: AttributeValue) -> Self {
-        Self { key: key.into(), value }
-    }
+    pub fn new(key: impl Into<String>, value: AttributeValue) -> Self { Self { key: key.into(), value } }
 
     #[allow(dead_code)]
     pub fn expr(key: impl Into<String>, raw: impl Into<String>) -> Self {
@@ -101,11 +91,7 @@ impl Attribute {
     }
 
     #[allow(dead_code)]
-    pub fn lit(key: impl Into<String>, lit: Lit) -> Self {
-        Self::new(key, AttributeValue::Lit(lit))
-    }
+    pub fn lit(key: impl Into<String>, lit: Lit) -> Self { Self::new(key, AttributeValue::Lit(lit)) }
 
-    pub fn spread(raw: impl Into<String>) -> Self {
-        Self::new("", AttributeValue::Spread(RsxExpr::new(raw)))
-    }
+    pub fn spread(raw: impl Into<String>) -> Self { Self::new("", AttributeValue::Spread(RsxExpr::new(raw))) }
 }
