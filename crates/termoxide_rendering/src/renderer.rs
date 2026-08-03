@@ -1,60 +1,6 @@
 //! Traverses the [`ViewNode`] tree and paints into a ratatui [`Buffer`].
 //!
-//! [`Renderer`] is the bridge between the logical UI tree and raw terminal
-//! cells.  It performs two distinct jobs on every frame:
-//!
-//! 1. **Paint** — walk the [`ViewNode`] tree top-down, dispatching each node's [`ViewContent`] to the appropriate draw
-//!    routine, accumulating the results in an in-memory [`Buffer`].
-//!
-//! 2. **Diff & flush** — compare the freshly painted buffer against the previous frame's buffer, encode only the
-//!    *changed* cells as ANSI escape sequences, and hand them to ratatui's [`Terminal::draw`] machinery.
-//!
-//! ## Position in the pipeline
-//!
-//! ```text
-//! ViewNode tree (from components)
-//!       │
-//!       ▼
-//!   Renderer::render_frame()
-//!   ├── draw_node(root, buf)    ← recursive tree walk
-//!   │   ├── draw_node(child_1, buf)
-//!   │   └── draw_node(child_2, buf)
-//!   │       └── …
-//!   └── terminal.draw(|frame| frame.render_buffer(buf))
-//!             │
-//!             ▼
-//!         stdout  (escape sequences for changed cells only)
-//! ```
-//!
-//! ## Traversal model
-//!
-//! The renderer walks the full tree on each frame and relies on ratatui's
-//! diffing to avoid writing unchanged cells to the terminal.
-//!
-//! ## Example
-//!
-//! ```rust,no_run
-//! use std::io::stdout;
-//!
-//! use ratatui::{
-//!     Terminal,
-//!     backend::CrosstermBackend,
-//!     layout::Rect,
-//!     style::{Color, Style},
-//! };
-//! use termoxide_rendering::{
-//!     renderer::Renderer,
-//!     view_node::{ViewContent, ViewNode},
-//! };
-//!
-//! let backend = CrosstermBackend::new(stdout());
-//! let terminal = Terminal::new(backend).unwrap();
-//! let mut renderer = Renderer::new(terminal).unwrap();
-//!
-//! let mut root = ViewNode::text(Rect::new(0, 0, 80, 24), "Hello, TermOxide!", Style::default().fg(Color::Cyan));
-//!
-//! renderer.render_frame(&mut root).unwrap();
-//! ```
+//! It paints the tree into ratatui's frame buffer.
 
 use crossterm::{
     ExecutableCommand,
@@ -63,11 +9,6 @@ use crossterm::{
 use ratatui::{Terminal, backend::Backend, buffer::Buffer, layout::Rect, style::Style};
 
 use crate::view_node::{ViewContent, ViewNode};
-
-// ───────────────────────────────────────────────────────────────────────────
-// //  Error type
-// ───────────────────────────────────────────────────────────────────────────
-// //
 
 /// Errors that can arise during a render pass.
 #[derive(Debug)]
@@ -96,27 +37,7 @@ impl From<std::io::Error> for RenderError {
     fn from(e: std::io::Error) -> Self { Self::Io(e) }
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// //  Renderer
-// ───────────────────────────────────────────────────────────────────────────
-// //
-
-/// Walks the [`ViewNode`] tree and produces terminal output via ratatui.
-///
-/// Each [`Renderer`] owns a ratatui [`Terminal`], which in turn manages the
-/// double-buffering and escape-sequence diffing.  The renderer feeds the
-/// terminal a freshly painted buffer on every call.
-///
-/// ## Generic parameter
-///
-/// `B` is any ratatui [`Backend`] (typically [`CrosstermBackend<Stdout>`]).
-/// The type parameter is exposed so that tests can substitute a
-/// [`TestBackend`][ratatui::backend::TestBackend].
-///
-/// ## Thread safety
-///
-/// `Renderer` is **not** `Sync`.  It must be owned and driven from a single
-/// thread by the application's main loop.
+/// Renders a [`ViewNode`] tree through a ratatui terminal.
 pub struct Renderer<B: Backend> {
     /// Ratatui terminal — owns the backend and the two-frame diff buffer.
     terminal: Terminal<B>,
@@ -125,23 +46,7 @@ pub struct Renderer<B: Backend> {
 }
 
 impl<B: Backend> Renderer<B> {
-    /// Create a new `Renderer` wrapping the given ratatui terminal.
-    ///
-    /// The terminal's cursor is hidden immediately so that it does not
-    /// flicker during rendering.
-    ///
-    /// ## Raw mode
-    ///
-    /// The renderer does **not** manage raw mode: that belongs to
-    /// [`EventStream`][termoxide_event::EventStream], which needs it to read
-    /// input and restores it on drop. Create the stream before the renderer and
-    /// keep it alive for at least as long, otherwise this alternate screen will
-    /// be driven by a cooked terminal.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`RenderError::Io`] if entering the alternate screen or hiding
-    /// the cursor fails.
+    /// Create a renderer and enter the alternate screen.
     pub fn new(mut terminal: Terminal<B>) -> Result<Self, RenderError> {
         if let Err(e) = (|| -> std::io::Result<()> {
             std::io::stdout().execute(EnterAlternateScreen)?;
@@ -154,37 +59,16 @@ impl<B: Backend> Renderer<B> {
         Ok(Self { terminal, terminal_mode_active: true })
     }
 
-    /// Create a `Renderer` for testing, which does not enter the alternate
-    /// screen or otherwise touch stdout.
+    /// Create a renderer for tests without changing the terminal.
     #[cfg(any(test, feature = "test-util"))]
     #[doc(hidden)]
     pub fn new_for_test(terminal: Terminal<B>) -> Self { Self { terminal, terminal_mode_active: false } }
 
-    /// Return the current terminal viewport size as a [`Rect`].
-    ///
-    /// This is the authoritative size the layout engine should use when
-    /// computing node positions.
+    /// Return the current terminal viewport.
     pub fn viewport(&self) -> Rect { self.terminal.size().unwrap_or_default() }
 
-    // ── Main render entry point ──────────────────────────────────────────────
-    // //
-
-    /// Render one complete frame from `root` to the terminal.
-    ///
-    /// The method:
-    /// 1. Calls [`draw_node`][Self::draw_node] recursively on `root`, filling a temporary [`Buffer`] from the top of
-    ///    the tree down.
-    /// 2. Hands the filled buffer to ratatui's `Terminal::draw`, which diffs it against the previous frame and writes
-    ///    only the changed cells.
-    /// 3. Returns without additional bookkeeping; ratatui handles the diff against the previous frame.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`RenderError::Io`] on any I/O failure inside ratatui.
+    /// Render one frame.
     pub fn render_frame(&mut self, root: &mut ViewNode) -> Result<(), RenderError> {
-        // Draw directly into the frame buffer that ratatui provides.
-        // ratatui handles the diff against the previous frame and writes
-        // only changed cells to stdout.
         self.terminal.draw(|frame| {
             let buf = frame.buffer_mut();
             Self::draw_node(root, buf);
@@ -193,22 +77,14 @@ impl<B: Backend> Renderer<B> {
         Ok(())
     }
 
-    // ── Recursive tree walk ──────────────────────────────────────────────────
-    // //
-
-    /// Recursively draw `node` into `buf`.
-    ///
-    /// The traversal is depth-first, parent before children, so that child
-    /// content always appears on top of parent background fills.
+    /// Draw a node and its children into a buffer.
     pub fn draw_node(node: &ViewNode, buf: &mut Buffer) {
-        // Draw this node's own content.
         match &node.content {
             ViewContent::Container { style } => {
-                // Painted before the children below, so they draw on top of it.
-                // `set_style` patches attributes rather than replacing cells, so
-                // a `Style::default()` container is a no-op and stays invisible.
-                buf.set_style(node.area, *style);
+               buf.set_style(node.area, *style);
             },
+
+            ViewContent::Fragment => {},
 
             ViewContent::Text { text, style } => {
                 Self::draw_text(buf, node.area, text, *style);
@@ -219,19 +95,12 @@ impl<B: Backend> Renderer<B> {
             },
         }
 
-        // Recurse into children (document order).
         for child in &node.children {
             Self::draw_node(child, buf);
         }
     }
 
-    // ── Primitive draw helpers ───────────────────────────────────────────────
-    // //
-
-    /// Write `text` into `buf` at `area.x, area.y`, applying `style`.
-    ///
-    /// The text is truncated to `area.width` terminal columns.  No wrapping is
-    /// performed — multi-line text must be expressed as sibling `Text` nodes.
+    /// Write text into a buffer.
     fn draw_text(buf: &mut Buffer, area: Rect, text: &str, style: Style) {
         if area.width == 0 || area.height == 0 {
             return;
@@ -243,20 +112,7 @@ impl<B: Backend> Renderer<B> {
         buf.set_string(area.x, area.y, &truncated, style);
     }
 
-    // ── Terminal lifecycle ───────────────────────────────────────────────────
-    // //
-
-    /// Restore the terminal to a clean state.
-    ///
-    /// Must be called before the process exits (or panics) to avoid leaving
-    /// the user staring at the alternate screen without a visible cursor.
-    /// Raw mode is not touched here — see [`Self::new`].
-    ///
-    /// # Errors
-    ///
-    /// Returns [`RenderError::Io`] if the restore operation fails.  The caller
-    /// should log the error but not panic — the process is about to exit
-    /// anyway.
+    /// Restore the terminal.
     pub fn restore(&mut self) -> Result<(), RenderError> {
         if !self.terminal_mode_active {
             return Ok(());
@@ -268,10 +124,10 @@ impl<B: Backend> Renderer<B> {
         Ok(())
     }
 
-    /// Borrow the underlying [`Terminal`].
+    /// Borrow the underlying terminal.
     pub fn terminal(&self) -> &Terminal<B> { &self.terminal }
 
-    /// Mutably borrow the underlying [`Terminal`].
+    /// Mutably borrow the underlying terminal.
     pub fn terminal_mut(&mut self) -> &mut Terminal<B> { &mut self.terminal }
 }
 
@@ -340,7 +196,6 @@ mod tests {
 
         Renderer::<TestBackend>::draw_node(&node, &mut buf);
 
-        // The child keeps its own foreground, on the container's background.
         assert_eq!(buf.get(0, 0).symbol(), "X");
         assert_eq!(buf.get(0, 0).fg, Color::Red);
         assert_eq!(buf.get(0, 0).bg, Color::Blue);

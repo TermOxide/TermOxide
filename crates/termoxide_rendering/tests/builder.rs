@@ -3,7 +3,7 @@ use ratatui::{
     style::{Color, Style},
 };
 use termoxide_rendering::{
-    builder::{Container, Msg, NodeBuilder, button, el, text},
+    builder::{Container, NodeBuilder, el, text},
     view_node::ViewContent,
 };
 
@@ -116,42 +116,6 @@ fn text_accepts_string_and_str() {
     assert!(matches!(b.content, ViewContent::Text { .. }));
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Button
-// ─────────────────────────────────────────────────────────────────────────── //
-
-#[test]
-fn button_builds_as_container_wrapping_its_label() {
-    let node = button("Click me", Msg::Run).build();
-
-    assert!(matches!(node.content, ViewContent::Container { .. }));
-    assert_eq!(node.children.len(), 1);
-    match &node.children[0].content {
-        ViewContent::Text { text, .. } => assert_eq!(text, "Click me"),
-        _ => panic!("expected the button label to be a text node"),
-    }
-}
-
-#[test]
-fn button_label_shares_the_button_area() {
-    let rect = Rect::new(2, 2, 10, 3);
-    let node = button("Click me", Msg::Run).area(rect).build();
-
-    assert_eq!(node.area, rect);
-    assert_eq!(node.children[0].area, rect);
-}
-
-#[test]
-fn button_style_is_applied_to_the_label() {
-    let style = Style::default().fg(Color::Red);
-    let node = button("Click me", Msg::Run).style(style).build();
-
-    match &node.children[0].content {
-        ViewContent::Text { style: applied, .. } => assert_eq!(*applied, style),
-        _ => panic!("expected the button label to be a text node"),
-    }
-}
-
 #[test]
 fn text_style_is_forwarded_to_view_node() {
     let style = Style::default().fg(Color::Green);
@@ -161,21 +125,6 @@ fn text_style_is_forwarded_to_view_node() {
         ViewContent::Text { style: applied, .. } => assert_eq!(*applied, style),
         _ => panic!("expected text content"),
     }
-}
-
-#[test]
-fn button_id_is_forwarded_to_view_node() {
-    let node = button("Click me", Msg::Run).id(7u64).build();
-
-    assert_eq!(node.id, Some(7u64));
-}
-
-#[test]
-fn button_area_is_set() {
-    let rect = Rect::new(2, 2, 10, 3);
-    let node = button("Click me", Msg::CustomEvent).area(rect).build();
-
-    assert_eq!(node.area, rect);
 }
 
 // ─────────────────────────────────────────────────────────────────────────── //
@@ -215,6 +164,36 @@ fn container_without_style_defaults_to_an_invisible_one() {
         ViewContent::Container { style } => assert_eq!(*style, Style::default()),
         _ => panic!("expected container content"),
     }
+
+}
+
+#[test]
+fn fragment_groups_children_without_painting() {
+    let node = termoxide_rendering::builder::fragment(termoxide_rendering::builder::Fragment)
+        .children([text("child")])
+        .build();
+
+    assert!(matches!(node.content, ViewContent::Fragment));
+    assert_eq!(node.children.len(), 1);
+}
+
+#[test]
+fn raw_builder_preserves_area_and_renderer_invokes_draw_function() {
+    let area = Rect::new(1, 2, 3, 4);
+    let node = termoxide_rendering::builder::raw(|buffer, rect| {
+        buffer.set_string(rect.x, rect.y, "raw", Style::default());
+    })
+    .area(area)
+    .build();
+    let mut buffer = ratatui::buffer::Buffer::empty(Rect::new(0, 0, 10, 10));
+
+    termoxide_rendering::renderer::Renderer::<ratatui::backend::TestBackend>::draw_node(
+        &node,
+        &mut buffer,
+    );
+
+    let index = usize::from(area.y) * 10 + usize::from(area.x);
+    assert_eq!(buffer.content[index].symbol(), "r");
 }
 
 #[test]
@@ -222,18 +201,6 @@ fn common_setters_are_chainable_and_do_not_panic_on_text() {
     let node = text("hi").id(2u64).key("k").class("c1").on_event(|_evt| {}).build();
 
     assert_eq!(node.id, Some(2u64));
-}
-
-#[test]
-fn common_setters_are_chainable_and_do_not_panic_on_button() {
-    let node = button("Go", Msg::Run)
-        .id(3u64)
-        .key("btn-1")
-        .class("primary")
-        .on_event(|_evt| {})
-        .build();
-
-    assert_eq!(node.id, Some(3u64));
 }
 
 #[test]

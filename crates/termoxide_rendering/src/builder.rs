@@ -1,13 +1,8 @@
 //! Builder API for constructing [`ViewNode`] trees.
 //!
-//! Designed to match the real `ViewNode` in `termoxide_rendering::view_node`:
-//! - `id: Option<ComponentId>` (u64)
-//! - `content: ViewContent` where `Container` is a unit variant, `Text` uses `ratatui::Style`
-//! - No `key`, `classes`, `event_handler` on `ViewNode` yet — those are builder-only metadata that will be added to
-//!   `ViewNode` when the reconciler and event-router land. For now the builder carries them and drops what `ViewNode`
-//!   can't hold yet.
-//!
-//! Known gap: [`ButtonBuilder`] renders its label but drops its [`Msg`], because nothing routes messages yet.
+//! The builder stores `ViewNode` metadata and constructs containers, text, and
+//! runtime nodes. `key`, `classes`, and event handlers are
+//! currently retained only by the builder and are dropped during `build`.
 
 use std::collections::HashSet;
 
@@ -15,46 +10,28 @@ use ratatui::{layout::Rect, style::Style};
 
 use crate::view_node::{ComponentId, ViewContent, ViewNode};
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Shared primitives
-// ─────────────────────────────────────────────────────────────────────────── //
-
 pub type EventHandler = Box<dyn Fn(&Event) + Send>;
 
 #[derive(Debug)]
 pub struct Event;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Msg {
-    Run,
-    CustomEvent,
-}
-
 /// Token: pass to [`el`] to begin building a container node.
 pub struct Container;
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  CommonFields
-// ─────────────────────────────────────────────────────────────────────────── //
+/// Token: pass to [`fragment`] to build a transparent grouping node.
+pub struct Fragment;
 
-/// Fields shared by every node builder.
-///
-/// Exposed via [`NodeBuilder::common`] so that the trait's default setter
-/// implementations can mutate it without knowing the concrete builder type.
-///
-/// Fields that `ViewNode` doesn't carry yet (`key`, `classes`,
-/// `event_handler`) are stored here and will be forwarded once the
-/// reconciler and event-router layers add them to `ViewNode`.
+/// Fields shared by node builders.
 pub struct CommonFields {
-    /// Maps to `ViewNode::id: Option<ComponentId>` (u64).
+    /// Component identity forwarded to `ViewNode`.
     pub id: Option<ComponentId>,
-    /// Reconciliation key — not on `ViewNode` yet, carried for future use.
+    /// Reconciliation key, currently unused by `ViewNode`.
     pub key: Option<String>,
-    /// Stylesheet classes — not on `ViewNode` yet, carried for future use.
+    /// Stylesheet classes, currently unused by `ViewNode`.
     pub classes: HashSet<String>,
-    /// Event handler — not on `ViewNode` yet, carried for future use.
+    /// Event handler, currently unused by `ViewNode`.
     pub event_handler: Option<EventHandler>,
-    /// Ratatui style applied to this node's area.
+    /// Style applied to this node's area.
     pub style: Style,
 }
 
@@ -71,68 +48,46 @@ impl CommonFields {
 }
 
 impl Default for CommonFields {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  IntoViewNode
-// ─────────────────────────────────────────────────────────────────────────── //
-
-/// Anything that can become a [`ViewNode`].
-///
-/// Two impls exist:
-/// - `ViewNode` itself — identity, node is already built
-/// - Any `T: NodeBuilder` — calls `.build()` automatically
-///
-/// Lets `.children()` accept both in one call without two method names.
+/// A value that can be converted into a [`ViewNode`].
 pub trait IntoViewNode {
     fn into_view_node(self) -> ViewNode;
 }
 
 impl IntoViewNode for ViewNode {
-    fn into_view_node(self) -> ViewNode { self }
+    fn into_view_node(self) -> ViewNode {
+        self
+    }
 }
 
 impl<T: NodeBuilder> IntoViewNode for T {
-    fn into_view_node(self) -> ViewNode { self.build() }
+    fn into_view_node(self) -> ViewNode {
+        self.build()
+    }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  NodeBuilder trait
-// ─────────────────────────────────────────────────────────────────────────── //
-
-/// Shared builder contract for every node kind.
-///
-/// ## Required methods (implement these, get everything else free)
-///
-/// - `common(&mut self) -> &mut CommonFields`
-/// - `build(self) -> ViewNode`
-///
-/// ## What is NOT here
-///
-/// `.children()` only exists on [`ContainerBuilder`]. The compiler enforces
-/// this — `TextBuilder` and `ButtonBuilder` simply have no such method.
+/// Common interface for node builders.
 pub trait NodeBuilder: Sized {
     fn common(&mut self) -> &mut CommonFields;
     fn build(self) -> ViewNode;
 
-    // ── Default setters — free for every implementor ──────────────────────── //
-
-    /// Set the numeric component id (maps to `ViewNode::id: Option<u64>`).
+    /// Set the component id.
     fn id(mut self, id: ComponentId) -> Self {
         self.common().id = Some(id);
         self
     }
 
-    /// Set a reconciliation key (stored in the builder, forwarded to
-    /// `ViewNode::key` once that field exists).
+    /// Store a reconciliation key for future use.
     fn key(mut self, key: impl Into<String>) -> Self {
         self.common().key = Some(key.into());
         self
     }
 
-    /// Add a CSS-like class name (stored in the builder, forwarded to
-    /// `ViewNode::classes` once that field exists).
+    /// Store a CSS-like class name for future use.
     fn class(mut self, class: impl Into<String>) -> Self {
         self.common().classes.insert(class.into());
         self
@@ -144,27 +99,23 @@ pub trait NodeBuilder: Sized {
         self
     }
 
-    /// Register an event handler (stored in the builder, forwarded to
-    /// `ViewNode::event_handler` once that field exists).
+    /// Store an event handler for future use.
     fn on_event<F: Fn(&Event) + Send + 'static>(mut self, f: F) -> Self {
         self.common().event_handler = Some(Box::new(f));
         self
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  ContainerBuilder
-// ─────────────────────────────────────────────────────────────────────────── //
-
 pub struct ContainerBuilder {
     common: CommonFields,
     children: Vec<ViewNode>,
-    /// The area rect — extracted from here into `ViewNode::area` on `.build()`.
     area: Rect,
 }
 
 impl ContainerBuilder {
-    fn new() -> Self { Self { common: CommonFields::new(), children: Vec::new(), area: Rect::default() } }
+    fn new() -> Self {
+        Self { common: CommonFields::new(), children: Vec::new(), area: Rect::default() }
+    }
 
     /// Set the terminal area for this container.
     pub fn area(mut self, area: Rect) -> Self {
@@ -173,30 +124,6 @@ impl ContainerBuilder {
     }
 
     /// Attach child nodes.
-    ///
-    /// Accepts any iterator of [`IntoViewNode`]: already-built [`ViewNode`]s,
-    /// or any [`NodeBuilder`], which is built on the spot. The iterator is
-    /// homogeneous, so mixing the two in one call needs an explicit conversion
-    /// to a common type — `.build()` on the builders, or
-    /// [`into_view_node`](IntoViewNode::into_view_node) on both.
-    ///
-    /// ```rust
-    /// use ratatui::layout::Rect;
-    /// use termoxide_rendering::builder::{Container, IntoViewNode, NodeBuilder, el, text};
-    ///
-    /// let rect = Rect::new(0, 0, 80, 24);
-    ///
-    /// // One builder type throughout: no conversion needed.
-    /// let node = el(Container).area(rect).children([text("a"), text("b")]).build();
-    /// assert_eq!(node.children.len(), 2);
-    ///
-    /// // A pre-built node alongside a builder: convert both.
-    /// let mixed = el(Container)
-    ///     .area(rect)
-    ///     .children([text("pre-built").build().into_view_node(), text("auto-built").into_view_node()])
-    ///     .build();
-    /// assert_eq!(mixed.children.len(), 2);
-    /// ```
     pub fn children(mut self, children: impl IntoIterator<Item = impl IntoViewNode>) -> Self {
         self.children = children.into_iter().map(IntoViewNode::into_view_node).collect();
         self
@@ -204,7 +131,9 @@ impl ContainerBuilder {
 }
 
 impl NodeBuilder for ContainerBuilder {
-    fn common(&mut self) -> &mut CommonFields { &mut self.common }
+    fn common(&mut self) -> &mut CommonFields {
+        &mut self.common
+    }
 
     fn build(self) -> ViewNode {
         ViewNode {
@@ -216,11 +145,45 @@ impl NodeBuilder for ContainerBuilder {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  TextBuilder
-// ─────────────────────────────────────────────────────────────────────────── //
+/// Builder for transparent fragment nodes.
+pub struct FragmentBuilder {
+    common: CommonFields,
+    children: Vec<ViewNode>,
+    area: Rect,
+}
 
-/// Builder for text nodes. No `.children()` — compile error if attempted.
+impl FragmentBuilder {
+    fn new() -> Self {
+        Self { common: CommonFields::new(), children: Vec::new(), area: Rect::default() }
+    }
+
+    pub fn area(mut self, area: Rect) -> Self {
+        self.area = area;
+        self
+    }
+
+    pub fn children(mut self, children: impl IntoIterator<Item = impl IntoViewNode>) -> Self {
+        self.children = children.into_iter().map(IntoViewNode::into_view_node).collect();
+        self
+    }
+}
+
+impl NodeBuilder for FragmentBuilder {
+    fn common(&mut self) -> &mut CommonFields {
+        &mut self.common
+    }
+
+    fn build(self) -> ViewNode {
+        ViewNode {
+            id: self.common.id,
+            area: self.area,
+            content: ViewContent::Fragment,
+            children: self.children,
+        }
+    }
+}
+
+/// Builder for text nodes.
 pub struct TextBuilder {
     common: CommonFields,
     content: String,
@@ -240,7 +203,9 @@ impl TextBuilder {
 }
 
 impl NodeBuilder for TextBuilder {
-    fn common(&mut self) -> &mut CommonFields { &mut self.common }
+    fn common(&mut self) -> &mut CommonFields {
+        &mut self.common
+    }
 
     fn build(self) -> ViewNode {
         let mut node = ViewNode::text(self.area, self.content, self.common.style);
@@ -253,60 +218,47 @@ impl NodeBuilder for TextBuilder {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  ButtonBuilder
-// ─────────────────────────────────────────────────────────────────────────── //
+pub fn el(_: Container) -> ContainerBuilder {
+    ContainerBuilder::new()
+}
+pub fn fragment(_: Fragment) -> FragmentBuilder {
+    FragmentBuilder::new()
+}
+pub fn text(content: impl Into<String>) -> TextBuilder {
+    TextBuilder::new(content)
+}
 
-/// Builder for button nodes. No `.children()` — the label is the only child,
-/// and the builder owns it.
-pub struct ButtonBuilder {
+pub fn raw<F>(draw: F) -> RawBuilder<F>
+where
+    F: Fn(&mut ratatui::buffer::Buffer, Rect) + Send + 'static,
+{
+    RawBuilder { common: CommonFields::new(), draw, area: Rect::default() }
+}
+
+pub struct RawBuilder<F> {
     common: CommonFields,
-    label: String,
-    /// Message this button emits when activated.
-    ///
-    /// Parked until the event router lands: `ViewNode` has nowhere to carry a
-    /// message yet, so `build` drops it. Tracked in the module docs.
-    #[allow(dead_code)]
-    msg: Msg,
+    draw: F,
     area: Rect,
 }
 
-impl ButtonBuilder {
-    fn new(label: impl Into<String>, msg: Msg) -> Self {
-        Self { common: CommonFields::new(), label: label.into(), msg, area: Rect::default() }
-    }
-
+impl<F> RawBuilder<F> {
     pub fn area(mut self, area: Rect) -> Self {
         self.area = area;
         self
     }
 }
 
-impl NodeBuilder for ButtonBuilder {
-    fn common(&mut self) -> &mut CommonFields { &mut self.common }
+impl<F> NodeBuilder for RawBuilder<F>
+where
+    F: Fn(&mut ratatui::buffer::Buffer, Rect) + Send + 'static,
+{
+    fn common(&mut self) -> &mut CommonFields {
+        &mut self.common
+    }
 
-    /// Builds a container holding the label as a single [`ViewContent::Text`]
-    /// child.
-    ///
-    /// The label shares the button's area, so it renders wherever the button
-    /// was placed. Interactivity is not wired up yet — see
-    /// [`msg`](ButtonBuilder::msg).
     fn build(self) -> ViewNode {
-        let label = ViewNode::text(self.area, self.label, self.common.style);
-        let mut node = ViewNode::container(self.area, vec![label]);
-
-        if let Some(id) = self.common.id {
-            node = node.with_id(id);
-        }
-
+        let mut node = ViewNode::raw(self.area, self.draw);
+        node.id = self.common.id;
         node
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Entry points
-// ─────────────────────────────────────────────────────────────────────────── //
-
-pub fn el(_: Container) -> ContainerBuilder { ContainerBuilder::new() }
-pub fn text(content: impl Into<String>) -> TextBuilder { TextBuilder::new(content) }
-pub fn button(label: impl Into<String>, msg: Msg) -> ButtonBuilder { ButtonBuilder::new(label, msg) }

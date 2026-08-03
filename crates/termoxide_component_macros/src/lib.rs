@@ -1,3 +1,5 @@
+//! Derive macro for connecting component properties to a component builder.
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
@@ -52,6 +54,11 @@ fn parse_ident_value(input: ParseStream<'_>) -> Result<Ident> {
 }
 
 #[proc_macro_derive(RsxComponent, attributes(rsx))]
+/// Generate a `termoxide_components::Component` implementation.
+///
+/// The `rsx` attribute must provide `component`, `builder`, and `constructor`
+/// paths, for example `#[rsx(component = Button, builder = ButtonBuilder,
+/// constructor = button)]`.
 pub fn derive_rsx_component(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     match expand(input) {
