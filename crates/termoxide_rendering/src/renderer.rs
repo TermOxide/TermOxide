@@ -116,8 +116,7 @@ impl From<std::io::Error> for RenderError {
 /// ## Thread safety
 ///
 /// `Renderer` is **not** `Sync`.  It must be owned and driven from a single
-/// thread (the render thread inside
-/// [`RenderLoop`][crate::render_loop::RenderLoop]).
+/// thread by the application's main loop.
 pub struct Renderer<B: Backend> {
     /// Ratatui terminal — owns the backend and the two-frame diff buffer.
     terminal: Terminal<B>,

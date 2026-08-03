@@ -176,10 +176,15 @@ impl ContainerBuilder {
     /// [`ViewNode`]s and any [`NodeBuilder`] (calls `.build()` automatically):
     ///
     /// ```rust
-    /// el(Container).area(rect).children([
-    ///     text("pre-built").build(), // ViewNode   — identity
-    ///     text("auto-built"),        // TextBuilder — .build() called here
-    /// ])
+    /// use ratatui::layout::Rect;
+    /// use termoxide_rendering::builder::{Container, IntoViewNode, el, text};
+    ///
+    /// use crate::termoxide_rendering::builder::NodeBuilder;
+    ///
+    /// let rect = Rect::new(0, 0, 80, 24);
+    /// let _ = el(Container)
+    ///     .area(rect)
+    ///     .children([text("pre-built").build().into_view_node(), text("auto-built").into_view_node()]);
     /// ```
     pub fn children(mut self, children: impl IntoIterator<Item = impl IntoViewNode>) -> Self {
         self.children = children.into_iter().map(IntoViewNode::into_view_node).collect();
