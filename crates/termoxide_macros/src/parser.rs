@@ -1,4 +1,4 @@
-//! Parser for converting RSX macro tokens into the owned AST.
+//! Parser for converting RSX macro tokens into the owned RSX AST.
 
 use proc_macro2::{Delimiter, Ident, Literal, Span, TokenStream, TokenTree};
 

@@ -1,4 +1,4 @@
-//! Code generation from the owned RSX AST.
+//! Code generation from the owned RSX AST into rendering builder calls.
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -58,10 +58,6 @@ fn emit_element(el: &Element) -> TokenStream {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  text(...)
-// ─────────────────────────────────────────────────────────────────────────── //
-
 fn emit_text_element(el: &Element) -> TokenStream {
     let content: TokenStream = match el.children.as_slice() {
         [] => quote! { "" },
@@ -82,10 +78,6 @@ fn emit_text_element(el: &Element) -> TokenStream {
             .build()
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────── //
-//  el(Container)
-// ─────────────────────────────────────────────────────────────────────────── //
 
 fn emit_container_element(el: &crate::ast::Element) -> TokenStream {
     let attr_calls = emit_attr_calls(&el.attrs);
@@ -162,10 +154,6 @@ fn emit_raw_element(el: &Element) -> TokenStream {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Attribute → method call chains
-// ─────────────────────────────────────────────────────────────────────────── //
-
 fn emit_attr_calls(attrs: &[Attribute]) -> Vec<TokenStream> { attrs.iter().map(emit_single_attr_call).collect() }
 
 fn emit_single_attr_call(attr: &Attribute) -> TokenStream {
@@ -184,10 +172,6 @@ fn emit_attr_value(value: &AttributeValue) -> TokenStream {
         },
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Expr and Lit → TokenStream
-// ─────────────────────────────────────────────────────────────────────────── //
 
 fn emit_expr(expr: &RsxExpr) -> TokenStream {
     expr.as_str().parse::<TokenStream>().unwrap_or_else(|_| {

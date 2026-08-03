@@ -1,3 +1,5 @@
+//! RSX syntax parser and code generator for TermOxide.
+
 use proc_macro::TokenStream;
 
 mod ast;
@@ -7,6 +9,7 @@ mod parser;
 mod tests;
 
 #[proc_macro]
+/// Expand an RSX element tree into TermOxide builder calls.
 pub fn rsx(input: TokenStream) -> TokenStream {
     let input = proc_macro2::TokenStream::from(input);
 
