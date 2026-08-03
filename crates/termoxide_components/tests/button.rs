@@ -1,4 +1,7 @@
-use ratatui::{layout::Rect, style::{Color, Style}};
+use ratatui::{
+    layout::Rect,
+    style::{Color, Style},
+};
 use termoxide_components::{Msg, button};
 use termoxide_rendering::{builder::NodeBuilder, view_node::ViewContent};
 
@@ -7,7 +10,7 @@ fn button_is_a_component_built_from_runtime_primitives() {
     let area = Rect::new(2, 3, 12, 1);
     let node = button("Run", Msg::Run).area(area).build();
 
-    assert!(matches!(node.content, ViewContent::Fragment));
+    assert!(matches!(node.content, ViewContent::Container { .. }));
     assert_eq!(node.area, area);
     assert_eq!(node.children.len(), 1);
     assert_eq!(node.children[0].area, area);
