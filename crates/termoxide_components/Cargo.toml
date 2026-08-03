@@ -1,0 +1,10 @@
+[package]
+name = "termoxide_components"
+version = "1.0.0-alpha"
+edition = "2024"
+description = "Common TermOxide component library"
+
+[dependencies]
+ratatui = "0.26"
+termoxide_component_macros = { path = "../termoxide_component_macros" }
+termoxide_rendering = { path = "../termoxide_rendering" }
