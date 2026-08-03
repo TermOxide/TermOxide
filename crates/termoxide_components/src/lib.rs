@@ -11,7 +11,6 @@ mod progress_bar;
 pub use button::{Button, ButtonBuilder, ButtonProps, Msg, button};
 pub use progress_bar::{ProgressBar, ProgressBarBuilder, ProgressBarProps, progress_bar};
 pub use termoxide_component_macros::RsxComponent;
-
 use termoxide_rendering::{
     builder::{IntoViewNode, NodeBuilder},
     view_node::{ViewContent, ViewNode},
@@ -26,11 +25,9 @@ pub trait Component {
 }
 
 /// Convert a component or primitive into a view node.
-pub fn into_view_node(value: impl IntoViewNode) -> ViewNode {
-    value.into_view_node()
-}
+pub fn into_view_node(value: impl IntoViewNode) -> ViewNode { value.into_view_node() }
 
-/// Ensure this crate's component output remains a runtime fragment.
+/// Ensure this crate's component output is a renderable node with children.
 pub fn is_component_node(node: &ViewNode) -> bool {
-    matches!(node.content, ViewContent::Fragment)
+    matches!(node.content, ViewContent::Container { .. }) && !node.children.is_empty()
 }

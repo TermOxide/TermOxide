@@ -1,9 +1,10 @@
 use ratatui::layout::Rect;
-use crate::RsxComponent;
 use termoxide_rendering::{
     builder::{CommonFields, NodeBuilder},
     view_node::ViewNode,
 };
+
+use crate::RsxComponent;
 
 #[derive(RsxComponent)]
 #[rsx(component = Button, builder = ButtonBuilder, constructor = button)]
@@ -38,28 +39,22 @@ impl ButtonBuilder {
     }
 
     /// Return the activation message carried by this component.
-    pub fn message(&self) -> &Msg {
-        &self.msg
-    }
+    pub fn message(&self) -> &Msg { &self.msg }
 }
 
 impl NodeBuilder for ButtonBuilder {
-    fn common(&mut self) -> &mut CommonFields {
-        &mut self.common
-    }
+    fn common(&mut self) -> &mut CommonFields { &mut self.common }
 
     fn build(self) -> ViewNode {
         let label = termoxide_rendering::builder::text(self.label)
             .area(self.area)
             .style(self.common.style)
             .build();
-        let mut node = ViewNode::fragment(self.area, vec![label]);
+        let mut node = ViewNode::container(self.area, vec![label]);
         node.id = self.common.id;
         node
     }
 }
 
 /// Construct a button component.
-pub fn button(label: impl Into<String>, msg: Msg) -> ButtonBuilder {
-    ButtonBuilder::new(label, msg)
-}
+pub fn button(label: impl Into<String>, msg: Msg) -> ButtonBuilder { ButtonBuilder::new(label, msg) }
