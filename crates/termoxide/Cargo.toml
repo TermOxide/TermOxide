@@ -1,5 +1,5 @@
 [package]
-name = "TermOxide"
+name = "termoxide"
 description = "Framework for TUI applications in Rust"
 version = "1.0.0-alpha"
 
@@ -12,7 +12,6 @@ readme = "README.md"
 license = "BSD-2-Clause"
 
 edition = "2024"
-default-run = "TermOxide"
 
 [package.metadata.bundle]
 name = "TermOxide"
@@ -26,7 +25,16 @@ long_description = "TermOxide is a framework for building terminal user interfac
 [dependencies]
 termoxide_macros = { path = "../termoxide_macros" }
 termoxide_layout = { path = "../termoxide_layout/" }
+termoxide_event = { path = "../termoxide_event" }
 termoxide_reactive = { path = "../termoxide_reactive" }
+termoxide_rendering = { path = "../termoxide_rendering" }
+
+any_spawner = { version = "0.3", features = ["tokio"] }
+color-eyre = "0.6"
+crossterm = "0.27"
+reactive_graph = { version = "0.2", features = ["effects"] }
+ratatui = { version = "0.26", features = ["crossterm"] }
+tokio = { version = "1", features = ["rt", "macros", "time", "sync", "signal"] }
 
 # Path handling
 walkdir = "2.5"
