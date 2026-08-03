@@ -1,29 +1,5 @@
 [workspace]
-members = [
-    "crates/termoxide",
-    "crates/termoxide_macros",
-    "crates/termoxide_reactive",
-    "crates/termoxide_layout",
-]
-
-[dependencies]
-oxidui_macros = { path = "crates/oxidui_macros" }
-oxidui_style = { path = "crates/oxidui_style", default-features = true }
-
-# Path handling
-walkdir = "2.5"
-dirs = "6.0"
-
-# Watcher
-notify = "8.2"
-crossbeam-channel = "0.5"
-
-# utilities
-enum_cycling = "0.2.1"
-
-[features]
-default = ["ratatui"]
-ratatui = ["oxidui_style/ratatui"]
+resolver = "3" # Setup cargo to use latest resolver for workspaces
 members = [
     "crates/termoxide",
     "crates/termoxide_macros",

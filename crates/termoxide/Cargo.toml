@@ -50,4 +50,4 @@ enum_cycling = "0.2.1"
 
 [features]
 default = ["ratatui"]
-ratatui = ["oxidui_style/ratatui"]
+ratatui = ["termoxide_layout/ratatui"]

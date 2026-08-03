@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["auto","evenly_sized_tracks","fit_content","flex","fr","length","line","max_content","min_content","minmax","percent","repeat","span","zero"],"trait":["FromFr","FromLength","FromPercent","TaffyAuto","TaffyFitContent","TaffyGridLine","TaffyGridSpan","TaffyMaxContent","TaffyMinContent","TaffyZero"]};

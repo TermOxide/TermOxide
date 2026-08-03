@@ -1,3 +1,0 @@
-Box<dyn Fn() + Send + Sync>
-(KeyBinding, Box<dyn Fn() + Send + Sync>)
-Vec<(KeyBinding, Box<dyn Fn() + Send + Sync>)>

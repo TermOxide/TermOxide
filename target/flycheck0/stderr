@@ -1,4 +1,0 @@
-error: failed to parse manifest at `/home/vanou/EPI/EIP/TermOxide/Cargo.toml`
-
-Caused by:
-  this virtual manifest specifies a `features` section, which is not allowed
