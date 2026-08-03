@@ -3,6 +3,8 @@ use proc_macro::TokenStream;
 mod ast;
 mod codegen;
 mod parser;
+#[cfg(test)]
+mod tests;
 
 #[proc_macro]
 pub fn rsx(input: TokenStream) -> TokenStream {
