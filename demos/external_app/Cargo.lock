@@ -814,6 +814,7 @@ version = "1.0.0-alpha"
 dependencies = [
  "proc-macro2",
  "quote",
+ "ratatui",
  "syn 2.0.119",
 ]
 
