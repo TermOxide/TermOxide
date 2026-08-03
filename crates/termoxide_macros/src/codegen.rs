@@ -153,12 +153,12 @@ fn emit_raw_element(el: &Element) -> TokenStream {
         };
     };
 
-    let attr_calls: Vec<TokenStream> = el.attrs.iter().filter(|a| a.key != "draw").map(emit_single_attr_call).collect();
+    let area = find_attr(el, "area").unwrap_or_else(|| {
+        quote! { ::ratatui::layout::Rect::default() }
+    });
 
     quote! {
-        ::termoxide_rendering::builder::raw(#draw)
-            #(#attr_calls)*
-            .build()
+        ::termoxide_rendering::view_node::ViewNode::raw(#area, #draw)
     }
 }
 

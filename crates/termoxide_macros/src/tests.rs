@@ -187,7 +187,7 @@ fn codegen_raw() {
     let out = emit(node);
     assert!(out.contains("raw"));
     assert!(out.contains("draw"));
-    assert!(out.contains("build"));
+    assert!(out.contains("area"));
 }
 
 #[test]
