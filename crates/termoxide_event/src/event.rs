@@ -8,7 +8,10 @@
 //! lets the framework swap or support several backends without touching
 //! consumer code.
 
-use std::ops::{BitOr, BitOrAssign};
+use std::{
+    fmt,
+    ops::{BitOr, BitOrAssign},
+};
 
 /// A single keyboard key, independent of the terminal backend.
 ///
@@ -76,7 +79,7 @@ pub enum KeyCode {
 /// assert!(!combo.contains(KeyModifiers::ALT));
 /// assert!(KeyModifiers::NONE.is_empty());
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct KeyModifiers(u8);
 
 impl KeyModifiers {
@@ -109,6 +112,51 @@ impl BitOr for KeyModifiers {
 
 impl BitOrAssign for KeyModifiers {
     fn bitor_assign(&mut self, rhs: Self) { self.0 |= rhs.0; }
+}
+
+impl fmt::Display for KeyModifiers {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_empty() {
+            return f.write_str("none");
+        }
+
+        let entries = [
+            (Self::SHIFT, "shift"),
+            (Self::CONTROL, "control"),
+            (Self::ALT, "alt"),
+            (Self::SUPER, "super"),
+        ];
+
+        let mut wrote_any = false;
+        let known_bits = Self::SHIFT.0 | Self::CONTROL.0 | Self::ALT.0 | Self::SUPER.0;
+        for (flag, label) in entries {
+            if self.contains(flag) {
+                if wrote_any {
+                    f.write_str("+")?;
+                }
+                f.write_str(label)?;
+                wrote_any = true;
+            }
+        }
+
+        let unknown_bits = self.0 & !known_bits;
+        if unknown_bits != 0 {
+            if wrote_any {
+                f.write_str("+")?;
+            }
+            write!(f, "unknown({})", unknown_bits)?;
+            wrote_any = true;
+        }
+        if !wrote_any {
+            return write!(f, "unknown({})", self.0);
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Debug for KeyModifiers {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { fmt::Display::fmt(self, f) }
 }
 
 /// A single key press: which key, and which modifiers were held with it.
@@ -144,4 +192,34 @@ pub enum Event {
     /// A key was pressed. Only key *presses* are reported — releases and
     /// repeats are filtered out by the backend.
     KeyPress(KeyEvent),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::KeyModifiers;
+
+    #[test]
+    fn key_modifiers_display_uses_readable_names() {
+        assert_eq!(format!("{}", KeyModifiers::NONE), "none");
+        assert_eq!(format!("{}", KeyModifiers::CONTROL), "control");
+        assert_eq!(format!("{}", KeyModifiers::CONTROL | KeyModifiers::SHIFT), "shift+control");
+    }
+
+    #[test]
+    fn key_modifiers_debug_matches_display() {
+        let combo = KeyModifiers::CONTROL | KeyModifiers::ALT;
+        assert_eq!(format!("{combo}"), format!("{combo:?}"));
+    }
+
+    #[test]
+    fn key_modifiers_display_shows_unknown_bits() {
+        let mods = KeyModifiers(1 << 4);
+        assert_eq!(format!("{mods}"), "unknown(16)");
+    }
+
+    #[test]
+    fn key_modifiers_display_shows_known_and_unknown_bits() {
+        let mods = KeyModifiers(KeyModifiers::CONTROL.0 | (1 << 4));
+        assert_eq!(format!("{mods}"), "control+unknown(16)");
+    }
 }
