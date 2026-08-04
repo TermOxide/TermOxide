@@ -98,6 +98,7 @@
 //! }
 //! ```
 
+pub mod builder;
 pub mod event_router;
 pub mod render_loop;
 pub mod renderer;
