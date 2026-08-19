@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Colour and capability degradation — Styling ADR</title>
+<link rel="stylesheet" href="style.css"></head>
+<body><div class="wrap">
+<nav class="top"><a href="index.html">← All decisions</a><span>7 / 10</span></nav>
+<p class="eyebrow">Domain 7</p>
+<h1>Colour and capability degradation</h1>
+<p class="lede">One interface for the developer; the framework absorbs the difference between a modern terminal and a 16-colour session over SSH inside tmux.</p>
+<div class="toolbar">
+  <button data-expand="open">Expand all reasoning</button>
+  <button data-expand="closed">Collapse all</button>
+</div>
+<article class="d" id="d7-1"><div class="d-h"><span class="d-id">D7.1</span><h3>Colours stay symbolic until paint</h3><span class="chip s-accepted">accepted</span></div><p class="d-dec">A <code>Style</code> holds descriptors — <code>Accent</code>, <code>Error</code>, <code>Base16(4)</code>, <code>Rgb(..)</code> — not resolved output. Developers write one colour vocabulary; the framework degrades it.</p><details><summary>Alternatives considered</summary><ul><li><strong>Concrete RGB at authoring time</strong>, degraded at emit.</li><li><strong>Per-tier colour APIs</strong> the developer selects between.</li></ul></details><details><summary>Reasoning</summary><p>Concrete RGB at authoring time destroys the information degradation needs: once <code>Accent</code> has become <code>#7C6AE8</code>, nothing downstream knows it was semantically an accent, and it cannot be mapped onto a user's base16 palette or a named flavour. Per-tier APIs push the matrix onto every developer.</p></details><details><summary>Consequences</summary><p>This is also what makes <a href="scope.html#d1-3">D1.3</a> free: a named palette is one more resolution target for the same symbols.</p></details></article><article class="d" id="d7-2"><div class="d-h"><span class="d-id">D7.2</span><h3>Lowering is two steps, and quantization comes last</h3><span class="chip s-accepted">accepted</span></div><p class="d-dec"><code>symbolic → resolve against palette → Rgb → interpolate in Oklab → quantize to tier → escape sequence</code>.</p><details><summary>Alternatives considered</summary><ul><li><strong>Quantize early</strong>, then interpolate within the tier's colour space.</li><li><strong>Interpolate in sRGB</strong> rather than a perceptual space.</li><li><strong>No colour interpolation at all.</strong></li></ul></details><details><summary>Reasoning</summary><p>A symbol cannot be interpolated, so resolution must precede animation. Quantizing before interpolating means a 200ms fade on a 16-colour terminal steps through whatever the nearest palette entries happen to be — visible garbage rather than a fade. sRGB interpolation produces muddy midpoints; Oklab is perceptually uniform and the midpoints look like midpoints.</p></details><details><summary>Consequences</summary><p>This ordering is why the animator sits where it does in the pipeline (<a href="animation.html#d9-1">D9.1</a>).</p></details></article><article class="d" id="d7-3"><div class="d-h"><span class="d-id">D7.3</span><h3>One <code>TerminalProfile</code> holds every capability</h3><span class="chip s-accepted">accepted</span></div><p class="d-dec">Colour tier, width oracle, mouse support and protocol support live in a single profile object detected at startup. Degradation targets: truecolor, 256, 16, monochrome, plus optional named palettes.</p><details><summary>Alternatives considered</summary><ul><li><strong>Separate capability objects</strong> per concern.</li><li><strong>Environment-variable sniffing</strong> at each call site.</li></ul></details><details><summary>Reasoning</summary><p>Colour tier and width measurement are the same kind of thing — a negotiated agreement with the other end of the pty that can change when a session is reattached. Keeping them together means one detection path, one invalidation path, and one generation counter (<a href="text.html#d8-5">D8.5</a>).</p><p>The environment also changes styling with no human involved: <code>NO_COLOR</code>, <code>TERM</code> tiers, background-colour detection, the user's base16 palette. The profile is where that actor lives.</p></details></article>
+<nav class="bottom"><a href="overlays.html">&larr; Overlays and layering</a><a href="text.html">Text measurement and the width oracle &rarr;</a></nav>
+</div><script>
+document.querySelectorAll('[data-expand]').forEach(function(b){
+  b.addEventListener('click', function(){
+    var open = b.dataset.expand === 'open';
+    document.querySelectorAll('details').forEach(function(d){ d.open = open; });
+  });
+});
+</script></body></html>
