@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The pipeline and the renderer — Styling ADR</title>
+<link rel="stylesheet" href="style.css"></head>
+<body><div class="wrap">
+<nav class="top"><a href="index.html">← All decisions</a><span>10 / 10</span></nav>
+<p class="eyebrow">Domain 10</p>
+<h1>The pipeline and the renderer</h1>
+<p class="lede">Where the styling layer actually lives — the original question — and what it implies about building on ratatui.</p>
+<div class="toolbar">
+  <button data-expand="open">Expand all reasoning</button>
+  <button data-expand="closed">Collapse all</button>
+</div>
+<pre><code>COMPILE TIME
+  style!{…}  ──▶ const Style   (partial, tri-state)
+
+ONCE PER TREE BUILD
+  component fn ──▶ nodes in slotmap arena
+                   each holds: static Style │ reactive closure
+
+PER CHANGE          (targeted write — no tree rebuild)
+  ① merge      slot default ◀ theme ctx ◀ passed style ◀ state
+               ──▶ node.target_style          [D2.3, D3.5]
+  ② inherit    node.inherited: Rc&lt;Inherited&gt;    [D4.2]
+
+PER FRAME
+  ③ animate    target ──interpolate──▶ presented   [D9.1]
+  ④ layout     presented[Layout|Both] ──▶ taffy ──▶ integer edges
+  ⑤ paint      presented[Paint|Both] + TerminalProfile ──▶ cells
+  ⑥ diff       cell buffer diff ──▶ CUP + SGR bytes</code></pre><article class="d" id="d10-1"><div class="d-h"><span class="d-id">D10.1</span><h3>The styling layer is not a separate compilation stage</h3><span class="chip s-accepted">accepted</span></div><p class="d-dec">Styles are values resolved at stages ① and ② and consumed at ④ and ⑤. There is no separate compilation pass and no intermediate artifact analogous to a stylesheet.</p><details><summary>Alternatives considered</summary><ul><li><strong>StyleX-style precompilation</strong> — compile styles to atomic classes, attach them to nodes before rendering.</li><li><strong>Resolution during node-tree construction</strong>, baking final values into nodes.</li></ul></details><details><summary>Reasoning</summary><p>Atomic-class compilation exists to deduplicate a stylesheet shipped over a network and to exploit a CSSOM that already implements the cascade. Neither exists here — there is no wire format and the renderer is owned end to end.</p><p>Baking values at construction time is incompatible with <a href="reactivity.html#d3-1">D3.1</a>, which requires the style to be rewritable without rebuilding the node.</p></details><details><summary>Consequences</summary><p>This answers the original framing directly: styling is neither a separate compiler nor part of node-tree compilation. It is a value written into a live node by an effect.</p></details></article><article class="d" id="d10-2"><div class="d-h"><span class="d-id">D10.2</span><h3>A custom renderer rather than building on ratatui</h3><span class="chip s-accepted">accepted</span></div><p class="d-dec">The framework owns the cell grid, the frame diff and the byte stream.</p><details><summary>Alternatives considered</summary><ul><li><strong>Build on ratatui</strong>, which already provides a cell grid, frame diffing and absolute positioning.</li></ul></details><details><summary>Reasoning</summary><p>The payoff is <em>not</em> obtaining a cell grid — ratatui has one, and arguing otherwise argues for something available for free. The payoff is ownership of four things: the width oracle injected into every consuming path (<a href="text.html#d8-3">D8.3</a>); simultaneous control of the cell model and the outgoing bytes, which mode 2027 negotiation and OSC 66 emission both require; per-cell provenance recording how a width was determined, so suspect cells can force full-line repaints; and the ability to re-derive layout when capabilities change (<a href="text.html#d8-5">D8.5</a>).</p><p>This session's decisions compound that: an owned dirty-bit classification, two-pass layered layout, paint-time symbolic colour lowering, and <code>Rc</code>-shared inherited style.</p></details><details><summary>Consequences</summary><p><strong>Caveat.</strong> The claims about where ratatui computes width were reasoned from its general architecture, not verified against source (<a href="text.html#d8-9">D8.9</a>). The conclusion holds on the other four grounds; the ratatui-specific argument should be checked before it is used publicly.</p></details></article><article class="d" id="d10-3"><div class="d-h"><span class="d-id">D10.3</span><h3>Three invalidation classes, not one</h3><span class="chip s-accepted">accepted</span></div><p class="d-dec">Node-local paint, node-local layout (plus the subtree paint bit), and global relayout on profile generation change.</p><details><summary>Alternatives considered</summary><ul><li><strong>One global dirty flag</strong> and a full redraw each frame.</li><li><strong>Node-local only</strong>, with no global entry point.</li></ul></details><details><summary>Reasoning</summary><p>A full redraw each frame would work at terminal scale and would discard the entire rationale for the node-level reactivity in D3.1. Node-local-only leaves nowhere to put a profile change, which is the one genuinely global event in the system.</p></details></article>
+<nav class="bottom"><a href="animation.html">&larr; Animation and transitions</a><span>end &rarr;</span></nav>
+</div><script>
+document.querySelectorAll('[data-expand]').forEach(function(b){
+  b.addEventListener('click', function(){
+    var open = b.dataset.expand === 'open';
+    document.querySelectorAll('details').forEach(function(d){ d.open = open; });
+  });
+});
+</script></body></html>

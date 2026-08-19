@@ -1,0 +1,107 @@
+
+:root{
+  --paper:#E6E8E4; --panel:#F1F2EF; --ink:#14171A; --soft:#4A5158;
+  --rule:#C3C7C1; --rule-soft:#D8DBD6;
+  --blue:#1F4E79; --amber:#7A5B12; --red:#8C2F2F; --violet:#52356B;
+  --mono: ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  --serif: Charter,"Bitstream Charter","Iowan Old Style",Georgia,serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--serif); font-size:17px; line-height:1.62;
+}
+.wrap{max-width:78ch; margin:0 auto; padding:4rem 1.5rem 6rem}
+a{color:var(--blue); text-decoration-thickness:1px; text-underline-offset:2px}
+a:focus-visible,summary:focus-visible,button:focus-visible{
+  outline:2px solid var(--blue); outline-offset:3px; border-radius:2px}
+
+/* masthead */
+.eyebrow{font-family:var(--mono); font-size:.72rem; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--soft); margin:0 0 .9rem}
+h1{font-size:2.35rem; line-height:1.12; font-weight:600; letter-spacing:-.015em;
+  margin:0 0 .8rem}
+.lede{font-size:1.12rem; color:var(--soft); margin:0 0 2.2rem; max-width:62ch}
+hr{border:0; border-top:1px solid var(--rule); margin:2.6rem 0}
+
+h2{font-size:1.28rem; font-weight:600; letter-spacing:-.005em; margin:3rem 0 1rem}
+h3{font-size:1.02rem; font-weight:600; margin:0; letter-spacing:-.005em}
+p{margin:0 0 1rem}
+ul{margin:0 0 1rem; padding-left:1.3rem} li{margin:.25rem 0}
+code{font-family:var(--mono); font-size:.86em; background:var(--panel);
+  padding:.1em .35em; border:1px solid var(--rule-soft); border-radius:2px}
+pre{font-family:var(--mono); font-size:.78rem; line-height:1.5; background:var(--panel);
+  border:1px solid var(--rule); padding:1.1rem 1.2rem; overflow-x:auto; margin:0 0 1.4rem}
+pre code{background:none; border:0; padding:0; font-size:inherit}
+
+/* decision blocks — the tree rail is the structural device */
+.d{position:relative; padding:0 0 .2rem 3.2ch; margin:0 0 2rem;
+   border-left:1px solid var(--rule)}
+.d::before{content:"├─"; position:absolute; left:0; top:.15rem; transform:translateX(-.55ch);
+  font-family:var(--mono); font-size:.8rem; color:var(--rule); background:var(--paper);
+  padding:0 .2ch}
+.d:last-of-type::before{content:"└─"}
+.d-h{display:flex; flex-wrap:wrap; align-items:baseline; gap:.6rem .8rem; margin:0 0 .55rem}
+.d-id{font-family:var(--mono); font-size:.74rem; letter-spacing:.06em; color:var(--soft);
+  border:1px solid var(--rule); padding:.1rem .4rem; border-radius:2px}
+.d-h h3{flex:1 1 22ch; min-width:0}
+.chip{font-family:var(--mono); font-size:.66rem; letter-spacing:.1em; text-transform:uppercase;
+  padding:.18rem .5rem; border-radius:2px; color:#fff; white-space:nowrap}
+.s-accepted{background:var(--blue)} .s-deferred{background:var(--amber)}
+.s-unverified{background:var(--red)} .s-reserved{background:var(--violet)}
+.d-dec{margin:0 0 .7rem}
+
+details{border-top:1px dotted var(--rule); padding:.45rem 0 .1rem}
+details[open]{padding-bottom:.5rem}
+summary{cursor:pointer; font-family:var(--mono); font-size:.74rem; letter-spacing:.06em;
+  color:var(--soft); list-style:none; display:flex; gap:.6ch; align-items:center}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"+"; display:inline-block; width:1ch; color:var(--rule)}
+details[open]>summary::before{content:"−"}
+details>*:not(summary){margin-top:.6rem}
+details p:last-child,details ul:last-child{margin-bottom:0}
+
+/* nav */
+nav.top{display:flex; justify-content:space-between; gap:1rem; font-family:var(--mono);
+  font-size:.75rem; margin:0 0 2.6rem; color:var(--soft)}
+nav.bottom{display:flex; justify-content:space-between; gap:1rem; font-family:var(--mono);
+  font-size:.8rem; margin-top:3.5rem; padding-top:1.2rem; border-top:1px solid var(--rule)}
+nav.bottom span{color:var(--rule)}
+
+/* index */
+.toc{list-style:none; padding:0; margin:0}
+.toc li{border-top:1px solid var(--rule-soft); padding:.85rem 0; display:flex;
+  gap:1.2ch; align-items:baseline}
+.toc li:last-child{border-bottom:1px solid var(--rule-soft)}
+.toc .n{font-family:var(--mono); font-size:.76rem; color:var(--soft); flex:0 0 3ch}
+.toc .t{flex:1 1 auto}
+.toc .t a{font-weight:600; text-decoration:none}
+.toc .t a:hover{text-decoration:underline}
+.toc .t small{display:block; color:var(--soft); font-size:.86rem; line-height:1.45}
+.toc .c{font-family:var(--mono); font-size:.7rem; color:var(--soft); flex:0 0 auto}
+
+.legend{display:flex; flex-wrap:wrap; gap:.6rem 1.4rem; font-size:.85rem;
+  color:var(--soft); margin:1.2rem 0 0}
+.legend span{display:flex; gap:.5ch; align-items:center}
+
+table{border-collapse:collapse; width:100%; font-size:.9rem; margin:0 0 1.4rem}
+th,td{text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--rule-soft);
+  vertical-align:top}
+th{font-family:var(--mono); font-size:.7rem; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--soft); border-bottom:1px solid var(--rule)}
+
+.note{border-left:2px solid var(--red); padding:.2rem 0 .2rem 1.1rem; margin:0 0 1.4rem;
+  color:var(--soft); font-size:.95rem}
+.note strong{color:var(--red); font-family:var(--mono); font-size:.72rem;
+  letter-spacing:.08em; text-transform:uppercase; display:block; margin-bottom:.2rem}
+
+.toolbar{display:flex; gap:.5rem; margin:0 0 1.6rem; flex-wrap:wrap}
+.toolbar button{font-family:var(--mono); font-size:.72rem; letter-spacing:.06em;
+  background:none; border:1px solid var(--rule); color:var(--soft); padding:.32rem .7rem;
+  border-radius:2px; cursor:pointer}
+.toolbar button:hover{border-color:var(--soft); color:var(--ink)}
+
+@media (max-width:640px){ body{font-size:16px} .wrap{padding:2.4rem 1.1rem 4rem}
+  h1{font-size:1.85rem} .d{padding-left:2.4ch} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
