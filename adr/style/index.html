@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Styling system — Architecture Decision Record</title>
+<link rel="stylesheet" href="style.css"></head>
+<body><div class="wrap">
+<p class="eyebrow">Architecture Decision Record</p>
+<h1>The styling system</h1>
+<p class="lede">A signal-driven, JSX-like TUI framework in Rust. Forty-eight decisions about how style
+is written, resolved, inherited, animated and finally turned into bytes — with what was rejected and
+why.</p>
+
+<pre><code>COMPILE TIME
+  style!{…}  ──▶ const Style   (partial, tri-state)
+
+ONCE PER TREE BUILD
+  component fn ──▶ nodes in slotmap arena
+
+PER CHANGE          (targeted write — no tree rebuild)
+  ① merge      slot default ◀ theme ctx ◀ passed style ◀ state
+  ② inherit    node.inherited: Rc&lt;Inherited&gt;
+
+PER FRAME
+  ③ animate    target ──interpolate──▶ presented
+  ④ layout     presented[Layout|Both] ──▶ taffy ──▶ integer edges
+  ⑤ paint      presented[Paint|Both] + TerminalProfile ──▶ cells
+  ⑥ diff       cell buffer diff ──▶ CUP + SGR bytes</code></pre>
+
+<h2>The three questions this record answers</h2>
+<table>
+<tr><th>Question</th><th>Answer</th></tr>
+<tr><td>Which syntax — CSS, SCSS, React Native, StyleX?</td>
+    <td><strong>None of them.</strong> A typed <code>Style</code> value with a <code>style!</code>
+    literal macro. StyleX's merge semantics are adopted; its compiler is not.
+    <a href="style-type.html">Domain 2</a></td></tr>
+<tr><td>Where does the styling layer live?</td>
+    <td><strong>Nowhere separate.</strong> No compilation stage and no stylesheet artifact — an effect
+    writes a value into a live node. <a href="pipeline.html">Domain 10</a></td></tr>
+<tr><td>Adopt the CSS spec, or write a TUI styling standard library?</td>
+    <td><strong>Neither wholesale.</strong> Flexbox semantics via Taffy; four units; deliberate
+    divergence on box model, borders and overflow. <a href="layout.html">Domain 5</a></td></tr>
+</table>
+
+<h2>Domains</h2>
+<ul class="toc">
+<li><span class="n">01</span><span class="t"><a href="scope.html">Scope of the styling system</a><small>What the framework owns, what it deliberately hands back to the application developer, and the single decision…</small></span><span class="c">4 decisions</span></li>
+<li><span class="n">02</span><span class="t"><a href="style-type.html">The Style type and how it is authored</a><small>One property table covering paint and layout, partial by construction, merged by argument order</small></span><span class="c">5 decisions</span></li>
+<li><span class="n">03</span><span class="t"><a href="reactivity.html">Reactivity and change propagation</a><small>How a signal change reaches the screen without rebuilding the tree</small></span><span class="c">5 decisions</span></li>
+<li><span class="n">04</span><span class="t"><a href="composition.html">Inheritance, states and composition</a><small>How styles flow down the tree, how a third-party component gets restyled, and how interactive state is expressed…</small></span><span class="c">5 decisions</span></li>
+<li><span class="n">05</span><span class="t"><a href="layout.html">Layout model, units and the box model</a><small>Where CSS semantics are adopted, where they are narrowed, and the three places the terminal has a better answer…</small></span><span class="c">7 decisions</span></li>
+<li><span class="n">06</span><span class="t"><a href="overlays.html">Overlays and layering</a><small>What replaces <code>overflow: visible</code> once it is gone</small></span><span class="c">3 decisions</span></li>
+<li><span class="n">07</span><span class="t"><a href="colour.html">Colour and capability degradation</a><small>One interface for the developer; the framework absorbs the difference between a modern terminal and a 16-colour…</small></span><span class="c">3 decisions</span></li>
+<li><span class="n">08</span><span class="t"><a href="text.html">Text measurement and the width oracle</a><small>The hardest correctness problem in the system, and the one Taffy does not solve</small></span><span class="c">9 decisions</span></li>
+<li><span class="n">09</span><span class="t"><a href="animation.html">Animation and transitions</a><small>Designed in structurally, enabled narrowly</small></span><span class="c">4 decisions</span></li>
+<li><span class="n">10</span><span class="t"><a href="pipeline.html">The pipeline and the renderer</a><small>Where the styling layer actually lives</small></span><span class="c">3 decisions</span></li>
+</ul>
+
+<div class="legend">
+  <span><span class="chip s-accepted">Accepted</span> decided and in scope for v1</span>
+  <span><span class="chip s-deferred">Deferred</span> out of v1, structurally preserved</span>
+  <span><span class="chip s-reserved">Reserved</span> shape fixed, capability unbuilt</span>
+  <span><span class="chip s-unverified">Unverified</span> rests on an unchecked claim</span>
+</div>
+
+<h2>Deferred with a required discipline</h2>
+<p>Each of these is out of scope for v1 but will be foreclosed unless one specific thing is done now.</p>
+<table>
+<tr><th>Capability</th><th>Discipline required now</th><th>Ref</th></tr>
+<tr><td>Scrolling</td><td>Clip at paint; never clamp children at layout</td>
+    <td><a href="layout.html#d5-7">D5.7</a></td></tr>
+<tr><td>Text wrapping</td><td>Measure signature takes available space and returns min/max content</td>
+    <td><a href="text.html#d8-4">D8.4</a></td></tr>
+<tr><td>Anchored overlays</td><td>Two-pass layout driver</td>
+    <td><a href="overlays.html#d6-3">D6.3</a></td></tr>
+<tr><td>Layout animation</td><td>Animator positioned before layout; two style slots per node</td>
+    <td><a href="animation.html#d9-1">D9.1</a></td></tr>
+<tr><td>Mid-session reprobing</td><td>Profile generation counter on every cached measurement</td>
+    <td><a href="text.html#d8-5">D8.5</a></td></tr>
+<tr><td>Finer overlay ordering</td><td>Sort key shaped <code>(Layer, i32)</code>, never CSS z-index</td>
+    <td><a href="overlays.html#d6-2">D6.2</a></td></tr>
+<tr><td>RTL and bidi</td><td>Cell writer indexed by position, not append order</td>
+    <td><a href="text.html#d8-7">D8.7</a></td></tr>
+</table>
+
+<h2>Status</h2>
+<p>Recorded 18 August 2026. Superseding a decision means adding a new entry rather than editing an
+old one; the rejected alternatives are the record's main value and should survive.</p>
+<p>The implementation-facing companion is <code>SPEC.md</code>, which states the same decisions as
+requirements without the reasoning.</p>
+</div></body></html>
