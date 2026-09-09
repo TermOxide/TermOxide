@@ -8,7 +8,10 @@
 //! lets the framework swap or support several backends without touching
 //! consumer code.
 
-use std::ops::{BitOr, BitOrAssign};
+use std::{
+    fmt,
+    ops::{BitOr, BitOrAssign},
+};
 
 /// A single keyboard key, independent of the terminal backend.
 ///
@@ -67,6 +70,12 @@ pub enum KeyCode {
 /// modifiers without a matching constant are dropped rather than represented
 /// here.
 ///
+/// The inner bits are private and the only ways to build a value are the
+/// constants below and unions of them through [`BitOr`] — a set is therefore
+/// never able to carry a bit that isn't one of the named modifiers, which is
+/// what lets the rest of the crate (and [`Display`](fmt::Display)) treat every
+/// bit as known.
+///
 /// ```
 /// use termoxide_event::event::KeyModifiers;
 ///
@@ -84,6 +93,13 @@ impl KeyModifiers {
     pub const ALT: Self = Self(1 << 2);
     /// Control key held.
     pub const CONTROL: Self = Self(1 << 1);
+    /// Every named modifier paired with its label, in [`Display`](fmt::Display) order.
+    const NAMED: [(Self, &'static str); 4] = [
+        (Self::SHIFT, "shift"),
+        (Self::CONTROL, "control"),
+        (Self::ALT, "alt"),
+        (Self::SUPER, "super"),
+    ];
     /// No modifier held.
     pub const NONE: Self = Self(0);
     /// Shift key held.
@@ -109,6 +125,27 @@ impl BitOr for KeyModifiers {
 
 impl BitOrAssign for KeyModifiers {
     fn bitor_assign(&mut self, rhs: Self) { self.0 |= rhs.0; }
+}
+
+impl fmt::Display for KeyModifiers {
+    /// Writes the held modifiers as `+`-separated lower-case names, or `none`
+    /// when nothing is held.
+    ///
+    /// Only bits with an entry in [`NAMED`](Self::NAMED) can be set: the
+    /// backend drops modifiers it has no constant for, and the inner `u8` is
+    /// private, so there is no way to build a set this cannot name.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_empty() {
+            return f.write_str("none");
+        }
+
+        let labels = Self::NAMED
+            .iter()
+            .filter(|(flag, _)| self.contains(*flag))
+            .map(|(_, label)| *label);
+
+        f.write_str(&labels.collect::<Vec<_>>().join("+"))
+    }
 }
 
 /// A single key press: which key, and which modifiers were held with it.
@@ -144,4 +181,23 @@ pub enum Event {
     /// A key was pressed. Only key *presses* are reported — releases and
     /// repeats are filtered out by the backend.
     KeyPress(KeyEvent),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::KeyModifiers;
+
+    #[test]
+    fn key_modifiers_display_uses_readable_names() {
+        assert_eq!(format!("{}", KeyModifiers::NONE), "none");
+        assert_eq!(format!("{}", KeyModifiers::CONTROL), "control");
+        assert_eq!(format!("{}", KeyModifiers::CONTROL | KeyModifiers::SHIFT), "shift+control");
+    }
+
+    #[test]
+    fn key_modifiers_display_names_every_known_flag() {
+        let all = KeyModifiers::SHIFT | KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER;
+
+        assert_eq!(format!("{all}"), "shift+control+alt+super");
+    }
 }
