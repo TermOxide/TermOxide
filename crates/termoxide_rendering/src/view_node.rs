@@ -28,6 +28,9 @@
 //! - **Dirty tracking**: the [`ViewNode::dirty`] flag is set by the reactive layer whenever a signal that the node
 //!   depends on changes.  The [`RenderLoop`][crate::render_loop::RenderLoop] only re-renders the sub-tree containing at
 //!   least one dirty node, keeping frame work low. (note implemented yet)
+//! - **Dirty tracking**: the [`ViewNode::dirty`] flag is set by the reactive layer whenever a signal that the node
+//!   depends on changes.  The application's main loop can use this to re-render only the sub-tree that changed, keeping
+//!   frame work low. (not implemented yet)
 //!
 //! - **Spatial metadata**: every node carries the terminal area ([`Rect`]) assigned to it by the layout engine so that
 //!   the [`EventRouter`][crate::event_router::EventRouter] can perform O(nodes) hit-testing without re-running layout.
@@ -168,7 +171,7 @@ impl std::fmt::Debug for ViewContent {
 /// 3. Component::render() returns a new ViewNode subtree
 /// 4. Renderer traverses the updated tree → Buffer
 /// 5. Buffer diff → write escape sequences to stdout
-/// ```
+/// | `dirty`       | Reactive layer | Main loop (skip-if-clean)        |
 ///
 /// ## Field reference
 ///

@@ -9,10 +9,7 @@
 
 use ratatui::{layout::Rect, style::Style};
 use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use termoxide_rendering::{
-    render_loop::App,
-    view_node::{ComponentId, ViewNode},
-};
+use termoxide_rendering::view_node::{ComponentId, ViewNode};
 
 // ─────────────────────────────────────────────────────────────────────────── //
 //  Form-like multi-field app
@@ -46,7 +43,7 @@ impl FormApp {
     }
 }
 
-impl App for FormApp {
+impl FormApp {
     fn build_view(&mut self, viewport: Rect) -> ViewNode {
         let mut children = Vec::new();
 
@@ -185,7 +182,7 @@ impl ModalApp {
     fn new() -> Self { Self { show_modal: false, modal_confirmed: false } }
 }
 
-impl App for ModalApp {
+impl ModalApp {
     fn build_view(&mut self, viewport: Rect) -> ViewNode {
         let mut children = vec![
             ViewNode::text(Rect::new(0, 0, viewport.width, viewport.height), "Background", Style::default()).with_id(1),
@@ -298,7 +295,8 @@ impl ListApp {
     }
 }
 
-impl App for ListApp {
+impl ListApp {
+    #[allow(dead_code)]
     fn build_view(&mut self, viewport: Rect) -> ViewNode {
         let mut children = Vec::new();
 
@@ -392,7 +390,8 @@ impl TabApp {
     }
 }
 
-impl App for TabApp {
+impl TabApp {
+    #[allow(dead_code)]
     fn build_view(&mut self, viewport: Rect) -> ViewNode {
         let mut children = Vec::new();
 
@@ -496,7 +495,8 @@ impl GameApp {
     fn new() -> Self { Self { state: AppState::Menu, score: 0 } }
 }
 
-impl App for GameApp {
+impl GameApp {
+    #[allow(dead_code)]
     fn build_view(&mut self, viewport: Rect) -> ViewNode {
         let content = match self.state {
             AppState::Menu => "Press P to Play".to_string(),

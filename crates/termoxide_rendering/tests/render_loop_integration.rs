@@ -1,4 +1,4 @@
-//! Integration tests for the RenderLoop component.
+//! Integration tests for the rendering pipeline components.
 //!
 //! Tests the complete event → layout → render cycle, including:
 //! - app lifecycle (build_view, handle_event)
@@ -10,7 +10,6 @@ use ratatui::{Terminal, backend::TestBackend, layout::Rect, style::Style};
 use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use termoxide_rendering::{
     event_router::EventRouter,
-    render_loop::App,
     renderer::Renderer,
     view_node::{ComponentId, ViewNode},
 };
@@ -29,7 +28,8 @@ impl CounterApp {
     fn new() -> Self { Self { count: 0, last_event: None } }
 }
 
-impl App for CounterApp {
+impl CounterApp {
+    #[allow(dead_code)]
     fn build_view(&mut self, viewport: Rect) -> ViewNode {
         let text = format!("Count: {}", self.count);
         ViewNode::text(viewport, text, Style::default())
@@ -212,7 +212,8 @@ impl MultiComponentApp {
     fn new() -> Self { Self { focused_id: Some(1), events_received: Vec::new() } }
 }
 
-impl App for MultiComponentApp {
+impl MultiComponentApp {
+    #[allow(dead_code)]
     fn build_view(&mut self, viewport: Rect) -> ViewNode {
         let left = ViewNode::text(Rect::new(0, 0, 40, 24), "Left Panel", Style::default()).with_id(1);
 
