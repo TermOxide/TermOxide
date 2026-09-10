@@ -202,9 +202,11 @@ impl<B: Backend> Renderer<B> {
     pub fn draw_node(node: &ViewNode, buf: &mut Buffer) {
         // Draw this node's own content.
         match &node.content {
-            ViewContent::Container => {
-                // Pure layout node — no visual output. Children are handled
-                // below.
+            ViewContent::Container { style } => {
+                // Painted before the children below, so they draw on top of it.
+                // `set_style` patches attributes rather than replacing cells, so
+                // a `Style::default()` container is a no-op and stays invisible.
+                buf.set_style(node.area, *style);
             },
 
             ViewContent::Text { text, style } => {
@@ -283,7 +285,7 @@ mod tests {
     use ratatui::{
         backend::{CrosstermBackend, TestBackend},
         layout::Rect,
-        style::Style,
+        style::{Color, Style},
     };
 
     use super::*;
@@ -299,6 +301,48 @@ mod tests {
         assert_eq!(buf.get(0, 0).symbol(), "a");
         assert_eq!(buf.get(1, 0).symbol(), "b");
         assert_eq!(buf.get(2, 0).symbol(), "c");
+    }
+
+    #[test]
+    fn draw_node_paints_the_container_style_across_its_area() {
+        let area = Rect::new(0, 0, 2, 2);
+        let node = ViewNode::styled_container(area, Vec::new(), Style::default().bg(Color::Blue));
+        let mut buf = Buffer::empty(area);
+
+        Renderer::<TestBackend>::draw_node(&node, &mut buf);
+
+        for (x, y) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+            assert_eq!(buf.get(x, y).bg, Color::Blue);
+        }
+    }
+
+    #[test]
+    fn draw_node_leaves_a_default_styled_container_invisible() {
+        let area = Rect::new(0, 0, 1, 1);
+        let node = ViewNode::container(area, Vec::new());
+        let mut buf = Buffer::empty(area);
+
+        Renderer::<TestBackend>::draw_node(&node, &mut buf);
+
+        assert_eq!(*buf.get(0, 0), ratatui::buffer::Cell::default());
+    }
+
+    #[test]
+    fn draw_node_draws_children_over_the_container_style() {
+        let area = Rect::new(0, 0, 1, 1);
+        let node = ViewNode::styled_container(
+            area,
+            vec![ViewNode::text(area, "X", Style::default().fg(Color::Red))],
+            Style::default().bg(Color::Blue),
+        );
+        let mut buf = Buffer::empty(area);
+
+        Renderer::<TestBackend>::draw_node(&node, &mut buf);
+
+        // The child keeps its own foreground, on the container's background.
+        assert_eq!(buf.get(0, 0).symbol(), "X");
+        assert_eq!(buf.get(0, 0).fg, Color::Red);
+        assert_eq!(buf.get(0, 0).bg, Color::Blue);
     }
 
     #[test]

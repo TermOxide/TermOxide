@@ -89,12 +89,18 @@ pub type RawDrawFn = dyn Fn(&mut Buffer, Rect) + Send;
 pub enum ViewContent {
     // ── Structural
     // ────────────────────────────────────────────────────────── //
-    /// A pure layout container — renders nothing itself but positions its
-    /// children inside [`ViewNode::area`].
+    /// A layout container: positions its children inside [`ViewNode::area`]
+    /// and paints its own [`Style`] across that area first.
     ///
-    /// Used for `<div>`-like groupings, flex rows, and any node whose only
-    /// job is to own a set of children.
-    Container,
+    /// Used for `<div>`-like groupings, flex rows, and any node whose main job
+    /// is to own a set of children. With [`Style::default()`] — which patches
+    /// no attribute — the node contributes nothing of its own and only the
+    /// children are visible.
+    Container {
+        /// Ratatui style painted across [`ViewNode::area`] before children are
+        /// drawn on top.
+        style: Style,
+    },
 
     // ── Primitive content
     // ─────────────────────────────────────────────────── //
@@ -145,7 +151,7 @@ pub enum ViewContent {
 impl std::fmt::Debug for ViewContent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Container => write!(f, "Container"),
+            Self::Container { .. } => write!(f, "Container"),
             Self::Text { text, .. } => f.debug_struct("Text").field("text", text).finish(),
             Self::Raw(_) => write!(f, "Raw(<fn>)"),
         }
@@ -225,10 +231,36 @@ impl ViewNode {
     /// use termoxide_rendering::view_node::ViewNode;
     ///
     /// let root = ViewNode::container(Rect::new(0, 0, 80, 24), vec![]);
-    /// assert!(matches!(root.content, termoxide_rendering::view_node::ViewContent::Container));
+    /// assert!(matches!(
+    ///     root.content,
+    ///     termoxide_rendering::view_node::ViewContent::Container { .. }
+    /// ));
     /// ```
     pub fn container(area: Rect, children: Vec<ViewNode>) -> Self {
-        Self { id: None, area, content: ViewContent::Container, children }
+        Self {
+            id: None,
+            area,
+            content: ViewContent::Container { style: Style::default() },
+            children,
+        }
+    }
+
+    /// Build a container that paints `style` across `area` before drawing its
+    /// children.
+    ///
+    /// ```rust
+    /// use ratatui::{
+    ///     layout::Rect,
+    ///     style::{Color, Style},
+    /// };
+    /// use termoxide_rendering::view_node::{ViewContent, ViewNode};
+    ///
+    /// let panel = ViewNode::styled_container(Rect::new(0, 0, 20, 5), vec![], Style::default().bg(Color::Blue));
+    ///
+    /// assert!(matches!(panel.content, ViewContent::Container { .. }));
+    /// ```
+    pub fn styled_container(area: Rect, children: Vec<ViewNode>, style: Style) -> Self {
+        Self { id: None, area, content: ViewContent::Container { style }, children }
     }
 
     /// Create a single-line text node.
