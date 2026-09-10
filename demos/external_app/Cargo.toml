@@ -1,0 +1,16 @@
+[package]
+name = "external_app"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[dependencies]
+any_spawner = { version = "0.3", features = ["tokio"] }
+color-eyre = "0.6"
+ratatui = { version = "0.26", features = ["crossterm"] }
+termoxide = { path = "../../crates/termoxide" }
+termoxide_event = { path = "../../crates/termoxide_event" }
+termoxide_reactive = { path = "../../crates/termoxide_reactive" }
+termoxide_rendering = { path = "../../crates/termoxide_rendering" }
+tokio = { version = "1", features = ["rt", "macros"] }

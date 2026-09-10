@@ -91,8 +91,10 @@ jobs:
       base_ref: ${{ needs.resolve-inputs.outputs.base_ref }}
 
   # ---------------------------------------------------------------------------
-  # Run lint / format / build in parallel over changed crates.
-  # Each leg uploads a one-line artifact so post-review can show per-check status.
+  # Run lint / format / build in parallel over changed crates, then over the
+  # standalone demo apps.
+  # Each leg uploads one one-line artifact per scope (crates, demos) so
+  # post-review can show per-check status.
   # ---------------------------------------------------------------------------
   verify-code-guidelines:
     name: "Guidelines · ${{ matrix.action.name }}"
@@ -151,9 +153,37 @@ jobs:
           done
           exit $failed
 
-      - name: Save result
+      # Demo apps are standalone workspaces (each manifest carries its own
+      # [workspace] table) so the changed-crates detector never reports them.
+      # Check them explicitly on every run: they are what proves the crates
+      # still compile from outside the workspace, for an external consumer.
+      - name: Run ${{ matrix.action.name }} on demo apps
+        id: demos
         if: always()
-        run: echo "${{ steps.check.outcome }}" > /tmp/check-result.txt
+        env:
+          # Land demo artifacts in the workspace target dir, which is cached.
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: |
+          shopt -s nullglob
+          manifests=(demos/*/Cargo.toml)
+          shopt -u nullglob
+          if [[ ${#manifests[@]} -eq 0 ]]; then
+            echo "No demo apps found, skipping."
+            exit 0
+          fi
+          failed=0
+          for manifest in "${manifests[@]}"; do
+            echo "::group::cargo ${{ matrix.action.command }} --manifest-path ${manifest} ${{ matrix.action.arguments }}"
+            cargo ${{ matrix.action.command }} --manifest-path "$manifest" ${{ matrix.action.arguments }} || failed=1
+            echo "::endgroup::"
+          done
+          exit $failed
+
+      - name: Save results
+        if: always()
+        run: |
+          echo "${{ steps.check.outcome }}" > /tmp/check-result.txt
+          echo "${{ steps.demos.outcome }}" > /tmp/demos-result.txt
 
       - name: Upload result artifact
         if: always()
@@ -161,6 +191,14 @@ jobs:
         with:
           name: guidelines-${{ matrix.action.name }}
           path: /tmp/check-result.txt
+          retention-days: 1
+
+      - name: Upload demos result artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: demos-${{ matrix.action.name }}
+          path: /tmp/demos-result.txt
           retention-days: 1
 
   # Run the test suite with coverage via cargo-tarpaulin and push to Codecov.
@@ -445,37 +483,53 @@ jobs:
               }
             };
 
-            // -- Code Guidelines section --------------------------------------
-            const guidelineChecks = ['lint', 'format', 'build'];
+            // -- Matrix sections (crates, demos) ------------------------------
+            // Both scopes run the same lint/format/build matrix and upload the
+            // same one-line artifact per leg, so render them the same way.
+            const matrixChecks = ['lint', 'format', 'build'];
 
-            const guidelineResults = guidelineChecks.map(name => {
-              const raw = readArtifact(`guidelines-${name}`, 'check-result.txt');
-              return { name, passed: raw === 'success', available: raw !== null };
-            });
+            const renderMatrixSection = (heading, artifactPrefix, fileName) => {
+              const results = matrixChecks.map(name => {
+                const raw = readArtifact(`${artifactPrefix}-${name}`, fileName);
+                return { name, passed: raw === 'success', available: raw !== null };
+              });
 
-            const guidelinesReq = guidelineResults
-              .map(({ name, passed, available }) =>
-                available
-                  ? `${passed ? '✅' : '❌'} \`${name}\``
-                  : `⚠️ \`${name}\` (result unavailable)`
-              )
-              .join('\n');
+              const requirements = results
+                .map(({ name, passed, available }) =>
+                  available
+                    ? `${passed ? '✅' : '❌'} \`${name}\``
+                    : `⚠️ \`${name}\` (result unavailable)`
+                )
+                .join('\n');
 
-            const guidelinesFailed = guidelineResults.some(r => !r.passed);
+              const failed = results.some(r => !r.passed);
 
-            const guidelinesSection = [
+              const section = [
+                heading,
+                '',
+                '### Requirements',
+                '',
+                requirements,
+                '',
+                '### Errors',
+                '',
+                failed
+                  ? `One or more checks failed. Check the [CI logs](${runUrl}) for details.`
+                  : '_No errors_',
+              ].join('\n');
+
+              return { section, failed };
+            };
+
+            const guidelines = renderMatrixSection(
               '## 🔧 Code Guidelines',
-              '',
-              '### Requirements',
-              '',
-              guidelinesReq,
-              '',
-              '### Errors',
-              '',
-              guidelinesFailed
-                ? `One or more checks failed. Check the [CI logs](${runUrl}) for details.`
-                : '_No errors_',
-            ].join('\n');
+              'guidelines',
+              'check-result.txt',
+            );
+
+            // Demo apps sit outside the root workspace, so they get their own
+            // section rather than hiding behind the changed-crates status.
+            const demos = renderMatrixSection('## 🎬 Demo Apps', 'demos', 'demos-result.txt');
 
             // -- Tests section ------------------------------------------------
             const testsSection =
@@ -564,7 +618,8 @@ jobs:
 
             // -- Overall header -----------------------------------------------
             const hasNonCodecovErrors =
-              guidelinesFailed ||
+              guidelines.failed ||
+              demos.failed ||
               coverageUnavailable ||
               process.env.METADATA_RESULT === 'failure';
 
@@ -581,7 +636,9 @@ jobs:
               '',
               `# ${headerIcon} PR Validation Status`,
               '',
-              guidelinesSection,
+              guidelines.section,
+              '',
+              demos.section,
               '',
               testsSection,
               '',
