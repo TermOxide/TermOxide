@@ -43,6 +43,7 @@
 //! let _ = Rect::default();
 //! ```
 
+pub mod builder;
 pub mod event_router;
 pub mod renderer;
 pub mod view_node;
