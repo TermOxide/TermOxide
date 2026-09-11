@@ -17,6 +17,7 @@ struct AppState {
     count: Signal<u32>,
     ticks: Signal<u64>,
     last_key: Signal<String>,
+    last_mouse: Signal<String>,
 }
 
 impl AppState {
@@ -25,6 +26,7 @@ impl AppState {
             count: Signal::new(0),
             ticks: Signal::new(0),
             last_key: Signal::new(String::from("waiting for input")),
+            last_mouse: Signal::new(String::from("waiting for input")),
         }
     }
 
@@ -47,6 +49,7 @@ impl App for AppState {
         let _ = self.count.get();
         let _ = self.ticks.get();
         let _ = self.last_key.get();
+        let _ = self.last_mouse.get();
     }
 
     fn on_tick(&self) { self.ticks.update(|ticks| *ticks += 1); }
@@ -55,6 +58,7 @@ impl App for AppState {
         match event {
             Event::ChannelReady => {
                 self.last_key.set(String::from("waiting for input"));
+                self.last_mouse.set(String::from("waiting for input"));
                 false
             },
             Event::KeyPress(key) => {
@@ -62,6 +66,13 @@ impl App for AppState {
                 self.last_key.set(format!("key {}+{:?}", key.modifiers, key.code));
                 key.code == KeyCode::Char('q')
                     || (key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL)
+            },
+            Event::Mouse(mouse) => {
+                self.last_mouse.set(format!(
+                    "{:?} at {}:{} with {}",
+                    mouse.kind, mouse.column, mouse.row, mouse.modifiers
+                ));
+                false
             },
         }
     }
@@ -88,7 +99,13 @@ impl App for AppState {
             Self::line(
                 viewport,
                 2,
-                "Controls: any key counts, q or Ctrl-C quits".to_string(),
+                format!("last mouse event: {}", self.last_mouse.get_untracked()),
+                Style::default().fg(Color::Magenta),
+            ),
+            Self::line(
+                viewport,
+                3,
+                "Controls: any key counts, the mouse is reported, q or Ctrl-C quits".to_string(),
                 Style::default().fg(Color::Green),
             ),
         ]
