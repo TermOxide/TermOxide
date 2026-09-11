@@ -29,10 +29,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         thread::sleep(Duration::from_millis(16));
     }
 
-    // Stop the reader thread and restore the terminal, inspecting the outcome.
-    match stream.teardown() {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(error)) => Err(Box::new(error)),
-        Err(_panic) => Err("reader thread panicked".into()),
-    }
+    // Stop the reader thread and restore the terminal, surfacing any error.
+    stream.teardown()?;
+    Ok(())
 }

@@ -10,47 +10,17 @@
 //! providing another translation step and read loop — no consumer of the
 //! crate needs to change.
 
-use std::{fmt, io, sync::mpsc, time::Duration};
+use std::{sync::mpsc, time::Duration};
 
 use crossterm::{
     event::{poll, read},
     terminal::{disable_raw_mode, enable_raw_mode},
 };
 
-use crate::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-
-/// Error returned by the reader loop when it cannot make progress.
-#[derive(Debug)]
-pub enum SendEventError {
-    /// The receiving end of the event channel was dropped, so translated
-    /// events can no longer be delivered.
-    ChannelError(mpsc::SendError<Event>),
-    /// A `crossterm` terminal operation failed (polling, reading, or
-    /// enabling/disabling raw mode).
-    TerminalError(io::Error),
-}
-
-impl fmt::Display for SendEventError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SendEventError::ChannelError(error) => {
-                write!(f, "event channel receiver was dropped: {error}")
-            },
-            SendEventError::TerminalError(error) => {
-                write!(f, "terminal operation failed: {error}")
-            },
-        }
-    }
-}
-
-impl std::error::Error for SendEventError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            SendEventError::ChannelError(error) => Some(error),
-            SendEventError::TerminalError(error) => Some(error),
-        }
-    }
-}
+use crate::{
+    error::{Error, Result},
+    event::{Event, KeyCode, KeyEvent, KeyModifiers},
+};
 
 /// Translate a raw `crossterm` event into a crate [`Event`].
 ///
@@ -135,20 +105,19 @@ fn to_keycode(code: crossterm::event::KeyCode) -> Option<KeyCode> {
 ///
 /// # Errors
 ///
-/// - [`SendEventError::TerminalError`] if polling or reading fails.
-/// - [`SendEventError::ChannelError`] if the receiver has been dropped and a translated event can no longer be
-///   delivered.
-fn send_events(events_tx: &mpsc::Sender<Event>, shutdown: &mpsc::Receiver<()>) -> Result<(), SendEventError> {
+/// - [`Error::Terminal`] if polling or reading fails.
+/// - [`Error::Channel`] if the receiver has been dropped and a translated event can no longer be delivered.
+fn send_events(events_tx: &mpsc::Sender<Event>, shutdown: &mpsc::Receiver<()>) -> Result<()> {
     loop {
         match shutdown.try_recv() {
             Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
             Err(mpsc::TryRecvError::Empty) => {},
         }
 
-        if poll(Duration::from_millis(100)).map_err(SendEventError::TerminalError)? {
-            let event = read().map_err(SendEventError::TerminalError)?;
+        if poll(Duration::from_millis(100)).map_err(Error::Terminal)? {
+            let event = read().map_err(Error::Terminal)?;
             if let Some(translated_event) = translate(event) {
-                events_tx.send(translated_event).map_err(SendEventError::ChannelError)?;
+                events_tx.send(translated_event).map_err(Error::Channel)?;
             }
         }
     }
@@ -166,20 +135,17 @@ fn send_events(events_tx: &mpsc::Sender<Event>, shutdown: &mpsc::Receiver<()>) -
 ///
 /// Returns the error produced by [`send_events`], if any. When the loop itself
 /// succeeded but `disable_raw_mode` fails, that teardown failure is surfaced
-/// instead as a [`SendEventError::TerminalError`]; a loop error takes
-/// precedence over a teardown error and is preserved unchanged.
-pub(crate) fn read_events(
-    events_tx: mpsc::Sender<Event>,
-    shutdown_rx: mpsc::Receiver<()>,
-) -> Result<(), SendEventError> {
-    enable_raw_mode().map_err(SendEventError::TerminalError)?;
+/// instead as an [`Error::Terminal`]; a loop error takes precedence over a
+/// teardown error and is preserved unchanged.
+pub(crate) fn read_events(events_tx: mpsc::Sender<Event>, shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
+    enable_raw_mode().map_err(Error::Terminal)?;
 
     let result = send_events(&events_tx, &shutdown_rx);
 
     if let Err(disable_error) = disable_raw_mode()
         && result.is_ok()
     {
-        return Err(SendEventError::TerminalError(disable_error));
+        return Err(Error::Terminal(disable_error));
     }
 
     result
@@ -383,41 +349,5 @@ mod tests {
             let described = format!("{event:?}");
             assert_eq!(translate(event), None, "expected None for {described}");
         }
-    }
-
-    #[test]
-    fn display_channel_error_describes_dropped_receiver() {
-        let error = SendEventError::ChannelError(mpsc::SendError(Event::ChannelReady));
-        assert_eq!(
-            format!("{error}"),
-            "event channel receiver was dropped: sending on a closed channel"
-        );
-    }
-
-    #[test]
-    fn display_terminal_error_wraps_inner_message() {
-        let inner = io::Error::other("boom");
-        let error = SendEventError::TerminalError(inner);
-        assert_eq!(format!("{error}"), "terminal operation failed: boom");
-    }
-
-    #[test]
-    fn source_exposes_the_inner_error() {
-        use std::error::Error as _;
-
-        let channel = SendEventError::ChannelError(mpsc::SendError(Event::ChannelReady));
-        assert!(
-            channel
-                .source()
-                .and_then(|s| s.downcast_ref::<mpsc::SendError<Event>>())
-                .is_some(),
-            "ChannelError source should be the inner SendError"
-        );
-
-        let terminal = SendEventError::TerminalError(io::Error::other("boom"));
-        assert!(
-            terminal.source().and_then(|s| s.downcast_ref::<io::Error>()).is_some(),
-            "TerminalError source should be the inner io::Error"
-        );
     }
 }

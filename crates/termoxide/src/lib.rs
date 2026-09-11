@@ -29,7 +29,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use color_eyre::{Result, eyre::eyre};
+use color_eyre::Result;
 use ratatui::{
     Terminal,
     backend::{Backend, CrosstermBackend},
@@ -189,10 +189,8 @@ pub async fn run_with_app<A: App + Clone + 'static>(app: A) -> Result<()> {
     // place, so its result is worth surfacing rather than discarding.
     let teardown = events.teardown();
     result?;
-    match teardown {
-        Ok(reader_result) => reader_result.map_err(Into::into),
-        Err(_) => Err(eyre!("terminal input reader thread panicked")),
-    }
+    teardown?;
+    Ok(())
 }
 
 /// The loop proper, generic over the backend and the event source so it can be
