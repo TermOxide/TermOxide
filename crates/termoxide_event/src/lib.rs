@@ -10,14 +10,20 @@
 //! |Type|Role|
 //! |------|------|
 //! |[`EventStream`]|Handle owning the reader thread|
-//! |[`Event`]|A single event (handshake or key press) delivered by the stream|
+//! |[`Event`]|A single event (handshake, key press or mouse action) delivered by the stream|
 //! |[`KeyEvent`](event::KeyEvent)|A key press: a key code plus its modifiers|
 //! |[`KeyCode`](event::KeyCode)|Backend-agnostic key identifier|
-//! |[`KeyModifiers`](event::KeyModifiers)|Modifier keys held during a press|
+//! |[`KeyModifiers`](event::KeyModifiers)|Modifier keys held during a press or a mouse action|
+//! |[`MouseEvent`](event::MouseEvent)|A mouse action: a kind, a cell position and its modifiers|
+//! |[`MouseEventKind`](event::MouseEventKind)|What the mouse did: button, move or scroll|
+//! |[`MouseButton`](event::MouseButton)|Which button a button action involved|
 //! |[`Error`] / [`Result`]|Error reported by the reader, and its `Result` alias|
 //!
-//! Raw mode is enabled while the stream is alive and restored when it is
-//! dropped, so the terminal is never left in a broken state.
+//! Raw mode and mouse reporting are enabled while the stream is alive and both
+//! restored when it is dropped, so the terminal is never left in a broken
+//! state. Mouse reporting is unconditional: while it is on, the terminal stops
+//! handling text selection itself, which most terminals still offer with
+//! `Shift` held.
 //!
 //! ## Quickstart
 //!
@@ -38,6 +44,9 @@
 //!             Event::KeyPress(key) => {
 //!                 println!("key pressed: {:?} with {:?}", key.code, key.modifiers);
 //!                 break 'run;
+//!             },
+//!             Event::Mouse(mouse) => {
+//!                 println!("mouse {:?} at {}:{}", mouse.kind, mouse.column, mouse.row);
 //!             },
 //!         }
 //!     }

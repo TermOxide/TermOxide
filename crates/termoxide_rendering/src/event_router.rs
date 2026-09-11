@@ -25,8 +25,9 @@
 //!
 //! Focus is never assigned: there is no `set_focus` yet and no Tab / Shift-Tab
 //! traversal, so [`EventRouter::route_event`] always returns `None` and the
-//! hit map is built but not yet consulted.  Mouse hit-testing is likewise not
-//! wired up — [`termoxide_event`] does not carry mouse events at all today.
+//! hit map is built but not yet consulted.  Mouse events now reach the router,
+//! but hit-testing is not wired up either: they are routed to `None` instead of
+//! to the component under the pointer.
 //!
 //! ## Example
 //!
@@ -145,7 +146,9 @@ impl KeySignalBindings {
                 }
                 updates
             },
-            Event::ChannelReady => 0,
+            // Bindings match on a key and its modifiers, so nothing here can
+            // be triggered by the mouse or by the stream handshake.
+            Event::ChannelReady | Event::Mouse(_) => 0,
         }
     }
 
@@ -271,14 +274,19 @@ impl EventRouter {
     /// Determine which component should handle `event` and return its id.
     ///
     /// - **Key press**: applies the matching global bindings, then returns [`Self::focused`].
+    /// - **Mouse action**: routed to `None` for now — the hit map that would name the component under the pointer is
+    ///   built by [`sync_hit_map`][Self::sync_hit_map] but not yet consulted.
     /// - **[`Event::ChannelReady`]**: a stream handshake carrying no input, routed to `None`.
     ///
     /// Note that the input stream only ever reports key *presses*: releases and
     /// repeats are already filtered out by [`termoxide_event`], so there is no
-    /// event kind left to check here.
+    /// key event kind left to check here.
     pub fn route_event(&mut self, event: &Event, _root: &ViewNode) -> Option<ComponentId> {
         match *event {
             Event::KeyPress(key) => self.route_key(key),
+            // Hit-testing is not implemented yet, so a mouse action has no
+            // target: see the module-level "Current limitations".
+            Event::Mouse(_) => None,
             // Stream handshake — no target, nothing to bind.
             Event::ChannelReady => None,
         }
@@ -321,6 +329,7 @@ fn contains(rect: Rect, col: u16, row: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use ratatui::style::Style;
+    use termoxide_event::event::{MouseButton, MouseEvent, MouseEventKind};
     use termoxide_reactive::{Signal, with_owner};
 
     use super::*;
@@ -369,6 +378,32 @@ mod tests {
             });
 
             assert_eq!(router.route_event(&Event::ChannelReady, &root), None);
+            assert_eq!(signal.get_untracked(), 0);
+        });
+    }
+
+    #[test]
+    fn mouse_events_are_routed_nowhere_and_trigger_no_binding() {
+        with_owner(|| {
+            let root = make_tree();
+            let mut router = EventRouter::new();
+            let signal = Signal::new(0i32);
+
+            router.bind_key_update(KeyBinding::new(KeyCode::Char('k'), KeyModifiers::NONE), signal, |value| {
+                *value += 1
+            });
+
+            // The click lands inside the left component, which has an id and
+            // sits in the hit map — routing still yields `None` until
+            // hit-testing is implemented.
+            let click = Event::Mouse(MouseEvent::new(
+                MouseEventKind::Down(MouseButton::Left),
+                10,
+                10,
+                KeyModifiers::NONE,
+            ));
+
+            assert_eq!(router.route_event(&click, &root), None);
             assert_eq!(signal.get_untracked(), 0);
         });
     }

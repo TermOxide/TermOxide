@@ -166,6 +166,84 @@ impl KeyEvent {
     pub const fn new(code: KeyCode, modifiers: KeyModifiers) -> Self { Self { code, modifiers } }
 }
 
+/// A mouse button, independent of the terminal backend.
+///
+/// Terminals only ever report these three buttons: an extra side button is
+/// either reported as one of them or not reported at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MouseButton {
+    /// Left mouse button.
+    Left,
+    /// Right mouse button.
+    Right,
+    /// Middle mouse button, usually the wheel pressed down.
+    Middle,
+}
+
+/// What a [`MouseEvent`] reports: a button action, a bare move, or a scroll.
+///
+/// Every kind a terminal can report has a variant here, so translating one
+/// never loses an event — unlike [`KeyCode`], which drops the keys it cannot
+/// name.
+///
+/// ## Unreported buttons
+///
+/// Some terminals do not say which button was involved in an [`Up`](Self::Up)
+/// or a [`Drag`](Self::Drag). [`MouseButton::Left`] is reported in that case,
+/// because that is all the backend knows; it is not evidence that the left
+/// button was the one used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MouseEventKind {
+    /// A button was pressed.
+    Down(MouseButton),
+    /// A button was released.
+    Up(MouseButton),
+    /// The pointer moved with a button held.
+    Drag(MouseButton),
+    /// The pointer moved with no button held.
+    ///
+    /// Reported for every cell the pointer crosses, which makes it by far the
+    /// most frequent kind: an application that does not track hovering should
+    /// discard it early.
+    Moved,
+    /// The wheel was scrolled up, away from the user.
+    ScrollUp,
+    /// The wheel was scrolled down, towards the user.
+    ScrollDown,
+    /// The wheel was tilted left, mostly on a laptop touchpad.
+    ScrollLeft,
+    /// The wheel was tilted right, mostly on a laptop touchpad.
+    ScrollRight,
+}
+
+/// A single mouse action: what happened, where, and with which modifiers held.
+///
+/// The position is expressed in terminal cells, `(0, 0)` being the top-left
+/// corner of the terminal. That is the same coordinate space components are
+/// laid out in, so a position can be compared against their areas without any
+/// conversion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MouseEvent {
+    /// What the mouse did.
+    pub kind: MouseEventKind,
+    /// Column of the cell the pointer was over, counted from 0.
+    pub column: u16,
+    /// Row of the cell the pointer was over, counted from 0.
+    pub row: u16,
+    /// Modifiers held down during the action.
+    ///
+    /// Mouse actions share [`KeyModifiers`] with key presses, because a
+    /// terminal reports the same modifier set for both.
+    pub modifiers: KeyModifiers,
+}
+
+impl MouseEvent {
+    /// Build a mouse action descriptor.
+    pub const fn new(kind: MouseEventKind, column: u16, row: u16, modifiers: KeyModifiers) -> Self {
+        Self { kind, column, row, modifiers }
+    }
+}
+
 /// An event delivered by an [`EventStream`](crate::EventStream).
 ///
 /// This is the single unit of communication flowing from the background
@@ -181,6 +259,12 @@ pub enum Event {
     /// A key was pressed. Only key *presses* are reported — releases and
     /// repeats are filtered out by the backend.
     KeyPress(KeyEvent),
+    /// The mouse was used: a button action, a move, or a scroll.
+    ///
+    /// Mouse reporting is a terminal mode the stream turns on for its own
+    /// lifetime, so these only flow while an
+    /// [`EventStream`](crate::EventStream) is alive.
+    Mouse(MouseEvent),
 }
 
 #[cfg(test)]
