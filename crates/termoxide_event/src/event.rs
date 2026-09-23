@@ -263,7 +263,9 @@ pub enum Event {
     ///
     /// Mouse reporting is a terminal mode the stream turns on for its own
     /// lifetime, so these only flow while an
-    /// [`EventStream`](crate::EventStream) is alive.
+    /// [`EventStream`](crate::EventStream) is alive — and never for one
+    /// started with [`EventStreamConfig::mouse_capture`](crate::EventStreamConfig::mouse_capture)
+    /// turned off.
     Mouse(MouseEvent),
 }
 

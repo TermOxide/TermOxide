@@ -13,7 +13,7 @@ use std::{
 };
 
 use serial_test::serial;
-use termoxide_event::{EventStream, event::Event};
+use termoxide_event::{EventStream, EventStreamConfig, event::Event};
 
 /// Block the test until the stream yields at least one event, or fail after a
 /// deadline.
@@ -103,4 +103,29 @@ fn drop_immediately_shuts_down_cleanly() {
     // `drop` signals shutdown and joins the thread cleanly.
     let events = EventStream::new();
     drop(events);
+}
+
+#[test]
+#[serial]
+fn stream_without_mouse_capture_starts_and_tears_down() {
+    // Opting out skips a setup step, so the stream must still start, hand out
+    // its handshake, and restore the terminal like a default one.
+    let events = EventStream::with_config(EventStreamConfig::default().mouse_capture(false));
+    let received = wait_for_events(&events);
+    assert_eq!(
+        received.first(),
+        Some(&Event::ChannelReady),
+        "the first polled event should be ChannelReady"
+    );
+
+    let (done_tx, done_rx) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = events.teardown();
+        let _ = done_tx.send(());
+    });
+
+    assert!(
+        done_rx.recv_timeout(Duration::from_secs(3)).is_ok(),
+        "EventStream::teardown did not complete: the thread was not stopped"
+    );
 }

@@ -19,6 +19,7 @@ use crossterm::{
 };
 
 use crate::{
+    config::EventStreamConfig,
     error::{Error, Result},
     event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind},
 };
@@ -166,13 +167,14 @@ fn send_events(events_tx: &mpsc::Sender<Event>, shutdown: &mpsc::Receiver<()>) -
     Ok(())
 }
 
-/// Put the terminal into the two modes the reader needs: raw input, and mouse
-/// reporting.
+/// Put the terminal into the modes the reader needs: raw input and, unless
+/// `config` opts out of it, mouse reporting.
 ///
-/// Mouse capture is unconditional, so any application driven by the stream can
+/// Mouse capture is on by default, so any application driven by the stream can
 /// react to clicks without asking for them. While it is on, the terminal stops
 /// handling text selection itself — most terminals still select with `Shift`
-/// held. Whether this should stay unconditional is still open; see ADR-0007.
+/// held — which is why an application that ignores the mouse can turn it off
+/// (ADR-0007).
 ///
 /// Enabling capture after raw mode is deliberate, and so is undoing raw mode
 /// when it fails: the caller has no handle to restore the terminal with, so a
@@ -181,8 +183,12 @@ fn send_events(events_tx: &mpsc::Sender<Event>, shutdown: &mpsc::Receiver<()>) -
 /// # Errors
 ///
 /// - [`Error::Terminal`] if raw mode or mouse reporting cannot be enabled.
-fn setup_terminal() -> Result<()> {
+fn setup_terminal(config: EventStreamConfig) -> Result<()> {
     enable_raw_mode().map_err(Error::Terminal)?;
+
+    if !config.mouse_capture {
+        return Ok(());
+    }
 
     if let Err(error) = execute!(stdout(), EnableMouseCapture) {
         let _ = disable_raw_mode();
@@ -196,7 +202,9 @@ fn setup_terminal() -> Result<()> {
 ///
 /// Both restorations are attempted even when the first one fails, so a broken
 /// step never leaves the other mode enabled behind it; the first failure is
-/// the one reported.
+/// the one reported. Mouse reporting is disabled even when the stream opted
+/// out of it: turning off a mode that is already off is harmless, and it keeps
+/// the teardown independent of how the stream was set up.
 ///
 /// # Errors
 ///
@@ -222,8 +230,12 @@ fn restore_terminal() -> Result<()> {
 /// succeeded but restoring the terminal fails, that teardown failure is
 /// surfaced instead as an [`Error::Terminal`]; a loop error takes precedence
 /// over a teardown error and is preserved unchanged.
-pub(crate) fn read_events(events_tx: mpsc::Sender<Event>, shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
-    setup_terminal()?;
+pub(crate) fn read_events(
+    events_tx: mpsc::Sender<Event>,
+    shutdown_rx: mpsc::Receiver<()>,
+    config: EventStreamConfig,
+) -> Result<()> {
+    setup_terminal(config)?;
 
     let result = send_events(&events_tx, &shutdown_rx);
 
