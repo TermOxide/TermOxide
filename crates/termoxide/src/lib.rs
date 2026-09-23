@@ -36,7 +36,7 @@ use ratatui::{
     layout::Rect,
 };
 use reactive_graph::effect::RenderEffect;
-use termoxide_event::{EventStream, event::Event};
+use termoxide_event::{EventStream, EventStreamConfig, event::Event};
 use termoxide_rendering::{renderer::Renderer, view_node::ViewNode};
 
 /// Shortest gap between two repaints (~60 fps).
@@ -75,6 +75,14 @@ pub trait App {
     ///
     /// Called only on frames that actually repaint.
     fn build_view(&self, viewport: Rect) -> ViewNode;
+
+    /// Whether the terminal reports the mouse while the app runs.
+    ///
+    /// On by default, so components can react to clicks. While it is on, the
+    /// terminal stops handling text selection itself — most terminals still
+    /// select with `Shift` held — so an app that ignores the mouse can return
+    /// `false` to give selection back. Read once, before the loop starts.
+    fn mouse_capture(&self) -> bool { true }
 }
 
 /// A non-blocking source of input events.
@@ -147,6 +155,11 @@ impl FramePacer {
     }
 }
 
+/// The input settings `app` asks for.
+fn stream_config<A: App>(app: &A) -> EventStreamConfig {
+    EventStreamConfig::default().mouse_capture(app.mouse_capture())
+}
+
 /// Hand every pending event to the app, stopping at the first quit request.
 ///
 /// Returns `true` when the app asked to quit.
@@ -177,7 +190,7 @@ pub async fn run_with_app<A: App + Clone + 'static>(app: A) -> Result<()> {
         })
     };
 
-    let events = EventStream::new();
+    let events = EventStream::with_config(stream_config(&app));
 
     let terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
     let mut renderer = Renderer::new(terminal)?;
@@ -289,6 +302,33 @@ mod tests {
 
     impl EventSource for FakeEvents {
         fn poll_events(&self) -> Vec<Event> { self.0.clone() }
+    }
+
+    /// Opts out of mouse reporting, and does nothing else.
+    struct KeyboardOnlyApp;
+
+    impl App for KeyboardOnlyApp {
+        fn track_view(&self) {}
+
+        fn on_tick(&self) {}
+
+        fn handle_event(&self, _event: Event) -> bool { false }
+
+        fn build_view(&self, viewport: Rect) -> ViewNode { ViewNode::container(viewport, Vec::new()) }
+
+        fn mouse_capture(&self) -> bool { false }
+    }
+
+    // ── stream_config ────────────────────────────────────────────────────────
+
+    #[test]
+    fn stream_config_captures_the_mouse_by_default() {
+        assert_eq!(stream_config(&RecordingApp::new(None)), EventStreamConfig::default());
+    }
+
+    #[test]
+    fn stream_config_follows_an_app_opting_out_of_the_mouse() {
+        assert!(!stream_config(&KeyboardOnlyApp).mouse_capture);
     }
 
     // ── pump_events ──────────────────────────────────────────────────────────
