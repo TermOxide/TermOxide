@@ -387,6 +387,7 @@ mod tests {
         with_owner(|| {
             let root = make_tree();
             let mut router = EventRouter::new();
+            router.sync_hit_map(&root);
             let signal = Signal::new(0i32);
 
             router.bind_key_update(KeyBinding::new(KeyCode::Char('k'), KeyModifiers::NONE), signal, |value| {
