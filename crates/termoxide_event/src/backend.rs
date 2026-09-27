@@ -50,6 +50,16 @@ fn translate(event: crossterm::event::Event) -> Option<Event> {
     }
 }
 
+/// Whether a translated `event` may be delivered under `config`.
+///
+/// Opting out of mouse capture only skips turning reporting on: the terminal
+/// may still be reporting the mouse, for example after an application that
+/// crashed without restoring it. Mouse events are dropped here so an opted-out
+/// stream never delivers one.
+fn accepts(event: &Event, config: EventStreamConfig) -> bool {
+    config.mouse_capture || !matches!(event, Event::Mouse(_))
+}
+
 /// Map `crossterm` modifier flags onto the crate's [`KeyModifiers`].
 ///
 /// Unlike [`to_keycode`], an unrecognised flag cannot fail the whole
@@ -137,7 +147,8 @@ fn to_mouse_kind(kind: crossterm::event::MouseEventKind) -> MouseEventKind {
 /// Each iteration first checks `shutdown`: the loop returns `Ok(())` as soon
 /// as a stop signal is received *or* the sender side is disconnected.
 /// Otherwise it polls the terminal for up to 100 ms, and on activity reads one
-/// event, translates it, and sends the result over `events_tx`.
+/// event, translates it, and sends the result over `events_tx` — unless
+/// `config` rejects it (see [`accepts`]).
 ///
 /// The 100 ms poll timeout bounds how long a shutdown request can take to be
 /// noticed: the loop reacts within at most one poll interval.
@@ -149,7 +160,11 @@ fn to_mouse_kind(kind: crossterm::event::MouseEventKind) -> MouseEventKind {
 ///
 /// - [`Error::Terminal`] if polling or reading fails.
 /// - [`Error::Channel`] if the receiver has been dropped and a translated event can no longer be delivered.
-fn send_events(events_tx: &mpsc::Sender<Event>, shutdown: &mpsc::Receiver<()>) -> Result<()> {
+fn send_events(
+    events_tx: &mpsc::Sender<Event>,
+    shutdown: &mpsc::Receiver<()>,
+    config: EventStreamConfig,
+) -> Result<()> {
     loop {
         match shutdown.try_recv() {
             Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
@@ -158,7 +173,9 @@ fn send_events(events_tx: &mpsc::Sender<Event>, shutdown: &mpsc::Receiver<()>) -
 
         if poll(Duration::from_millis(100)).map_err(Error::Terminal)? {
             let event = read().map_err(Error::Terminal)?;
-            if let Some(translated_event) = translate(event) {
+            if let Some(translated_event) = translate(event)
+                && accepts(&translated_event, config)
+            {
                 events_tx.send(translated_event).map_err(Error::Channel)?;
             }
         }
@@ -237,7 +254,7 @@ pub(crate) fn read_events(
 ) -> Result<()> {
     setup_terminal(config)?;
 
-    let result = send_events(&events_tx, &shutdown_rx);
+    let result = send_events(&events_tx, &shutdown_rx, config);
 
     if let Err(restore_error) = restore_terminal()
         && result.is_ok()
@@ -281,7 +298,7 @@ mod tests {
         // 2s instead of hanging forever.
         let (done_tx, done_rx) = mpsc::channel();
         thread::spawn(move || {
-            let result = send_events(&events_tx, &shutdown_rx);
+            let result = send_events(&events_tx, &shutdown_rx, EventStreamConfig::default());
             let _ = done_tx.send(result);
         });
 
@@ -522,5 +539,37 @@ mod tests {
             translate(event),
             Some(Event::Mouse(MouseEvent::new(MouseEventKind::Moved, 5, 6, KeyModifiers::NONE)))
         );
+    }
+
+    #[test]
+    fn accepts_every_event_while_the_mouse_is_captured() {
+        let config = EventStreamConfig::default();
+        let click = Event::Mouse(MouseEvent::new(
+            MouseEventKind::Down(MouseButton::Left),
+            1,
+            2,
+            KeyModifiers::NONE,
+        ));
+        let press = Event::KeyPress(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+
+        assert!(accepts(&click, config));
+        assert!(accepts(&press, config));
+    }
+
+    #[test]
+    fn accepts_drops_only_mouse_events_once_capture_is_off() {
+        // The terminal may still report the mouse after an opt-out, for
+        // example when a crashed application left reporting on.
+        let config = EventStreamConfig::default().mouse_capture(false);
+        let click = Event::Mouse(MouseEvent::new(
+            MouseEventKind::Down(MouseButton::Left),
+            1,
+            2,
+            KeyModifiers::NONE,
+        ));
+        let press = Event::KeyPress(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+
+        assert!(!accepts(&click, config));
+        assert!(accepts(&press, config));
     }
 }
