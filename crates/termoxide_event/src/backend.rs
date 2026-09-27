@@ -219,15 +219,20 @@ fn setup_terminal(config: EventStreamConfig) -> Result<()> {
 ///
 /// Both restorations are attempted even when the first one fails, so a broken
 /// step never leaves the other mode enabled behind it; the first failure is
-/// the one reported. Mouse reporting is disabled even when the stream opted
-/// out of it: turning off a mode that is already off is harmless, and it keeps
-/// the teardown independent of how the stream was set up.
+/// the one reported. Mouse reporting is left alone when `config` opted out of
+/// it: the setup never turned it on, and disabling it anyway would write
+/// escape sequences to a possibly redirected stdout, or switch off reporting
+/// that another program owns.
 ///
 /// # Errors
 ///
 /// - [`Error::Terminal`] if mouse reporting or raw mode cannot be disabled.
-fn restore_terminal() -> Result<()> {
-    let mouse = execute!(stdout(), DisableMouseCapture);
+fn restore_terminal(config: EventStreamConfig) -> Result<()> {
+    let mouse = if config.mouse_capture {
+        execute!(stdout(), DisableMouseCapture)
+    } else {
+        Ok(())
+    };
     let raw = disable_raw_mode();
 
     mouse.map_err(Error::Terminal)?;
@@ -256,7 +261,7 @@ pub(crate) fn read_events(
 
     let result = send_events(&events_tx, &shutdown_rx, config);
 
-    if let Err(restore_error) = restore_terminal()
+    if let Err(restore_error) = restore_terminal(config)
         && result.is_ok()
     {
         return Err(restore_error);
