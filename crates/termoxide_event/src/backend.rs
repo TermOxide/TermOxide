@@ -10,7 +10,11 @@
 //! providing another translation step and read loop — no consumer of the
 //! crate needs to change.
 
-use std::{io::stdout, sync::mpsc, time::Duration};
+use std::{
+    io::{self, Write, stdout},
+    sync::mpsc,
+    time::Duration,
+};
 
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture, poll, read},
@@ -203,16 +207,27 @@ fn send_events(
 fn setup_terminal(config: EventStreamConfig) -> Result<()> {
     enable_raw_mode().map_err(Error::Terminal)?;
 
-    if !config.mouse_capture {
-        return Ok(());
-    }
-
-    if let Err(error) = execute!(stdout(), EnableMouseCapture) {
+    if let Err(error) = enable_mouse(&mut stdout(), config) {
         let _ = disable_raw_mode();
         return Err(Error::Terminal(error));
     }
 
     Ok(())
+}
+
+/// Turn mouse reporting on by writing to `out`, unless `config` opts out of
+/// it — then nothing is written.
+///
+/// Takes any writer rather than `stdout` so the escape sequences can be
+/// checked without a real terminal.
+fn enable_mouse(out: &mut impl Write, config: EventStreamConfig) -> io::Result<()> {
+    if config.mouse_capture { execute!(out, EnableMouseCapture) } else { Ok(()) }
+}
+
+/// Turn mouse reporting off by writing to `out`, unless `config` opted out of
+/// it — then nothing is written, see [`restore_terminal`].
+fn disable_mouse(out: &mut impl Write, config: EventStreamConfig) -> io::Result<()> {
+    if config.mouse_capture { execute!(out, DisableMouseCapture) } else { Ok(()) }
 }
 
 /// Undo [`setup_terminal`], in reverse order.
@@ -228,11 +243,7 @@ fn setup_terminal(config: EventStreamConfig) -> Result<()> {
 ///
 /// - [`Error::Terminal`] if mouse reporting or raw mode cannot be disabled.
 fn restore_terminal(config: EventStreamConfig) -> Result<()> {
-    let mouse = if config.mouse_capture {
-        execute!(stdout(), DisableMouseCapture)
-    } else {
-        Ok(())
-    };
+    let mouse = disable_mouse(&mut stdout(), config);
     let raw = disable_raw_mode();
 
     mouse.map_err(Error::Terminal)?;
@@ -576,5 +587,45 @@ mod tests {
 
         assert!(!accepts(&click, config));
         assert!(accepts(&press, config));
+    }
+
+    // On Unix, `crossterm` writes mouse capture as ANSI escape sequences into
+    // the writer it is given; Windows goes through the console API instead and
+    // writes nothing, so these checks only hold on Unix.
+
+    /// Run `toggle` against an in-memory writer and return what it wrote.
+    #[cfg(unix)]
+    fn written_by(toggle: fn(&mut Vec<u8>, EventStreamConfig) -> io::Result<()>, config: EventStreamConfig) -> String {
+        let mut out = Vec::new();
+        assert!(toggle(&mut out, config).is_ok(), "writing to memory cannot fail");
+        String::from_utf8(out).unwrap_or_default()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn enable_mouse_writes_capture_on_by_default() {
+        let written = written_by(enable_mouse, EventStreamConfig::default());
+
+        assert!(written.contains("\x1b[?1000h"), "unexpected output: {written:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn disable_mouse_writes_capture_off_by_default() {
+        let written = written_by(disable_mouse, EventStreamConfig::default());
+
+        assert!(written.contains("\x1b[?1000l"), "unexpected output: {written:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mouse_toggles_write_nothing_once_capture_is_off() {
+        // Setup and teardown must both leave the terminal alone: nothing may
+        // reach a redirected stdout, nor switch off another program's mouse
+        // reporting.
+        let config = EventStreamConfig::default().mouse_capture(false);
+
+        assert_eq!(written_by(enable_mouse, config), "");
+        assert_eq!(written_by(disable_mouse, config), "");
     }
 }
