@@ -197,9 +197,11 @@ fn send_events(
 /// held — which is why an application that ignores the mouse can turn it off
 /// (ADR-0007).
 ///
-/// Enabling capture after raw mode is deliberate, and so is undoing raw mode
+/// Enabling capture after raw mode is deliberate, and so is undoing both modes
 /// when it fails: the caller has no handle to restore the terminal with, so a
-/// half-finished setup would leave the terminal raw for good.
+/// half-finished setup would leave the terminal raw for good. Capture is
+/// switched back off too, since a write that fails midway may already have
+/// turned some mouse modes on.
 ///
 /// # Errors
 ///
@@ -208,6 +210,7 @@ fn setup_terminal(config: EventStreamConfig) -> Result<()> {
     enable_raw_mode().map_err(Error::Terminal)?;
 
     if let Err(error) = enable_mouse(&mut stdout(), config) {
+        let _ = disable_mouse(&mut stdout(), config);
         let _ = disable_raw_mode();
         return Err(Error::Terminal(error));
     }
