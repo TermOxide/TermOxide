@@ -78,7 +78,8 @@ pub trait App {
 
     /// Whether the terminal reports the mouse while the app runs.
     ///
-    /// On by default, so components can react to clicks. While it is on, the
+    /// On by default, so the app receives mouse events in
+    /// [`handle_event`](Self::handle_event). While it is on, the
     /// terminal stops handling text selection itself — most terminals still
     /// select with `Shift` held — so an app that ignores the mouse can return
     /// `false` to give selection back. Read once, before the loop starts.
