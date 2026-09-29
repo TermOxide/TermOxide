@@ -252,7 +252,7 @@ jobs:
           for crate in $crates; do
             pkg_args="$pkg_args -p $crate"
           done
-          cargo tarpaulin $pkg_args --ignore-tests --exclude-files "*/tests/*" --out Lcov --output-dir ./coverage
+          cargo tarpaulin $pkg_args --ignore-tests --exclude-files "*/tests/*" --exclude-files "crates/termoxide_e2e/*" --out Lcov --output-dir ./coverage
 
       # Only upload when tarpaulin actually ran: on the no-crates-changed skip
       # path, no fresh lcov.info exists and codecov-action falls back to a
