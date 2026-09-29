@@ -1,5 +1,5 @@
 //! Runs the `probe` binary in a pseudo-terminal and reads its screen through a
-//! terminal emulator. Checks poll until they hold, failing after [`DEADLINE`].
+//! terminal emulator. Checks poll until they hold, failing after [`deadline`].
 
 use std::{
     io::{Read, Write},
@@ -11,7 +11,15 @@ use std::{
 use nix::sys::termios::LocalFlags;
 use portable_pty::{Child, CommandBuilder, ExitStatus, MasterPty, PtySize, native_pty_system};
 
-const DEADLINE: Duration = Duration::from_secs(2);
+/// 2 s, or `TERMOXIDE_E2E_DEADLINE_SECS` for runs that trace the probe, which
+/// slows it down by orders of magnitude.
+fn deadline() -> Duration {
+    let secs = std::env::var("TERMOXIDE_E2E_DEADLINE_SECS")
+        .ok()
+        .and_then(|secs| secs.parse().ok());
+    Duration::from_secs(secs.unwrap_or(2))
+}
+
 /// Wide enough that no line of a panic report wraps.
 pub const ROWS: u16 = 24;
 pub const COLS: u16 = 200;
@@ -74,7 +82,7 @@ impl Session {
     pub fn contents(&self) -> String { self.parser.lock().unwrap().screen().contents() }
 
     pub fn wait_until(&self, what: &str, mut holds: impl FnMut(&vt100::Screen) -> bool) {
-        let deadline = Instant::now() + DEADLINE;
+        let deadline = Instant::now() + deadline();
         loop {
             {
                 let parser = self.parser.lock().unwrap();
@@ -106,7 +114,7 @@ impl Session {
     }
 
     pub fn wait_for_exit(&mut self) -> ExitStatus {
-        let deadline = Instant::now() + DEADLINE;
+        let deadline = Instant::now() + deadline();
         loop {
             if let Some(status) = self.child.try_wait().expect("poll the probe") {
                 return status;
@@ -127,7 +135,7 @@ impl Session {
     }
 
     pub fn wait_for_raw_mode(&self, raw: bool) {
-        let deadline = Instant::now() + DEADLINE;
+        let deadline = Instant::now() + deadline();
         while self.raw_mode() != raw {
             assert!(Instant::now() < deadline, "raw mode never became {raw}");
             thread::sleep(Duration::from_millis(10));
@@ -142,9 +150,20 @@ impl Session {
 }
 
 impl Drop for Session {
+    /// Quit a probe still running rather than kill it: `kill` sends `SIGHUP`,
+    /// which tarpaulin's tracer rejects when following the probe.
     fn drop(&mut self) {
-        if matches!(self.child.try_wait(), Ok(None)) {
-            let _ = self.child.kill();
+        if !matches!(self.child.try_wait(), Ok(None)) {
+            return;
         }
+        let _ = self.writer.write_all(b"q").and_then(|()| self.writer.flush());
+        let deadline = Instant::now() + deadline();
+        while Instant::now() < deadline {
+            if !matches!(self.child.try_wait(), Ok(None)) {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        let _ = self.child.kill();
     }
 }
