@@ -3,7 +3,8 @@
 //!
 //! It shows a fixed title, how many keys it has counted and its viewport, so a
 //! test reading the screen can tell each of them apart. `q` and Ctrl-C quit,
-//! `p` panics in `handle_event`, and every other key is counted.
+//! `p` panics in `handle_event`, `t` makes the next `track_view` run panic, and
+//! every other key is counted.
 
 use any_spawner::Executor;
 use color_eyre::Result;
@@ -24,10 +25,17 @@ fn explode(message: &str) -> ! { panic!("{message}") }
 #[derive(Clone, Copy)]
 struct Probe {
     keys: Signal<u32>,
+    /// Set by `t`: the write re-runs `track_view`, which then panics.
+    doomed: Signal<bool>,
 }
 
 impl App for Probe {
-    fn track_view(&self) { let _ = self.keys.get(); }
+    fn track_view(&self) {
+        let _ = self.keys.get();
+        if self.doomed.get() {
+            explode("probe panicked in track_view on purpose");
+        }
+    }
 
     fn on_tick(&self) {}
 
@@ -39,6 +47,10 @@ impl App for Probe {
             KeyCode::Char('q') => true,
             KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => true,
             KeyCode::Char('p') => explode("probe panicked in handle_event on purpose"),
+            KeyCode::Char('t') => {
+                self.doomed.set(true);
+                false
+            },
             _ => {
                 self.keys.update(|keys| *keys += 1);
                 false
@@ -69,5 +81,7 @@ async fn main() -> Result<()> {
     Executor::init_tokio()?;
 
     let local = tokio::task::LocalSet::new();
-    local.run_until(run_with_app(Probe { keys: Signal::new(0) })).await
+    local
+        .run_until(run_with_app(Probe { keys: Signal::new(0), doomed: Signal::new(false) }))
+        .await
 }

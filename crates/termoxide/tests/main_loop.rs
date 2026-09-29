@@ -342,6 +342,30 @@ async fn loop_never_starts_after_a_panic_in_the_first_track_view() {
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn loop_stops_on_a_panic_in_a_later_track_view() {
+    local(async {
+        let app = ProbeApp::panicking(Panics { once_count_reaches: Some(2), ..Panics::default() });
+        let backend = SharedBackend::new(10, 2);
+        let events = ScriptedEvents::new([
+            (ms(50), key('a')),
+            (ms(200), key('a')),
+            (ms(300), key('a')),
+            (ms(500), key('q')),
+        ]);
+        let teardown = Rc::clone(&events.teardowns);
+
+        let report = run(&app, &backend, events).await.expect_err("track_view panicked");
+
+        expect_panic(&report, &app, AppMethod::TrackView);
+        assert_eq!(teardown.get(), 1);
+        assert_eq!(app.probe.frame_count(), 2);
+        assert_eq!(app.probe.delivered(), [key('a'), key('a')]);
+        app.probe.assert_nothing_after_the_panic();
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn loop_reports_a_panic_and_a_teardown_error_together() {
     local(async {
         let app = ProbeApp::panicking(Panics { on_key: Some('x'), ..Panics::default() });

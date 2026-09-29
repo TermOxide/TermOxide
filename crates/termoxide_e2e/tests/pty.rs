@@ -130,6 +130,9 @@ fn assert_panic_reported(key: &[u8], method: &str) {
 fn panic_in_handle_event_is_reported_on_the_restored_terminal() { assert_panic_reported(b"p", "handle_event"); }
 
 #[test]
+fn panic_in_a_later_track_view_is_reported_on_the_restored_terminal() { assert_panic_reported(b"t", "track_view"); }
+
+#[test]
 fn panic_with_backtraces_disabled_keeps_the_location() {
     let mut session = Session::start_with(&[("RUST_BACKTRACE", "0")]);
     assert!(!exit_with(&mut session, b"p"), "a panic must fail the probe");

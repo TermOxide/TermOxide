@@ -197,6 +197,7 @@ pub struct Panics {
     pub on_tick: Option<usize>,
     pub on_frame: Option<usize>,
     pub in_first_track: bool,
+    pub once_count_reaches: Option<u32>,
 }
 
 /// Panics with `message`; `#[track_caller]` makes the caller the panic's
@@ -233,7 +234,10 @@ impl App for ProbeApp {
         if self.panics.in_first_track {
             probe_panic(&self.probe, "track_view blew up");
         }
-        let _ = self.count.get();
+        let count = self.count.get();
+        if self.panics.once_count_reaches.is_some_and(|limit| count >= limit) {
+            probe_panic(&self.probe, "track_view blew up");
+        }
     }
 
     fn on_tick(&self) {

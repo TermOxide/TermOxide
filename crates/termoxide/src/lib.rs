@@ -322,6 +322,10 @@ where
         // whether this iteration owes a repaint.
         tokio::task::yield_now().await;
 
+        if let Some(panic) = redraw.take_panic() {
+            return Err(LoopFailure::Panic(panic));
+        }
+
         if redraw.take() {
             pacer.mark_dirty();
         }
