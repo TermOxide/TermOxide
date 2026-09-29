@@ -185,6 +185,18 @@ pub async fn run_with_app<A: App + Clone + 'static>(app: A) -> Result<()> {
     run_with(app, renderer, events).await
 }
 
+/// [`run_with_app`] on any backend and event source. For TermOxide's tests.
+#[cfg(feature = "test-util")]
+#[doc(hidden)]
+pub async fn run_with_backend<A, B, E>(app: A, renderer: Renderer<B>, events: E) -> Result<()>
+where
+    A: App + Clone + 'static,
+    B: Backend,
+    E: EventSource,
+{
+    run_with(app, renderer, events).await
+}
+
 async fn run_with<A, B, E>(app: A, mut renderer: Renderer<B>, events: E) -> Result<()>
 where
     A: App + Clone + 'static,

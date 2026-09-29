@@ -1056,9 +1056,11 @@ dependencies = [
 name = "termoxide"
 version = "1.0.0-alpha"
 dependencies = [
+ "any_spawner",
  "color-eyre",
  "ratatui",
  "reactive_graph",
+ "termoxide",
  "termoxide_event",
  "termoxide_layout",
  "termoxide_macros",
