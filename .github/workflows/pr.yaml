@@ -239,6 +239,9 @@ jobs:
         id: tests
         env:
           CRATES: ${{ needs.detect.outputs.crates }}
+          # `--follow-exec` traces the e2e probe, slowing it far past the PTY
+          # tests' default deadline; see crates/termoxide_e2e/README.md.
+          TERMOXIDE_E2E_DEADLINE_SECS: "120"
         run: |
           crates=$(echo "$CRATES" | jq -r '.[]')
           if [[ -z "$crates" ]]; then
@@ -252,7 +255,7 @@ jobs:
           for crate in $crates; do
             pkg_args="$pkg_args -p $crate"
           done
-          cargo tarpaulin $pkg_args --ignore-tests --exclude-files "*/tests/*" --exclude-files "crates/termoxide_e2e/*" --out Lcov --output-dir ./coverage
+          cargo tarpaulin $pkg_args --follow-exec --ignore-tests --exclude-files "*/tests/*" --exclude-files "crates/termoxide_e2e/*" --out Lcov --output-dir ./coverage
 
       # Only upload when tarpaulin actually ran: on the no-crates-changed skip
       # path, no fresh lcov.info exists and codecov-action falls back to a
