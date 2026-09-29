@@ -66,6 +66,21 @@ fn payload_message(payload: &(dyn Any + Send)) -> String {
     }
 }
 
+/// Counts the thread as inside a guarded call until dropped, even if something
+/// unwinds past `catch_unwind`.
+struct Depth;
+
+impl Depth {
+    fn enter() -> Self {
+        DEPTH.with(|depth| depth.set(depth.get() + 1));
+        Self
+    }
+}
+
+impl Drop for Depth {
+    fn drop(&mut self) { DEPTH.with(|depth| depth.set(depth.get() - 1)); }
+}
+
 /// Runs `App` methods, turning their panics into [`AppPanic`]s.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Guard {
@@ -80,9 +95,10 @@ impl Guard {
     pub(crate) fn call<T>(self, method: AppMethod, call: impl FnOnce() -> T) -> Result<T, AppPanic> {
         // Drop what a panic the app caught itself may have left behind.
         CAPTURED.with(Cell::take);
-        DEPTH.with(|depth| depth.set(depth.get() + 1));
-        let result = panic::catch_unwind(AssertUnwindSafe(call));
-        DEPTH.with(|depth| depth.set(depth.get() - 1));
+        let result = {
+            let _depth = Depth::enter();
+            panic::catch_unwind(AssertUnwindSafe(call))
+        };
 
         result.map_err(|payload| {
             match CAPTURED.with(Cell::take) {
