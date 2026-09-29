@@ -5,6 +5,7 @@ comment:
 
 ignore:
   - "crates/cargo-extract" # Complete independent crate, not part of the main codebase
+  - "crates/termoxide_e2e" # Test-only crate; its probe binary runs out of process, where tarpaulin cannot see it
 
 coverage:
   precision: 2
