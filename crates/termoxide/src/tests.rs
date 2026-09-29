@@ -44,7 +44,7 @@ impl EventSource for FakeEvents {
 fn pump_events_reports_no_quit_when_nothing_is_pending() {
     let app = RecordingApp::new(Some('q'));
 
-    assert!(!pump_events(&app, &FakeEvents(Vec::new())));
+    assert!(!pump_events(&app, &FakeEvents(Vec::new()), Guard::new(false)).expect("no panic"));
     assert!(app.seen.borrow().is_empty());
 }
 
@@ -53,7 +53,7 @@ fn pump_events_forwards_every_event_in_order() {
     let app = RecordingApp::new(None);
     let events = FakeEvents(vec![Event::ChannelReady, key('a'), key('b')]);
 
-    assert!(!pump_events(&app, &events));
+    assert!(!pump_events(&app, &events, Guard::new(false)).expect("no panic"));
     assert_eq!(app.seen.borrow().len(), 3);
     assert!(matches!(app.seen.borrow()[0], Event::ChannelReady));
     assert!(matches!(app.seen.borrow()[1], Event::KeyPress(k) if k.code == KeyCode::Char('a')));
@@ -65,7 +65,7 @@ fn pump_events_stops_delivering_after_a_quit_request() {
     let app = RecordingApp::new(Some('q'));
     let events = FakeEvents(vec![key('a'), key('q'), key('b')]);
 
-    assert!(pump_events(&app, &events));
+    assert!(pump_events(&app, &events, Guard::new(false)).expect("no panic"));
     assert_eq!(
         app.seen.borrow().len(),
         2,
@@ -127,4 +127,20 @@ fn redraw_collapses_a_burst_into_one_repaint() {
 
     assert!(redraw.take());
     assert!(!redraw.take());
+}
+
+#[test]
+fn redraw_keeps_the_first_panic_and_requests_a_repaint() {
+    let panic = |message: &str| AppPanic::new(AppMethod::TrackView, message.to_owned(), None, Trace::Unavailable);
+    let redraw = Redraw::default();
+
+    redraw.report_panic(panic("first"));
+    redraw.report_panic(panic("second"));
+
+    assert!(redraw.take());
+    assert_eq!(
+        redraw.take_panic().map(|panic| panic.message().to_owned()).as_deref(),
+        Some("first")
+    );
+    assert!(redraw.take_panic().is_none());
 }

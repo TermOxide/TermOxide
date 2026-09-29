@@ -7,6 +7,7 @@ use std::{
     collections::VecDeque,
     future::Future,
     io,
+    panic::Location,
     rc::Rc,
     time::Duration,
 };
@@ -35,11 +36,15 @@ pub async fn local<F: Future>(body: F) -> F::Output {
     tokio::task::LocalSet::new().run_until(body).await
 }
 
-/// Drive `app` through the loop until it stops; fails, rather than hangs, when
-/// the loop never stops.
+/// Drive `app` through the loop until it stops, without a stack trace.
 pub async fn run(app: &ProbeApp, backend: &SharedBackend, events: ScriptedEvents) -> Result<()> {
+    run_traced(app, backend, events, false).await
+}
+
+/// Fails, rather than hangs, when the loop never stops.
+pub async fn run_traced(app: &ProbeApp, backend: &SharedBackend, events: ScriptedEvents, trace: bool) -> Result<()> {
     let renderer = Renderer::new_for_test(Terminal::new(backend.clone()).expect("terminal"));
-    let run = termoxide::run_with_backend(app.clone(), renderer, events);
+    let run = termoxide::run_with_backend(app.clone(), renderer, events, trace);
     tokio::time::timeout(Duration::from_secs(60), run)
         .await
         .expect("the loop never stopped")
@@ -147,12 +152,21 @@ impl EventSource for ScriptedEvents {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct PanicSite {
+    pub at: Instant,
+    pub file: &'static str,
+    pub line: u32,
+    pub column: u32,
+}
+
 /// Every call the loop made to a [`ProbeApp`], with its virtual time.
 #[derive(Default)]
 pub struct Probe {
     pub ticks: RefCell<Vec<Instant>>,
     pub frames: RefCell<Vec<(Instant, Rect)>>,
     pub events: RefCell<Vec<(Instant, Event)>>,
+    pub panicked: Cell<Option<PanicSite>>,
 }
 
 impl Probe {
@@ -161,24 +175,73 @@ impl Probe {
     pub fn frame_count(&self) -> usize { self.frames.borrow().len() }
 
     pub fn delivered(&self) -> Vec<Event> { self.events.borrow().iter().map(|&(_, event)| event).collect() }
+
+    pub fn assert_nothing_after_the_panic(&self) {
+        let at = self.panicked.get().expect("the probe panicked").at;
+        assert!(self.ticks.borrow().iter().all(|&time| time <= at), "a tick after the panic");
+        assert!(
+            self.frames.borrow().iter().all(|&(time, _)| time <= at),
+            "a frame after the panic"
+        );
+        assert!(
+            self.events.borrow().iter().all(|&(time, _)| time <= at),
+            "an event after the panic"
+        );
+    }
 }
 
-/// Shows a key counter and its viewport, records every call, quits on `q`, and
-/// counts `a`.
+/// Where a [`ProbeApp`] panics; nowhere by default. Counts start at 1.
+#[derive(Clone, Copy, Default)]
+pub struct Panics {
+    pub on_key: Option<char>,
+    pub on_tick: Option<usize>,
+    pub on_frame: Option<usize>,
+    pub in_first_track: bool,
+}
+
+/// Panics with `message`; `#[track_caller]` makes the caller the panic's
+/// location, which is recorded in `probe`.
+#[track_caller]
+fn probe_panic(probe: &Probe, message: &str) -> ! {
+    let caller = Location::caller();
+    probe.panicked.set(Some(PanicSite {
+        at: Instant::now(),
+        file: caller.file(),
+        line: caller.line(),
+        column: caller.column(),
+    }));
+    panic!("{message}")
+}
+
+/// Shows a key counter and its viewport, records every call, quits on `q`,
+/// counts `a`, and panics where [`Panics`] says.
 #[derive(Clone)]
 pub struct ProbeApp {
     pub count: Signal<u32>,
+    panics: Panics,
     pub probe: Rc<Probe>,
 }
 
 impl ProbeApp {
-    pub fn new() -> Self { Self { count: Signal::new(0), probe: Rc::default() } }
+    pub fn new() -> Self { Self::panicking(Panics::default()) }
+
+    pub fn panicking(panics: Panics) -> Self { Self { count: Signal::new(0), panics, probe: Rc::default() } }
 }
 
 impl App for ProbeApp {
-    fn track_view(&self) { let _ = self.count.get(); }
+    fn track_view(&self) {
+        if self.panics.in_first_track {
+            probe_panic(&self.probe, "track_view blew up");
+        }
+        let _ = self.count.get();
+    }
 
-    fn on_tick(&self) { self.probe.ticks.borrow_mut().push(Instant::now()); }
+    fn on_tick(&self) {
+        if self.panics.on_tick == Some(self.probe.tick_count() + 1) {
+            probe_panic(&self.probe, "on_tick blew up");
+        }
+        self.probe.ticks.borrow_mut().push(Instant::now());
+    }
 
     fn handle_event(&self, event: Event) -> bool {
         self.probe.events.borrow_mut().push((Instant::now(), event));
@@ -186,6 +249,7 @@ impl App for ProbeApp {
             return false;
         };
         match pressed.code {
+            KeyCode::Char(c) if self.panics.on_key == Some(c) => probe_panic(&self.probe, "handle_event blew up"),
             KeyCode::Char('q') => true,
             KeyCode::Char('a') => {
                 self.count.update(|count| *count += 1);
@@ -196,6 +260,9 @@ impl App for ProbeApp {
     }
 
     fn build_view(&self, viewport: Rect) -> ViewNode {
+        if self.panics.on_frame == Some(self.probe.frame_count() + 1) {
+            probe_panic(&self.probe, "build_view blew up");
+        }
         self.probe.frames.borrow_mut().push((Instant::now(), viewport));
         let line = |row: u16, content: String| {
             ViewNode::text(

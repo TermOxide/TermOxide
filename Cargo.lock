@@ -1146,6 +1146,7 @@ name = "termoxide"
 version = "1.0.0-alpha"
 dependencies = [
  "any_spawner",
+ "backtrace",
  "color-eyre",
  "ratatui",
  "reactive_graph",

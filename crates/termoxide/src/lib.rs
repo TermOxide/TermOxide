@@ -20,17 +20,18 @@
 //! changes, and requests a redraw. An idle application therefore draws nothing,
 //! and [`MIN_FRAME`] caps how often a busy one can draw.
 
+mod capture;
 mod error;
 
 use std::{
+    cell::Cell,
     io::stdout,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    rc::Rc,
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
+use capture::Guard;
 use color_eyre::Result;
 use ratatui::{
     Terminal,
@@ -43,7 +44,7 @@ use termoxide_rendering::{renderer::Renderer, view_node::ViewNode};
 // Same as `std::time::Instant`, but follows tokio's paused clock in tests.
 use tokio::time::Instant;
 
-pub use crate::error::{LoopError, LoopFailure};
+pub use crate::error::{AppMethod, AppPanic, LoopError, LoopFailure, PanicLocation, Trace, TraceFrame};
 
 /// Shortest gap between two repaints (~60 fps).
 pub const MIN_FRAME: Duration = Duration::from_millis(16);
@@ -107,17 +108,20 @@ impl EventSource for EventStream {
     fn teardown(self) -> termoxide_event::Result<()> { EventStream::teardown(self) }
 }
 
-/// A pending repaint request, set by the render effect and consumed by the loop.
+/// What the render effect hands to the loop.
 ///
 /// The flag and the wakeup are separate on purpose: [`Notify`](tokio::sync::Notify)
 /// alone would force the loop to `await` a notification to learn a repaint is
 /// due, but the effect runs on the executor *after* the loop has already come
 /// back from `select!`. Storing the request in an [`AtomicBool`] lets the loop
 /// pick it up in the same iteration; the notify only wakes a loop that is idle.
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct Redraw {
     requested: AtomicBool,
     wake: tokio::sync::Notify,
+    /// The first panic of `track_view`: the effect's re-runs happen in a task
+    /// of their own, where a panic would only kill that task.
+    panic: Cell<Option<AppPanic>>,
 }
 
 impl Redraw {
@@ -129,6 +133,15 @@ impl Redraw {
 
     /// Take the pending request, if any.
     fn take(&self) -> bool { self.requested.swap(false, Ordering::AcqRel) }
+
+    /// Keep `panic` for the loop, unless an earlier one is already waiting.
+    fn report_panic(&self, panic: AppPanic) {
+        let first = self.panic.take().unwrap_or(panic);
+        self.panic.set(Some(first));
+        self.request();
+    }
+
+    fn take_panic(&self) -> Option<AppPanic> { self.panic.take() }
 }
 
 /// Decides when the loop owes the terminal a repaint.
@@ -164,11 +177,17 @@ impl FramePacer {
     }
 }
 
-/// Hand every pending event to the app, stopping at the first quit request.
+/// Hand every pending event to the app, stopping at the first quit request or
+/// panic.
 ///
 /// Returns `true` when the app asked to quit.
-fn pump_events<A: App, E: EventSource>(app: &A, events: &E) -> bool {
-    events.poll_events().into_iter().any(|event| app.handle_event(event))
+fn pump_events<A: App, E: EventSource>(app: &A, events: &E, guard: Guard) -> Result<bool, AppPanic> {
+    for event in events.poll_events() {
+        if guard.call(AppMethod::HandleEvent, || app.handle_event(event))? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Run `app` on the real terminal until it asks to stop.
@@ -180,48 +199,68 @@ fn pump_events<A: App, E: EventSource>(app: &A, events: &E) -> bool {
 ///
 /// Returns an error if the terminal cannot be set up. Any later failure stops
 /// the loop, restores the terminal, and is returned as a [`LoopError`]: a frame
-/// that failed to render, the input reader having stopped on an error, or both.
+/// that failed to render, a panic in an [`App`] method, the input reader having
+/// stopped on an error, or a loop failure together with a reader failure.
+///
+/// # Panics
+///
+/// A panic in an [`App`] method is returned as [`LoopFailure::Panic`] instead
+/// of unwinding, with its location and, per [`Trace`], the app's stack. This
+/// relies on unwinding (not `panic = "abort"`) and on a panic hook the first
+/// call installs for the whole process, which forwards every other panic to
+/// the previous hook: install your own hooks, such as `color_eyre::install()`,
+/// before calling this.
 pub async fn run_with_app<A: App + Clone + 'static>(app: A) -> Result<()> {
     let events = EventStream::new();
 
     let terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
     let renderer = Renderer::new(terminal)?;
 
-    run_with(app, renderer, events).await
+    run_with(app, renderer, events, capture::trace_from_env()).await
 }
 
-/// [`run_with_app`] on any backend and event source. For TermOxide's tests.
+/// [`run_with_app`] on any backend and event source, with the stack trace
+/// policy given rather than read from the environment. For TermOxide's tests.
 #[cfg(feature = "test-util")]
 #[doc(hidden)]
-pub async fn run_with_backend<A, B, E>(app: A, renderer: Renderer<B>, events: E) -> Result<()>
+pub async fn run_with_backend<A, B, E>(app: A, renderer: Renderer<B>, events: E, trace: bool) -> Result<()>
 where
     A: App + Clone + 'static,
     B: Backend,
     E: EventSource,
 {
-    run_with(app, renderer, events).await
+    run_with(app, renderer, events, trace).await
 }
 
-async fn run_with<A, B, E>(app: A, mut renderer: Renderer<B>, events: E) -> Result<()>
+async fn run_with<A, B, E>(app: A, mut renderer: Renderer<B>, events: E, trace: bool) -> Result<()>
 where
     A: App + Clone + 'static,
     B: Backend,
     E: EventSource,
 {
+    capture::install_hook();
+    let guard = Guard::new(trace);
+
     let owner = termoxide_reactive::Owner::new();
     owner.set();
 
-    let redraw = Arc::new(Redraw::default());
+    let redraw = Rc::new(Redraw::default());
     let _redraw_effect = {
         let app_for_effect = app.clone();
-        let redraw = Arc::clone(&redraw);
+        let redraw = Rc::clone(&redraw);
         RenderEffect::new(move |_| {
-            app_for_effect.track_view();
-            redraw.request();
+            match guard.call(AppMethod::TrackView, || app_for_effect.track_view()) {
+                Ok(()) => redraw.request(),
+                Err(panic) => redraw.report_panic(panic),
+            }
         })
     };
 
-    let failure = drive(&app, &mut renderer, &events, &redraw).await.err();
+    // The effect's first run happens inside `RenderEffect::new`.
+    let failure = match redraw.take_panic() {
+        Some(panic) => Some(LoopFailure::Panic(panic)),
+        None => drive(&app, &mut renderer, &events, &redraw, guard).await.err(),
+    };
 
     // Restore the terminal before reporting: the reader thread owns raw mode,
     // and its own failure is a likely reason the loop stopped in the first
@@ -235,7 +274,13 @@ where
 
 /// The loop proper, generic over the backend and the event source so it can be
 /// driven without a terminal.
-async fn drive<A, B, E>(app: &A, renderer: &mut Renderer<B>, events: &E, redraw: &Redraw) -> Result<(), LoopFailure>
+async fn drive<A, B, E>(
+    app: &A,
+    renderer: &mut Renderer<B>,
+    events: &E,
+    redraw: &Redraw,
+    guard: Guard,
+) -> Result<(), LoopFailure>
 where
     A: App,
     B: Backend,
@@ -254,12 +299,12 @@ where
     loop {
         tokio::select! {
             _ = input.tick() => {
-                if pump_events(app, events) {
+                if pump_events(app, events, guard)? {
                     return Ok(());
                 }
             }
             _ = ticker.tick() => {
-                app.on_tick();
+                guard.call(AppMethod::OnTick, || app.on_tick())?;
 
                 // A resize raises no event and writes no signal, so it is only
                 // observable by asking the terminal.
@@ -282,7 +327,7 @@ where
         }
 
         if pacer.should_draw(Instant::now()) {
-            let mut root = app.build_view(viewport);
+            let mut root = guard.call(AppMethod::BuildView, || app.build_view(viewport))?;
             renderer.render_frame(&mut root).map_err(LoopFailure::Render)?;
             pacer.record_draw(Instant::now());
         }
