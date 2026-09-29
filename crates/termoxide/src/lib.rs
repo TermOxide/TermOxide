@@ -20,6 +20,8 @@
 //! changes, and requests a redraw. An idle application therefore draws nothing,
 //! and [`MIN_FRAME`] caps how often a busy one can draw.
 
+mod error;
+
 use std::{
     io::stdout,
     sync::{
@@ -40,6 +42,8 @@ use termoxide_event::{EventStream, event::Event};
 use termoxide_rendering::{renderer::Renderer, view_node::ViewNode};
 // Same as `std::time::Instant`, but follows tokio's paused clock in tests.
 use tokio::time::Instant;
+
+pub use crate::error::{LoopError, LoopFailure};
 
 /// Shortest gap between two repaints (~60 fps).
 pub const MIN_FRAME: Duration = Duration::from_millis(16);
@@ -174,8 +178,9 @@ fn pump_events<A: App, E: EventSource>(app: &A, events: &E) -> bool {
 ///
 /// # Errors
 ///
-/// Returns an error if the terminal cannot be set up, if a frame fails to
-/// render, or if the input reader thread stopped on an error of its own.
+/// Returns an error if the terminal cannot be set up. Any later failure stops
+/// the loop, restores the terminal, and is returned as a [`LoopError`]: a frame
+/// that failed to render, the input reader having stopped on an error, or both.
 pub async fn run_with_app<A: App + Clone + 'static>(app: A) -> Result<()> {
     let events = EventStream::new();
 
@@ -216,20 +221,21 @@ where
         })
     };
 
-    let result = drive(&app, &mut renderer, &events, &redraw).await;
+    let failure = drive(&app, &mut renderer, &events, &redraw).await.err();
 
     // Restore the terminal before reporting: the reader thread owns raw mode,
     // and its own failure is a likely reason the loop stopped in the first
-    // place, so its result is worth surfacing rather than discarding.
-    let teardown = events.teardown();
-    result?;
-    teardown?;
-    Ok(())
+    // place, so it is reported alongside the loop's rather than discarded.
+    let teardown = events.teardown().err();
+    match LoopError::from_parts(failure, teardown) {
+        Some(error) => Err(error.into()),
+        None => Ok(()),
+    }
 }
 
 /// The loop proper, generic over the backend and the event source so it can be
 /// driven without a terminal.
-async fn drive<A, B, E>(app: &A, renderer: &mut Renderer<B>, events: &E, redraw: &Redraw) -> Result<()>
+async fn drive<A, B, E>(app: &A, renderer: &mut Renderer<B>, events: &E, redraw: &Redraw) -> Result<(), LoopFailure>
 where
     A: App,
     B: Backend,
@@ -277,7 +283,7 @@ where
 
         if pacer.should_draw(Instant::now()) {
             let mut root = app.build_view(viewport);
-            renderer.render_frame(&mut root)?;
+            renderer.render_frame(&mut root).map_err(LoopFailure::Render)?;
             pacer.record_draw(Instant::now());
         }
     }

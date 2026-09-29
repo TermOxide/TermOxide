@@ -4,8 +4,7 @@ use std::{rc::Rc, time::Duration};
 
 use common::{ProbeApp, ScriptedEvents, SharedBackend, key, local, ms, run};
 use ratatui::layout::Rect;
-use termoxide::{INPUT_POLL, MIN_FRAME, TICK_INTERVAL};
-use termoxide_rendering::renderer::RenderError;
+use termoxide::{INPUT_POLL, LoopError, LoopFailure, MIN_FRAME, TICK_INTERVAL};
 use tokio::time::Instant;
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -196,9 +195,11 @@ async fn loop_stops_on_a_draw_error_and_still_tears_down() {
         let teardown = Rc::clone(&events.teardowns);
         backend.fail_draws();
 
-        let error = run(&app, &backend, events).await.expect_err("the draw failed");
+        let report = run(&app, &backend, events).await.expect_err("the draw failed");
 
-        assert!(error.downcast_ref::<RenderError>().is_some(), "{error:?}");
+        let error = report.downcast_ref::<LoopError>().expect("a LoopError");
+        assert!(matches!(error.failure(), Some(LoopFailure::Render(_))), "{error:?}");
+        assert!(error.teardown().is_none());
         assert_eq!(teardown.get(), 1);
     })
     .await;
@@ -210,9 +211,33 @@ async fn loop_reports_a_teardown_error_after_a_clean_stop() {
         let (app, backend) = (ProbeApp::new(), SharedBackend::new(10, 2));
         let events = ScriptedEvents::new([(ms(50), key('q'))]).failing_teardown();
 
-        let error = run(&app, &backend, events).await.expect_err("the reader failed");
+        let report = run(&app, &backend, events).await.expect_err("the reader failed");
 
-        assert!(error.downcast_ref::<termoxide_event::Error>().is_some(), "{error:?}");
+        let error = report.downcast_ref::<LoopError>().expect("a LoopError");
+        assert!(error.failure().is_none(), "{error:?}");
+        assert!(
+            matches!(error.teardown(), Some(termoxide_event::Error::Terminal(_))),
+            "{error:?}"
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn loop_reports_a_draw_error_and_a_teardown_error_together() {
+    local(async {
+        let (app, backend) = (ProbeApp::new(), SharedBackend::new(10, 2));
+        let events = ScriptedEvents::new([(ms(500), key('q'))]).failing_teardown();
+        backend.fail_draws();
+
+        let report = run(&app, &backend, events).await.expect_err("both failed");
+
+        let error = report.downcast_ref::<LoopError>().expect("a LoopError");
+        assert!(matches!(error.failure(), Some(LoopFailure::Render(_))), "{error:?}");
+        assert!(
+            matches!(error.teardown(), Some(termoxide_event::Error::Terminal(_))),
+            "{error:?}"
+        );
     })
     .await;
 }
