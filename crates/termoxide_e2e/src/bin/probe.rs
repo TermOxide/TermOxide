@@ -2,8 +2,8 @@
 //! `tests/pty.rs`.
 //!
 //! It shows a fixed title, how many keys it has counted and its viewport, so a
-//! test reading the screen can tell each of them apart. `q` and Ctrl-C quit;
-//! every other key is counted.
+//! test reading the screen can tell each of them apart. `q` and Ctrl-C quit,
+//! `p` panics in `handle_event`, and every other key is counted.
 
 use any_spawner::Executor;
 use color_eyre::Result;
@@ -15,6 +15,11 @@ use termoxide_rendering::view_node::ViewNode;
 
 /// First line of every frame.
 const TITLE: &str = "termoxide e2e probe";
+
+/// Panic from a function of its own, so a trace of the panic holds two probe
+/// frames: this one, then the `App` method that called it.
+#[allow(clippy::panic, reason = "the probe panics on request")]
+fn explode(message: &str) -> ! { panic!("{message}") }
 
 #[derive(Clone, Copy)]
 struct Probe {
@@ -33,6 +38,7 @@ impl App for Probe {
         match key.code {
             KeyCode::Char('q') => true,
             KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => true,
+            KeyCode::Char('p') => explode("probe panicked in handle_event on purpose"),
             _ => {
                 self.keys.update(|keys| *keys += 1);
                 false

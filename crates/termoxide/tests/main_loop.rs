@@ -2,9 +2,9 @@ mod common;
 
 use std::{rc::Rc, time::Duration};
 
-use common::{ProbeApp, ScriptedEvents, SharedBackend, key, local, ms, run};
+use common::{Panics, ProbeApp, ScriptedEvents, SharedBackend, key, local, ms, run, run_traced};
 use ratatui::layout::Rect;
-use termoxide::{INPUT_POLL, LoopError, LoopFailure, MIN_FRAME, TICK_INTERVAL};
+use termoxide::{AppMethod, AppPanic, INPUT_POLL, LoopError, LoopFailure, MIN_FRAME, TICK_INTERVAL, Trace};
 use tokio::time::Instant;
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -238,6 +238,181 @@ async fn loop_reports_a_draw_error_and_a_teardown_error_together() {
             matches!(error.teardown(), Some(termoxide_event::Error::Terminal(_))),
             "{error:?}"
         );
+    })
+    .await;
+}
+
+/// The panic a run ended on, checked against where the probe panicked.
+fn expect_panic<'a>(report: &'a color_eyre::Report, app: &ProbeApp, method: AppMethod) -> &'a AppPanic {
+    let error = report.downcast_ref::<LoopError>().expect("a LoopError");
+    let Some(LoopFailure::Panic(panic)) = error.failure() else {
+        panic!("expected a panic, got {error:?}");
+    };
+    assert_eq!(panic.method(), method);
+    assert_eq!(panic.message(), format!("{method} blew up"));
+
+    let site = app.probe.panicked.get().expect("the probe panicked");
+    let location = panic.location().expect("a panic location");
+    assert_eq!(
+        (location.file(), location.line(), location.column()),
+        (site.file, site.line, site.column)
+    );
+    panic
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn loop_stops_on_a_panic_in_handle_event() {
+    local(async {
+        let app = ProbeApp::panicking(Panics { on_key: Some('x'), ..Panics::default() });
+        let backend = SharedBackend::new(10, 2);
+        let events = ScriptedEvents::new([
+            (ms(50), key('a')),
+            (ms(100), key('x')),
+            (ms(100), key('a')),
+            (ms(200), key('a')),
+            (ms(300), key('q')),
+        ]);
+        let teardown = Rc::clone(&events.teardowns);
+
+        let report = run(&app, &backend, events).await.expect_err("handle_event panicked");
+
+        expect_panic(&report, &app, AppMethod::HandleEvent);
+        assert_eq!(teardown.get(), 1);
+        assert_eq!(app.probe.delivered(), [key('a'), key('x')]);
+        app.probe.assert_nothing_after_the_panic();
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn loop_stops_on_a_panic_in_on_tick() {
+    local(async {
+        let app = ProbeApp::panicking(Panics { on_tick: Some(3), ..Panics::default() });
+        let backend = SharedBackend::new(10, 2);
+        let events = ScriptedEvents::new([(ms(250), key('a')), (ms(500), key('q'))]);
+        let teardown = Rc::clone(&events.teardowns);
+
+        let report = run(&app, &backend, events).await.expect_err("on_tick panicked");
+
+        expect_panic(&report, &app, AppMethod::OnTick);
+        assert_eq!(teardown.get(), 1);
+        assert_eq!(app.probe.tick_count(), 2);
+        assert!(app.probe.delivered().is_empty());
+        app.probe.assert_nothing_after_the_panic();
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn loop_stops_on_a_panic_in_build_view() {
+    local(async {
+        let app = ProbeApp::panicking(Panics { on_frame: Some(2), ..Panics::default() });
+        let backend = SharedBackend::new(10, 2);
+        let events = ScriptedEvents::new([(ms(50), key('a')), (ms(300), key('a')), (ms(500), key('q'))]);
+        let teardown = Rc::clone(&events.teardowns);
+
+        let report = run(&app, &backend, events).await.expect_err("build_view panicked");
+
+        expect_panic(&report, &app, AppMethod::BuildView);
+        assert_eq!(teardown.get(), 1);
+        assert_eq!(app.probe.frame_count(), 1);
+        assert_eq!(app.probe.delivered(), [key('a')]);
+        app.probe.assert_nothing_after_the_panic();
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn loop_never_starts_after_a_panic_in_the_first_track_view() {
+    local(async {
+        let app = ProbeApp::panicking(Panics { in_first_track: true, ..Panics::default() });
+        let backend = SharedBackend::new(10, 2);
+        let events = ScriptedEvents::new([(ms(50), key('a')), (ms(500), key('q'))]);
+        let teardown = Rc::clone(&events.teardowns);
+
+        let report = run(&app, &backend, events).await.expect_err("track_view panicked");
+
+        expect_panic(&report, &app, AppMethod::TrackView);
+        assert_eq!(teardown.get(), 1);
+        assert_eq!(app.probe.tick_count(), 0);
+        assert_eq!(app.probe.frame_count(), 0);
+        assert!(app.probe.delivered().is_empty());
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn loop_reports_a_panic_and_a_teardown_error_together() {
+    local(async {
+        let app = ProbeApp::panicking(Panics { on_key: Some('x'), ..Panics::default() });
+        let backend = SharedBackend::new(10, 2);
+        let events = ScriptedEvents::new([(ms(50), key('x')), (ms(500), key('q'))]).failing_teardown();
+
+        let report = run(&app, &backend, events).await.expect_err("both failed");
+
+        expect_panic(&report, &app, AppMethod::HandleEvent);
+        let error = report.downcast_ref::<LoopError>().expect("a LoopError");
+        assert!(
+            matches!(error.teardown(), Some(termoxide_event::Error::Terminal(_))),
+            "{error:?}"
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+#[cfg_attr(
+    not(debug_assertions),
+    ignore = "frames are only reliable in unoptimised builds with symbols"
+)]
+async fn loop_traces_a_panic_from_the_app_frame_to_the_termoxide_boundary() {
+    local(async {
+        let app = ProbeApp::panicking(Panics { on_key: Some('x'), ..Panics::default() });
+        let backend = SharedBackend::new(10, 2);
+        let events = ScriptedEvents::new([(ms(50), key('x')), (ms(500), key('q'))]);
+
+        let report = run_traced(&app, &backend, events, true)
+            .await
+            .expect_err("handle_event panicked");
+
+        let panic = expect_panic(&report, &app, AppMethod::HandleEvent);
+        let Trace::Frames(frames) = panic.trace() else {
+            panic!("expected frames, got {:?}", panic.trace());
+        };
+        // The helper that raised the panic, then the method that called it;
+        // PDB symbols name that method `…::impl$N::handle_event`.
+        let site = app.probe.panicked.get().expect("the probe panicked");
+        let [helper, method, ..] = frames.as_slice() else {
+            panic!("expected at least two frames: {frames:#?}");
+        };
+        assert!(helper.symbol().ends_with("common::probe_panic"), "{helper:?}");
+        assert!(method.symbol().ends_with("::handle_event"), "{method:?}");
+        assert!(method.file().is_some_and(|file| file.ends_with(site.file)), "{method:?}");
+        assert_eq!(method.line(), Some(site.line));
+        for frame in frames {
+            let symbol = frame.symbol();
+            assert!(
+                !["std::", "core::", "tokio::", "<std::", "<core::", "<tokio::"]
+                    .iter()
+                    .any(|prefix| symbol.starts_with(prefix)),
+                "{frames:#?}"
+            );
+        }
+        assert!(panic.to_string().ends_with("\n  termoxide: App::handle_event"), "{panic}");
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn loop_leaves_the_trace_out_when_it_is_disabled() {
+    local(async {
+        let app = ProbeApp::panicking(Panics { on_key: Some('x'), ..Panics::default() });
+        let backend = SharedBackend::new(10, 2);
+        let events = ScriptedEvents::new([(ms(50), key('x')), (ms(500), key('q'))]);
+
+        let report = run(&app, &backend, events).await.expect_err("handle_event panicked");
+
+        assert_eq!(expect_panic(&report, &app, AppMethod::HandleEvent).trace(), &Trace::Disabled);
     })
     .await;
 }
