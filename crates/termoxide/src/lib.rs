@@ -26,7 +26,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use color_eyre::Result;
@@ -38,6 +38,8 @@ use ratatui::{
 use reactive_graph::effect::RenderEffect;
 use termoxide_event::{EventStream, event::Event};
 use termoxide_rendering::{renderer::Renderer, view_node::ViewNode};
+// Same as `std::time::Instant`, but follows tokio's paused clock in tests.
+use tokio::time::Instant;
 
 /// Shortest gap between two repaints (~60 fps).
 pub const MIN_FRAME: Duration = Duration::from_millis(16);
@@ -84,10 +86,21 @@ pub trait App {
 pub trait EventSource {
     /// Return every event available right now, oldest first. Must not block.
     fn poll_events(&self) -> Vec<Event>;
+
+    /// Stop the source once the loop is over.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error the source stopped on, if any.
+    fn teardown(self) -> termoxide_event::Result<()>
+    where
+        Self: Sized;
 }
 
 impl EventSource for EventStream {
     fn poll_events(&self) -> Vec<Event> { EventStream::poll_events(self) }
+
+    fn teardown(self) -> termoxide_event::Result<()> { EventStream::teardown(self) }
 }
 
 /// A pending repaint request, set by the render effect and consumed by the loop.
@@ -164,6 +177,20 @@ fn pump_events<A: App, E: EventSource>(app: &A, events: &E) -> bool {
 /// Returns an error if the terminal cannot be set up, if a frame fails to
 /// render, or if the input reader thread stopped on an error of its own.
 pub async fn run_with_app<A: App + Clone + 'static>(app: A) -> Result<()> {
+    let events = EventStream::new();
+
+    let terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
+    let renderer = Renderer::new(terminal)?;
+
+    run_with(app, renderer, events).await
+}
+
+async fn run_with<A, B, E>(app: A, mut renderer: Renderer<B>, events: E) -> Result<()>
+where
+    A: App + Clone + 'static,
+    B: Backend,
+    E: EventSource,
+{
     let owner = termoxide_reactive::Owner::new();
     owner.set();
 
@@ -176,11 +203,6 @@ pub async fn run_with_app<A: App + Clone + 'static>(app: A) -> Result<()> {
             redraw.request();
         })
     };
-
-    let events = EventStream::new();
-
-    let terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
-    let mut renderer = Renderer::new(terminal)?;
 
     let result = drive(&app, &mut renderer, &events, &redraw).await;
 
@@ -250,139 +272,4 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use std::cell::RefCell;
-
-    use termoxide_event::event::{KeyCode, KeyEvent, KeyModifiers};
-
-    use super::*;
-
-    fn key(c: char) -> Event { Event::KeyPress(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)) }
-
-    /// Records what the loop handed it, and quits on a nominated key.
-    struct RecordingApp {
-        seen: RefCell<Vec<Event>>,
-        quit_on: Option<char>,
-    }
-
-    impl RecordingApp {
-        fn new(quit_on: Option<char>) -> Self { Self { seen: RefCell::new(Vec::new()), quit_on } }
-    }
-
-    impl App for RecordingApp {
-        fn track_view(&self) {}
-
-        fn on_tick(&self) {}
-
-        fn handle_event(&self, event: Event) -> bool {
-            self.seen.borrow_mut().push(event);
-            match (&event, self.quit_on) {
-                (Event::KeyPress(pressed), Some(quit)) => pressed.code == KeyCode::Char(quit),
-                _ => false,
-            }
-        }
-
-        fn build_view(&self, viewport: Rect) -> ViewNode { ViewNode::container(viewport, Vec::new()) }
-    }
-
-    struct FakeEvents(Vec<Event>);
-
-    impl EventSource for FakeEvents {
-        fn poll_events(&self) -> Vec<Event> { self.0.clone() }
-    }
-
-    // ── pump_events ──────────────────────────────────────────────────────────
-
-    #[test]
-    fn pump_events_reports_no_quit_when_nothing_is_pending() {
-        let app = RecordingApp::new(Some('q'));
-
-        assert!(!pump_events(&app, &FakeEvents(Vec::new())));
-        assert!(app.seen.borrow().is_empty());
-    }
-
-    #[test]
-    fn pump_events_forwards_every_event_in_order() {
-        let app = RecordingApp::new(None);
-        let events = FakeEvents(vec![Event::ChannelReady, key('a'), key('b')]);
-
-        assert!(!pump_events(&app, &events));
-        assert_eq!(app.seen.borrow().len(), 3);
-        assert!(matches!(app.seen.borrow()[0], Event::ChannelReady));
-        assert!(matches!(app.seen.borrow()[1], Event::KeyPress(k) if k.code == KeyCode::Char('a')));
-        assert!(matches!(app.seen.borrow()[2], Event::KeyPress(k) if k.code == KeyCode::Char('b')));
-    }
-
-    #[test]
-    fn pump_events_stops_delivering_after_a_quit_request() {
-        let app = RecordingApp::new(Some('q'));
-        let events = FakeEvents(vec![key('a'), key('q'), key('b')]);
-
-        assert!(pump_events(&app, &events));
-        assert_eq!(
-            app.seen.borrow().len(),
-            2,
-            "events queued behind the quit must not be delivered"
-        );
-    }
-
-    // ── FramePacer ───────────────────────────────────────────────────────────
-
-    #[test]
-    fn frame_pacer_draws_the_very_first_frame() {
-        let now = Instant::now();
-
-        assert!(FramePacer::new(now, MIN_FRAME).should_draw(now));
-    }
-
-    #[test]
-    fn frame_pacer_holds_a_second_frame_inside_the_budget() {
-        let now = Instant::now();
-        let mut pacer = FramePacer::new(now, MIN_FRAME);
-
-        pacer.record_draw(now);
-        pacer.mark_dirty();
-
-        assert!(!pacer.should_draw(now + MIN_FRAME / 2));
-        assert!(pacer.should_draw(now + MIN_FRAME));
-    }
-
-    #[test]
-    fn frame_pacer_stays_clean_until_something_marks_it_dirty() {
-        let now = Instant::now();
-        let mut pacer = FramePacer::new(now, MIN_FRAME);
-
-        pacer.record_draw(now);
-
-        // An idle application draws nothing, however much time passes.
-        assert!(!pacer.should_draw(now + MIN_FRAME * 100));
-
-        pacer.mark_dirty();
-        assert!(pacer.should_draw(now + MIN_FRAME * 100));
-    }
-
-    // ── Redraw ───────────────────────────────────────────────────────────────
-
-    #[test]
-    fn redraw_request_is_taken_exactly_once() {
-        let redraw = Redraw::default();
-
-        assert!(!redraw.take());
-
-        redraw.request();
-        assert!(redraw.take());
-        assert!(!redraw.take());
-    }
-
-    #[test]
-    fn redraw_collapses_a_burst_into_one_repaint() {
-        let redraw = Redraw::default();
-
-        redraw.request();
-        redraw.request();
-        redraw.request();
-
-        assert!(redraw.take());
-        assert!(!redraw.take());
-    }
-}
+mod tests;
