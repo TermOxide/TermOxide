@@ -1,0 +1,67 @@
+//! A minimal TermOxide application for the pseudo-terminal tests in
+//! `tests/pty.rs`.
+//!
+//! It shows a fixed title, how many keys it has counted and its viewport, so a
+//! test reading the screen can tell each of them apart. `q` and Ctrl-C quit;
+//! every other key is counted.
+
+use any_spawner::Executor;
+use color_eyre::Result;
+use ratatui::layout::Rect;
+use termoxide::{App, run_with_app};
+use termoxide_event::event::{Event, KeyCode, KeyModifiers};
+use termoxide_reactive::Signal;
+use termoxide_rendering::view_node::ViewNode;
+
+/// First line of every frame.
+const TITLE: &str = "termoxide e2e probe";
+
+#[derive(Clone, Copy)]
+struct Probe {
+    keys: Signal<u32>,
+}
+
+impl App for Probe {
+    fn track_view(&self) { let _ = self.keys.get(); }
+
+    fn on_tick(&self) {}
+
+    fn handle_event(&self, event: Event) -> bool {
+        let Event::KeyPress(key) = event else {
+            return false;
+        };
+        match key.code {
+            KeyCode::Char('q') => true,
+            KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => true,
+            _ => {
+                self.keys.update(|keys| *keys += 1);
+                false
+            },
+        }
+    }
+
+    fn build_view(&self, viewport: Rect) -> ViewNode {
+        let lines = [
+            TITLE.to_string(),
+            format!("keys: {}", self.keys.get_untracked()),
+            format!("viewport: {}x{}", viewport.width, viewport.height),
+        ];
+        let rows = lines.into_iter().zip(0..viewport.height).map(|(line, row)| {
+            ViewNode::text(
+                Rect::new(viewport.x, viewport.y + row, viewport.width, 1),
+                line,
+                Default::default(),
+            )
+        });
+        ViewNode::container(viewport, rows.collect())
+    }
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<()> {
+    color_eyre::install()?;
+    Executor::init_tokio()?;
+
+    let local = tokio::task::LocalSet::new();
+    local.run_until(run_with_app(Probe { keys: Signal::new(0) })).await
+}
