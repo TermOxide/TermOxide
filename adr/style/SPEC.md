@@ -2,7 +2,7 @@
 
 **Project:** signal-driven, JSX-like TUI framework in Rust
 **Status:** design complete, unimplemented
-**Companion:** `adr/index.html` — same decisions with reasoning and rejected alternatives. This document
+**Companion:** `adr/style/index.html` — same decisions with reasoning and rejected alternatives. This document
 states requirements only. When something here looks arbitrary, the ADR says why.
 
 Read §1 and §2 before writing any code. Everything else can be read on demand.
@@ -154,7 +154,7 @@ its own `subtree_paint_dirty`. **Never walk the subtree to propagate inherited v
 
 ## 4. Pipeline
 
-```
+```text
 COMPILE TIME   style!{…}                    → const Style
 TREE BUILD     component fn                 → nodes in arena
 PER CHANGE     ① merge  → target_style
@@ -198,7 +198,7 @@ remeasure.
 
 Colour lowering, in this order:
 
-```
+```text
 Semantic/Base16 → resolve against palette → Rgb
                 → interpolate in Oklab (if animating)
                 → quantize to tier (TrueColor | 256 | 16 | Mono | NamedPalette)

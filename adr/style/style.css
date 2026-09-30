@@ -3,8 +3,8 @@
   --paper:#E6E8E4; --panel:#F1F2EF; --ink:#14171A; --soft:#4A5158;
   --rule:#C3C7C1; --rule-soft:#D8DBD6;
   --blue:#1F4E79; --amber:#7A5B12; --red:#8C2F2F; --violet:#52356B;
-  --mono: ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
-  --serif: Charter,"Bitstream Charter","Iowan Old Style",Georgia,serif;
+  --mono: ui-monospace,"SF Mono","JetBrains Mono",menlo,consolas,monospace;
+  --serif: charter,"Bitstream Charter","Iowan Old Style",georgia,serif;
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
