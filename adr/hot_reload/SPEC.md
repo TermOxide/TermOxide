@@ -51,7 +51,7 @@ pub trait WasmApp {
 pub struct Line { pub color: Color, pub text: String }
 
 /// Framework-fixed, not backend-specific. Needs enriching (RGB, bold/
-/// italic/underline/dim/strikethrough, background) before v1 — see §8.
+/// italic/underline/dim/strikethrough, background) before v1 — see §9.
 pub enum Color { Default, Cyan, Yellow, Green, Magenta }
 
 pub enum Event {
@@ -256,7 +256,38 @@ pub fn run_persistent(config: WasmConfig, snapshot_path: PathBuf) -> Result<()> 
 
 ---
 
-## 8. v1 scope
+## 8. Release builds
+
+A release binary compiles `logic` natively and links it directly into the host — none of §§3–6 ship: no
+`wasmtime`, no subprocess, no IPC, no fuel/epoch, no `postcard` marshaling. The distinguishing switch is
+target architecture, not build profile — a release-profile `wasm32` build still needs the dev-loop export
+path (optimized `logic`, still run through hot-reload during iteration), so `cfg(debug_assertions)` is the
+wrong gate.
+
+```rust
+// wasm_app!(App) expands to one of these, chosen by the compiler, not the macro:
+#[cfg(target_arch = "wasm32")]
+mod __termoxide_wasm_exports { /* state_ptr/output_ptr/on_tick/handle_event/build_view, postcard marshaling — §2 */ }
+
+#[cfg(not(target_arch = "wasm32"))]
+mod __termoxide_native_bridge { /* near-empty — see below */ }
+```
+
+Native linking needs no named-symbol export or runtime resolution at all: once `logic` is just another
+crate in the same compilation graph, the host's native entry point is an ordinary generic function —
+`run_native::<A: WasmApp>()` calling `A::on_tick(&mut state)` directly. There is nothing for the macro's
+native branch to generate beyond what the app's own trait impl already provides.
+
+`logic`'s `[lib] crate-type` must list both `cdylib` (the artifact the dev path loads) and `rlib` (so the
+native host can depend on it as an ordinary crate) — not a new pattern; the hot-lib-reloader draft already
+uses the equivalent dual declaration (`["rlib", "dylib"]`) for the same reason, one level native.
+
+The app author's source is identical in both cases: one `impl WasmApp for App`, one `wasm_app!(App)` call.
+The `cfg` branching is entirely internal to the macro's expansion. Not yet built on any draft.
+
+---
+
+## 9. v1 scope
 
 **In:** the `WasmApp` trait, `wasm_app!` macro-generated exports, `postcard`-encoded generic state,
 signature-checked reload (§2.1), opt-in persistence (§7).
@@ -272,10 +303,10 @@ signature-checked reload (§2.1), opt-in persistence (§7).
 
 ---
 
-## 9. Unverified — check before relying on
+## 10. Unverified — check before relying on
 
 1. Richer `Color`/style vocabulary (RGB, bold/italic/underline/dim/strikethrough, background) — shape
-   depends on the backend-agnosticism work in §8 landing first; don't lock in a representation before that.
+   depends on the backend-agnosticism work in §9 landing first; don't lock in a representation before that.
 2. Windows' exact atomic-append guarantee for `OpenOptions::append(true)` under all handle-sharing modes
    — verified empirically for this project's own read/write pattern (§5), but Windows' documented
    guarantee is narrower (a handle opened with only `FILE_APPEND_DATA`) than what Rust's cross-platform
@@ -286,7 +317,7 @@ signature-checked reload (§2.1), opt-in persistence (§7).
 
 ---
 
-## 10. Glossary
+## 11. Glossary
 
 **Generation** — one loaded version of the app's `logic` module; a reload produces a new one.
 **Guest** — the app's compiled `logic` module, running inside `wasmtime`.
