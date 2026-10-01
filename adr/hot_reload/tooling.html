@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Static analysis &amp; tooling — Hot Reload ADR</title>
+<link rel="stylesheet" href="style.css"></head>
+<body><div class="wrap">
+<nav class="top"><a href="index.html">← All decisions</a><span>9 / 10</span></nav>
+<p class="eyebrow">Domain 9</p>
+<h1>Static analysis &amp; tooling</h1>
+<p class="lede">What the wasm ecosystem could buy back against its own runtime cost — most of it already sitting in the dependency tree, unused.</p>
+<div class="toolbar">
+  <button data-expand="open">Expand all reasoning</button>
+  <button data-expand="closed">Collapse all</button>
+</div>
+<article class="d" id="d9-1"><div class="d-h"><span class="d-id">D9.1</span><h3><code>wasm-tools</code>/<code>wasmparser</code> introspection validates a rebuilt module before loading</h3><span class="chip s-deferred">deferred</span></div><p class="d-dec">Before <code>Instance::new</code> is even attempted, inspect the freshly built module's import/export table directly — catch a malformed or unexpected module with a purpose-built error message, enforce a size or import-allowlist budget in CI, or lint a <code>logic</code> crate that tries to import something host never exposes.</p><details><summary>Reasoning</summary><p><code>wasmparser</code>, <code>wasm-compose</code>, and <code>wit-parser</code> are already transitive dependencies of <code>wasmtime</code> — visible compiling in every build log across every wasm draft in this project, without ever being asked for directly. Adopting this costs nothing in new dependencies, only integration work. No comparable tooling exists for introspecting a native dylib's export table with the same ergonomics or standardization.</p></details></article>
+<article class="d" id="d9-2"><div class="d-h"><span class="d-id">D9.2</span><h3>Component Model / WIT is a future option, not the v1 wire format</h3><span class="chip s-deferred">deferred</span></div><p class="d-dec">Defining the <code>on_tick</code>/<code>handle_event</code>/<code>build_view</code> interface as a <code>.wit</code> file and generating bindings with <code>wit-bindgen</code>, instead of the hand-rolled <code>postcard</code> + fixed-capacity-buffer scheme in <a href="abi.html">Domain 3</a>, was considered and set aside for v1.</p><details><summary>Reasoning</summary><p>The upside is real: richer types (strings, records, variants, lists) would cross the boundary natively instead of through a manually-sized buffer, and a component-model guest isn't necessarily Rust-only — any language with a component target (C, TinyGo, componentize-py) could implement the same interface. Also not a new dependency: <code>wit-parser</code> and <code>wasm-compose</code> are already pulled in transitively by <code>wasmtime</code>, same as D9.1.</p><p>Set aside because it's a real rewrite of the abi crate, not an incremental addition — the right call once cross-language guests or a stronger interface-versioning story become actual requirements, not before.</p></details></article>
+<nav class="bottom"><a href="persistence.html">← State persistence</a><a href="forward-compat.html">Forward compatibility →</a></nav>
+</div><script>
+document.querySelectorAll('[data-expand]').forEach(function(b){
+  b.addEventListener('click', function(){
+    var open = b.dataset.expand === 'open';
+    document.querySelectorAll('details').forEach(function(d){ d.open = open; });
+  });
+});
+</script></body></html>
