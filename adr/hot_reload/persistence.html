@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>State persistence — Hot Reload ADR</title>
+<link rel="stylesheet" href="style.css"></head>
+<body><div class="wrap">
+<nav class="top"><a href="index.html">← All decisions</a><span>8 / 10</span></nav>
+<p class="eyebrow">Domain 8</p>
+<h1>State persistence</h1>
+<p class="lede">Surviving a full host restart, not just a reload — and why it costs nothing extra on top of Domain 3's encoding.</p>
+<div class="toolbar">
+  <button data-expand="open">Expand all reasoning</button>
+  <button data-expand="closed">Collapse all</button>
+</div>
+<article class="d" id="d8-1"><div class="d-h"><span class="d-id">D8.1</span><h3>Persistence is opt-in, layered on the base transport, never a separate design</h3><span class="chip s-accepted">accepted</span></div><p class="d-dec">A reload alone never loses app state — state lives in host for the whole process lifetime, untouched by swapping <code>logic</code>. Persistence exists only for the case a reload can't cover: restarting the <em>host</em> process itself, which happens when non-<code>logic</code> code changes.</p><details><summary>Reasoning</summary><p>Confirmed live across every transport drafted: killing the host process outright mid-session and starting a fresh one restores exactly where the previous run left off, under a new pid, without any change to the app's own code.</p></details></article>
+<article class="d" id="d8-2"><div class="d-h"><span class="d-id">D8.2</span><h3>For wasm and dylib, persistence adds no new encoding step</h3><span class="chip s-accepted">accepted</span></div><p class="d-dec"><code>run_persistent</code> reads the same opaque byte blob (<a href="abi.html#d3-3">D3.3</a>) from a snapshot file on startup and writes it back after every state change. No new trait bound, no app-side derive beyond what D3.2 already required.</p><details><summary>Alternatives considered</summary><ul><li><strong>hot-lib-reloader's persistence story</strong>, for comparison — there, host holds a live, un-encoded, real Rust <code>S</code> value in-process (that's the whole point of that transport). Persistence is the <em>first</em> point encoding is needed at all, so it does need a new <code>Serialize + DeserializeOwned</code> bound and an app-side derive that wasn't otherwise required.</li></ul></details><details><summary>Reasoning</summary><p>Both wasm and dylib already pay the "state must be bytes" cost on every single call, for the live reload boundary itself (D3.2) — for a completely different reason than persistence. Persistence just writes those same bytes to a file instead of into guest memory. There's no new <em>encoding</em> to add — but the snapshot must carry the state-schema fingerprint from <a href="abi.html#d3-7">D3.7</a>, because a file written by an older build outlives the process that wrote it and is exactly where a changed state type gets misread.</p></details></article>
+<article class="d" id="d8-3"><div class="d-h"><span class="d-id">D8.3</span><h3>The snapshot path is fixed, not pid-keyed</h3><span class="chip s-accepted">accepted</span></div><p class="d-dec">One path per app, deterministic, not derived from the running process's pid.</p><details><summary>Reasoning</summary><p>The entire point is finding the file across a pid change — a freshly started host (a new pid, after the restart persistence exists to survive) has to be able to locate what the <em>previous</em> process wrote. A pid-keyed path would defeat the purpose.</p></details></article>
+<nav class="bottom"><a href="capabilities.html">← Capability policy (WASI)</a><a href="tooling.html">Static analysis &amp; tooling →</a></nav>
+</div><script>
+document.querySelectorAll('[data-expand]').forEach(function(b){
+  b.addEventListener('click', function(){
+    var open = b.dataset.expand === 'open';
+    document.querySelectorAll('details').forEach(function(d){ d.open = open; });
+  });
+});
+</script></body></html>

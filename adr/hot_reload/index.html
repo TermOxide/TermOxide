@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hot reload — Architecture Decision Record</title>
+<link rel="stylesheet" href="style.css"></head>
+<body><div class="wrap">
+<p class="eyebrow">Architecture Decision Record</p>
+<h1>Hot reload</h1>
+<p class="lede">Thirty-nine decisions about how an app author's <code>logic</code> gets swapped into a running TUI without losing state, without hanging the host, and without either side's logs corrupting the terminal — with what was drafted, live-tested, and rejected along the way.</p>
+
+<pre><code>SAVE           file watcher (debounced) ──▶ rebuild logic
+
+REBUILD        cargo build --target wasm32-unknown-unknown
+               success ──▶ load (D2.2 checks signature)   failure ──▶ keep current generation (D5.4)
+
+PER CALL       host ──(IPC, D4.2)──▶ subprocess ──▶ wasmtime instance
+               state crosses as postcard bytes (D3.2), host never decodes it (D3.3)
+               fuel/epoch bounds the call (D5.1); a trap discards the generation (D5.3)
+
+EVERY FRAME    build_view ──▶ styled lines ──▶ host renders (D2.3 — guest never touches the terminal)</code></pre>
+
+<h2>The three questions this record answers</h2>
+<table>
+<tr><th>Question</th><th>Answer</th></tr>
+<tr><td>Which transport — native dylib, wasm, or hot-lib-reloader?</td>
+    <td><strong>wasm.</strong> All three were drafted and live-tested to the same contract; wasm won on
+    failing safe on a function-signature mismatch and bounding a guest's infinite loop, with no cooperation required
+    from the guest, neither of which either native form gets for free.
+    <a href="transport.html">Domain 2</a></td></tr>
+<tr><td>Does the sandbox mean giving up filesystem, network, or stdio?</td>
+    <td><strong>No.</strong> Those properties come from wasm's execution model, not from capability
+    restriction — WASI is configured permissively by default. <a href="capabilities.html">Domain 7</a></td></tr>
+<tr><td>How do you catch a hot-swapped module that hangs or crashes?</td>
+    <td><strong>Two independent layers.</strong> Fuel/epoch interruption bounds a call with no guest
+    cooperation; a flat subprocess-level timeout catches everything that isn't a wasm call at all.
+    <a href="protection.html">Domain 5</a></td></tr>
+</table>
+
+<h2>Domains</h2>
+<ul class="toc">
+<li><span class="n">01</span><span class="t"><a href="scope.html">Scope of the hot-reload system</a><small>What "hot reload" means here, who it's for, and why none of it ships in a release build…</small></span><span class="c">5 decisions</span></li>
+<li><span class="n">02</span><span class="t"><a href="transport.html">Transport: why wasm</a><small>Three transports drafted and live-tested; the one property that decided it</small></span><span class="c">3 decisions</span></li>
+<li><span class="n">03</span><span class="t"><a href="abi.html">The app contract (ABI)</a><small>What an app author writes, what crosses the boundary, and how the same macro targets dev and release…</small></span><span class="c">7 decisions</span></li>
+<li><span class="n">04</span><span class="t"><a href="process.html">Process split</a><small>Why only a process boundary, not a thread, can safely contain a crash or hang in the wasmtime host</small></span><span class="c">3 decisions</span></li>
+<li><span class="n">05</span><span class="t"><a href="protection.html">Hang &amp; crash protection</a><small>Two independent layers, one honest limit neither removes, and a hung rebuild — isolated now, still unbounded…</small></span><span class="c">7 decisions</span></li>
+<li><span class="n">06</span><span class="t"><a href="logging.html">Log separation</a><small>Four destinations, not two — and why a passing stress test isn't a guarantee</small></span><span class="c">4 decisions</span></li>
+<li><span class="n">07</span><span class="t"><a href="capabilities.html">Capability policy (WASI)</a><small>The sandbox doesn't have to mean losing filesystem, network, or stdio</small></span><span class="c">2 decisions</span></li>
+<li><span class="n">08</span><span class="t"><a href="persistence.html">State persistence</a><small>Surviving a full host restart, and why it costs nothing extra to add</small></span><span class="c">3 decisions</span></li>
+<li><span class="n">09</span><span class="t"><a href="tooling.html">Static analysis &amp; tooling</a><small>What the wasm ecosystem buys back, mostly already vendored and unused</small></span><span class="c">2 decisions</span></li>
+<li><span class="n">10</span><span class="t"><a href="forward-compat.html">Forward compatibility</a><small>Partial redraw, backend-agnosticism, async — not solved here, not blocked either</small></span><span class="c">3 decisions</span></li>
+</ul>
+
+<div class="legend">
+  <span><span class="chip s-accepted">Accepted</span> decided and in scope for v1</span>
+  <span><span class="chip s-deferred">Deferred</span> out of v1, structurally preserved</span>
+  <span><span class="chip s-reserved">Reserved</span> shape fixed, capability unbuilt</span>
+  <span><span class="chip s-unverified">Unverified</span> rests on an unchecked claim</span>
+</div>
+
+<h2>Deferred with a required discipline</h2>
+<p>Each of these is out of scope for v1 but will be foreclosed unless one specific thing already decided is actually followed.</p>
+<table>
+<tr><th>Capability</th><th>Discipline required now</th><th>Ref</th></tr>
+<tr><td>Partial/diff-based redraw</td><td>State crosses as generic, app-opaque bytes — never a fixed per-field layout that would make a later diff format a breaking rewrite</td>
+    <td><a href="abi.html#d3-2">D3.2</a></td></tr>
+<tr><td>Backend-agnosticism (ratatui / crossterm / other)</td><td>Guest never depends on a rendering backend's types; only host ever translates <code>Color</code>/<code>Line</code></td>
+    <td><a href="transport.html#d2-3">D2.3</a></td></tr>
+<tr><td>Async / multi-threaded host loop</td><td>Host↔subprocess communication is pipe-based IPC, not a direct in-process call — already the shape async runtimes are built around</td>
+    <td><a href="process.html#d4-2">D4.2</a></td></tr>
+<tr><td>Component Model / WIT migration</td><td>Encoding is generic (<code>postcard</code> over any <code>Serialize</code> type), not hand-rolled per app — nothing to unwind at every call site if the wire format is replaced</td>
+    <td><a href="abi.html#d3-2">D3.2</a></td></tr>
+</table>
+
+<h2>Status</h2>
+<p>Recorded 30 September 2026, following the same process the styling ADR used: three candidate transports drafted to an identical contract, live-tested (not just compiled) including real crashes, hangs, restarts, and a genuine concurrency stress test, before any comparison was trusted. Superseding a decision means adding a new entry rather than editing an old one; the rejected alternatives are the record's main value and should survive.</p>
+<p>The implementation-facing companion is <code>SPEC.md</code>, which states the same decisions as requirements without the reasoning.</p>
+</div></body></html>
