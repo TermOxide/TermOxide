@@ -21,8 +21,9 @@ These hold everywhere. A change that violates one is a design change, not a bug 
    export list on the app side — a single macro invocation generates the rest.
 2. **The guest never touches the terminal.** Rendering, raw mode, and the alternate screen are owned
    exclusively by the outer host process, on every transport.
-3. **An ABI mismatch is a caught error, never undefined behavior.** A stale build loading against a
-   newer host must fail cleanly and recoverably.
+3. **An ABI mismatch is a caught error, never undefined behavior and never silent misdecoding.** Two
+   separate checks, neither sufficient alone: the function-signature check (§2.1) and a wire-schema
+   version check (§2.3). A stale build loading against a newer host must fail cleanly and recoverably.
 4. **State crosses the boundary as opaque, generically-encoded bytes.** Host never decodes it; only the
    guest ever holds a real, typed value.
 5. **A trap or a failed rebuild discards the current generation and keeps the previous one running.**
@@ -83,8 +84,11 @@ pub const EXPORT_MEMORY: &str = "memory";
 
 Resolve every export via `Instance::get_typed_func::<Params, Results>(&mut store, NAME)`. This validates
 the requested signature against the module's actual declared type at load time and returns `Err` on a
-mismatch — do not resolve exports any other way; this check is invariant 3 in its entirety, not a
-mitigation on top of something else.
+mismatch — do not resolve exports any other way. This checks **function types only**. It says nothing
+about the meaning of the bytes passed through linear memory: a stale guest can keep identical function
+signatures while changing tag tables, line encoding, buffer sizes or state layout, and both sides will
+decode successfully into wrong values. That is what §2.3 is for; this check is half of invariant 3, not
+all of it.
 
 ### 2.2 State encoding
 
@@ -97,6 +101,33 @@ parameter for app state.
 pub const STATE_CAPACITY: usize = 4096;
 pub const OUTPUT_CAPACITY: usize = 2048;
 ```
+
+### 2.3 Wire-schema and state compatibility
+
+Two separate fingerprints, checked at two separate points. Neither is covered by §2.1.
+
+```rust
+/// Exported by the guest. Covers every byte-level convention the framework defines:
+/// tag tables (Color, KeyCode, modifier bits, event kinds), line encoding, buffer
+/// capacities, state-encoding convention. Version number or build-time fingerprint — open.
+pub const EXPORT_WIRE_SCHEMA: &str = "wire_schema";
+```
+
+- **Wire schema** — host reads `wire_schema` before resolving any other export and compares it to its own
+  expected value. Mismatch → reject the generation exactly like a failed rebuild (§4.3). `postcard` is
+  positional and not self-describing (structs have no field names, enum variants are encoded by
+  discriminant), so a reordered or inserted variant decodes *successfully* as the wrong one — it will not
+  fail on its own.
+- **State schema** — the state blob carries a fingerprint produced by the guest. On mismatch the new
+  generation must **not** decode the blob: reset state to `Default` and write a notice to the log (§5).
+  The generated decode must not use `unwrap_or_default()`; it has to tell "fingerprint mismatch" apart from
+  "decode failed" and report both. Migration between state shapes is out of v1.
+- Persistence (§7) has the same problem across a host *restart*: the snapshot file must carry the state
+  fingerprint and be checked on startup, or a snapshot from an older build is decoded wrongly.
+
+Not built on any draft. The drafts' generated decode currently does `postcard::from_bytes(bytes)
+.unwrap_or_default()`, which loses state silently on a decode error and does nothing about a decode that
+succeeds wrongly.
 
 ---
 
@@ -205,15 +236,20 @@ Four destinations. Confusing any two of them is the bug class this section exist
 | Shared log file (same file) | `[app]` lines | Guest → host-provided `log(ptr, len)` import → same file |
 
 - One shared file, tagged per source — not per-source files, not a spawned terminal window.
-- Every writer commits exactly **one OS write per log line** — format the full line first, then one
-  `write_all`. `O_APPEND`/`FILE_APPEND_DATA` only guarantees atomicity per syscall, not per logical line.
-  Verified live: two uncoordinated processes writing 20,000 lines each, one `write_all` per line,
-  concurrently, to the same file — 40,000 lines, zero malformed, on this project's actual Windows/NTFS
-  setup.
+- Every writer formats the full line first, then writes it **while holding an exclusive cross-process
+  lock on the log file for the entire write** — held for that one line only, never across user code.
+  A single `write_all` call is **not** sufficient on its own: `Write::write_all` loops on `write` after a
+  short write, so one call can become several syscalls, and `O_APPEND`/`FILE_APPEND_DATA` only makes each
+  *syscall* atomic, not the logical line. Routing every record through one writer that owns the file is an
+  equivalent alternative, but here it would mean carrying log records over the IPC channel reserved in §3.
+  Stress-tested: two uncoordinated processes writing 20,000 lines each, one `write_all` per line,
+  concurrently, to the same file — 40,000 lines, zero malformed, on this project's Windows/NTFS setup.
+  That is evidence the common path behaves, not proof of the guarantee; a short write is exactly the case
+  such a run is unlikely to hit. The OS releases the lock if the holding process exits or is killed.
 - App-side logging never uses `WasiCtxBuilder::inherit_stdio()` — that wires the guest directly to the
   subprocess's own stdio, which is the IPC channel. Use a custom `stdout`/`stderr` writer instead: a
-  small buffering sink that accumulates arbitrary partial writes and commits one file write per completed
-  line, satisfying the atomicity requirement above regardless of the app's own write pattern. Install a
+  small buffering sink that accumulates arbitrary partial writes and commits each completed line under
+  the same lock as every other writer, regardless of the app's own write pattern. Install a
   `log::Log` backend forwarding to this sink inside the `wasm_app!` macro expansion, so the app author
   uses ordinary `log::info!`/`warn!` — never raw `println!`/`eprintln!`, which were confirmed live to
   compile but silently no-op at runtime on `wasm32-unknown-unknown` with no WASI wired.
@@ -250,7 +286,8 @@ pub fn run_persistent(config: WasmConfig, snapshot_path: PathBuf) -> Result<()> 
 - Opt-in, layered on the base transport. A reload alone never loses state — persistence exists only for
   surviving a full restart of the host process itself.
 - No new encoding step beyond §2.2: the same opaque bytes already crossing the reload boundary are what
-  gets written to disk.
+  gets written to disk — but the snapshot must carry the state-schema fingerprint (§2.3) and be checked
+  on startup.
 - `snapshot_path` is fixed, not pid-keyed — a freshly started host (new pid) must be able to find what
   the previous one wrote.
 
@@ -290,7 +327,7 @@ The `cfg` branching is entirely internal to the macro's expansion. Not yet built
 ## 9. v1 scope
 
 **In:** the `WasmApp` trait, `wasm_app!` macro-generated exports, `postcard`-encoded generic state,
-signature-checked reload (§2.1), opt-in persistence (§7).
+signature-checked and wire-schema-checked reload (§2.1, §2.3), opt-in persistence (§7).
 
 **Out of v1, structurally preserved:**
 
@@ -308,12 +345,14 @@ signature-checked reload (§2.1), opt-in persistence (§7).
 1. Richer `Color`/style vocabulary (RGB, bold/italic/underline/dim/strikethrough, background) — shape
    depends on the backend-agnosticism work in §9 landing first; don't lock in a representation before that.
 2. Windows' exact atomic-append guarantee for `OpenOptions::append(true)` under all handle-sharing modes
-   — verified empirically for this project's own read/write pattern (§5), but Windows' documented
-   guarantee is narrower (a handle opened with only `FILE_APPEND_DATA`) than what Rust's cross-platform
-   `.append(true)` is confirmed to request in every case.
-3. Whether `wasmtime`'s async call mode (`Config::async_support` + `.call_async()`) actually composes
-   cleanly with the fuel/epoch budget in §4.1 the way the ADR's Domain 10 describes — reasoned from
-   documented behavior, not yet built or tested here.
+   — stress-tested for this project's own read/write pattern (§5), which is evidence, not proof; Windows'
+   documented guarantee is narrower (a handle opened with only `FILE_APPEND_DATA`) than what Rust's
+   cross-platform `.append(true)` is confirmed to request in every case. The §5 lock makes the line-level
+   guarantee independent of this, but the lock itself is also untested on Windows here.
+3. Whether `wasmtime`'s cooperative async yielding composes cleanly with the fuel budget in §4.1. It needs
+   `Config::async_support(true)` + `.call_async()`, `Config::consume_fuel(true)` with fuel supplied, and
+   `Store::fuel_async_yield_interval(...)` — the yield interval and the total budget are separate settings,
+   and exhausting the total still traps. Reasoned from documented behavior, not yet built or tested here.
 
 ---
 
