@@ -17,24 +17,15 @@ struct AppState {
     count: Signal<u32>,
     ticks: Signal<u64>,
     last_key: Signal<String>,
-    last_mouse: Signal<String>,
-    mouse_capture: bool,
 }
 
 impl AppState {
-    fn new(mouse_capture: bool) -> Self {
+    fn new() -> Self {
         Self {
             count: Signal::new(0),
             ticks: Signal::new(0),
             last_key: Signal::new(String::from("waiting for input")),
-            last_mouse: Signal::new(Self::mouse_placeholder(mouse_capture).to_string()),
-            mouse_capture,
         }
-    }
-
-    /// What the mouse line shows before any mouse event arrives.
-    fn mouse_placeholder(mouse_capture: bool) -> &'static str {
-        if mouse_capture { "waiting for input" } else { "not reported (--no-mouse)" }
     }
 
     fn line(viewport: Rect, row_offset: u16, content: String, style: Style) -> Option<ViewNode> {
@@ -56,7 +47,6 @@ impl App for AppState {
         let _ = self.count.get();
         let _ = self.ticks.get();
         let _ = self.last_key.get();
-        let _ = self.last_mouse.get();
     }
 
     fn on_tick(&self) { self.ticks.update(|ticks| *ticks += 1); }
@@ -65,7 +55,6 @@ impl App for AppState {
         match event {
             Event::ChannelReady => {
                 self.last_key.set(String::from("waiting for input"));
-                self.last_mouse.set(Self::mouse_placeholder(self.mouse_capture).to_string());
                 false
             },
             Event::KeyPress(key) => {
@@ -74,17 +63,13 @@ impl App for AppState {
                 key.code == KeyCode::Char('q')
                     || (key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL)
             },
-            Event::Mouse(mouse) => {
-                self.last_mouse.set(format!(
-                    "{:?} at {}:{} with {}",
-                    mouse.kind, mouse.column, mouse.row, mouse.modifiers
-                ));
-                false
-            },
+            Event::Mouse(_) => false,
         }
     }
 
-    fn mouse_capture(&self) -> bool { self.mouse_capture }
+    // This demo only reads the keyboard: leave the mouse to the terminal so
+    // text selection keeps working.
+    fn mouse_capture(&self) -> bool { false }
 
     fn build_view(&self, viewport: Rect) -> ViewNode {
         let children: Vec<ViewNode> = [
@@ -108,17 +93,7 @@ impl App for AppState {
             Self::line(
                 viewport,
                 2,
-                format!("last mouse event: {}", self.last_mouse.get_untracked()),
-                Style::default().fg(Color::Magenta),
-            ),
-            Self::line(
-                viewport,
-                3,
-                if self.mouse_capture {
-                    "Controls: any key counts, the mouse is reported, q or Ctrl-C quits".to_string()
-                } else {
-                    "Controls: any key counts, the mouse selects text, q or Ctrl-C quits".to_string()
-                },
+                "Controls: any key counts, q or Ctrl-C quits".to_string(),
                 Style::default().fg(Color::Green),
             ),
         ]
@@ -136,9 +111,5 @@ async fn main() -> Result<()> {
     Executor::init_tokio()?;
 
     let local = tokio::task::LocalSet::new();
-    // `--no-mouse` opts out of mouse reporting, to check by hand that the
-    // terminal handles text selection again.
-    let mouse_capture = !std::env::args().skip(1).any(|arg| arg == "--no-mouse");
-
-    local.run_until(run_with_app(AppState::new(mouse_capture))).await
+    local.run_until(run_with_app(AppState::new())).await
 }
