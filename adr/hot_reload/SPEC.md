@@ -138,15 +138,23 @@ outer host (owns the terminal, invariant 2)
   │  spawns, framework-authored
   ▼
 subprocess (hosts wasmtime; no TTY, renders nothing)
-  │  Stdio::piped(), reserved exclusively for this
+  │  dedicated named pipe, reserved exclusively for this
   ▼
 IPC channel: tick/event/build_view requests and responses
 ```
 
-- The subprocess's `stdin`/`stdout` carry the IPC protocol and nothing else. Never route logging through
-  either — see §5.
-- The subprocess's `stderr` is unused entirely. Both framework and app logs write directly to the shared
-  log file (§5), not through any inherited or piped stream.
+- The channel is a named pipe. The host creates the server end **before** spawning the child, under a
+  name unique to that host process, and passes the name at spawn (argv or environment). The child
+  connects. Accept exactly one client; where the platform allows, refuse remote clients. Never route
+  logging through it — see §5.
+- Windows uses a named pipe. The Unix equivalent (Unix domain socket or FIFO) is not decided. A Unix
+  socket file outlives a crash and must be cleaned up.
+- Child death is observed as the pipe closing. The pipe is still a byte stream, so messages need framing.
+- The subprocess's `stdin`, `stdout` and `stderr` are set to null explicitly at spawn — never left
+  inherited, which would draw over the TUI and let the child read the host's keystrokes. Both framework
+  and app logs write directly to the shared log file (§5).
+- The harness installs a panic hook that logs through the framework logger. Output emitted outside the
+  logger (a stray `println!`, an abort or fault message from the runtime) is lost by design.
 - Not yet built: every draft as of this writing runs `wasmtime` in the outer host process directly. This
   is the one section of this spec without a working implementation behind it.
 
@@ -173,7 +181,7 @@ are open.
 
 ### 4.2 Around the subprocess round-trip
 
-A flat timeout on "did the subprocess respond to this request," independent of §4.1 — catches a hang in
+A flat timeout on "did the subprocess respond to this request," independent of §4.1, also covering the child connecting to the IPC pipe (§3), which has no built-in timeout — catches a hang in
 the harness code or in `wasmtime` instantiation itself, neither of which a guest-call-scoped fuel/epoch
 budget can see. No heartbeat mechanism: a heartbeat only proves the responding thread is alive, not that
 a specific in-flight call will return (identical failure shape to fuel exhaustion, without the hard
@@ -231,7 +239,8 @@ Four destinations. Confusing any two of them is the bug class this section exist
 | Destination | Content | Mechanism |
 |---|---|---|
 | Outer host's real stdout | Rendered TUI | Never shared with anything else |
-| Subprocess `stdin`/`stdout` | IPC protocol | Reserved exclusively — §3 |
+| Subprocess named pipe | IPC protocol | Reserved exclusively — §3 |
+| Subprocess `stdin`/`stdout`/`stderr` | Nothing | Null — §3 |
 | Shared log file | `[framework:host]`/`[framework:child]` lines | Both processes `OpenOptions::append(true)` directly |
 | Shared log file (same file) | `[app]` lines | Guest → host-provided `log(ptr, len)` import → same file |
 
@@ -247,7 +256,8 @@ Four destinations. Confusing any two of them is the bug class this section exist
   That is evidence the common path behaves, not proof of the guarantee; a short write is exactly the case
   such a run is unlikely to hit. The OS releases the lock if the holding process exits or is killed.
 - App-side logging never uses `WasiCtxBuilder::inherit_stdio()` — that wires the guest directly to the
-  subprocess's own stdio, which is the IPC channel. Use a custom `stdout`/`stderr` writer instead: a
+  subprocess's own stdio, which is null (§3), so output would be silently dropped and would bypass the
+  lock. Use a custom `stdout`/`stderr` writer instead: a
   small buffering sink that accumulates arbitrary partial writes and commits each completed line under
   the same lock as every other writer, regardless of the app's own write pattern. Install a
   `log::Log` backend forwarding to this sink inside the `wasm_app!` macro expansion, so the app author
