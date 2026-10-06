@@ -63,8 +63,13 @@ impl App for AppState {
                 key.code == KeyCode::Char('q')
                     || (key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL)
             },
+            Event::Mouse(_) => false,
         }
     }
+
+    // This demo only reads the keyboard: leave the mouse to the terminal so
+    // text selection keeps working.
+    fn mouse_capture(&self) -> bool { false }
 
     fn build_view(&self, viewport: Rect) -> ViewNode {
         let children: Vec<ViewNode> = [
