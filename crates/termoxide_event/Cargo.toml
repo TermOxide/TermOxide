@@ -1,0 +1,15 @@
+[package]
+name = "termoxide_event"
+version = "0.1.0"
+edition = "2024"
+description = "Event system for TermOxide"
+license = "BSD-2-Clause"
+
+[dependencies]
+crossterm = "0.27"
+
+[dev-dependencies]
+serial_test = "3"
+
+[lints]
+workspace = true

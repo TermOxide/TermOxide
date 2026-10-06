@@ -13,8 +13,7 @@ use guppy::{
 fn main() -> Result<()> {
     // Get the --since argument from the command line
     let since = env::args().nth(1).context(
-        "Usage: cargo run -p cargo-extract -- <since_commit_or_tag>\n   or: \
-         cargo-extract <since_commit_or_tag>",
+        "Usage: cargo run -p cargo-extract -- <since_commit_or_tag>\n   or: cargo-extract <since_commit_or_tag>",
     )?;
 
     // Run `cargo workspaces changed --since <since>`
@@ -25,18 +24,11 @@ fn main() -> Result<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!(
-            "cargo workspaces changed failed ({}): {}",
-            output.status,
-            stderr
-        );
+        anyhow::bail!("cargo workspaces changed failed ({}): {}", output.status, stderr);
     }
 
     let changed_stdout = String::from_utf8(output.stdout)?;
-    let changed: HashSet<String> = changed_stdout
-        .split_whitespace()
-        .map(|s| s.to_string())
-        .collect();
+    let changed: HashSet<String> = changed_stdout.split_whitespace().map(|s| s.to_string()).collect();
 
     if changed.is_empty() {
         return Ok(());
@@ -49,15 +41,10 @@ fn main() -> Result<()> {
 
     if !metadata_output.status.success() {
         let stderr = String::from_utf8_lossy(&metadata_output.stderr);
-        anyhow::bail!(
-            "cargo metadata failed ({}): {}",
-            metadata_output.status,
-            stderr
-        );
+        anyhow::bail!("cargo metadata failed ({}): {}", metadata_output.status, stderr);
     }
 
-    let metadata =
-        CargoMetadata::parse_json(&String::from_utf8(metadata_output.stdout)?)?;
+    let metadata = CargoMetadata::parse_json(&String::from_utf8(metadata_output.stdout)?)?;
 
     let graph = PackageGraph::from_metadata(metadata)?;
 
@@ -79,8 +66,7 @@ fn main() -> Result<()> {
             continue;
         }
 
-        let reverse =
-            graph.query_reverse(std::slice::from_ref(pkg_id))?.resolve();
+        let reverse = graph.query_reverse(std::slice::from_ref(pkg_id))?.resolve();
 
         for pkg in reverse.packages(Reverse) {
             let name = pkg.name().to_string();

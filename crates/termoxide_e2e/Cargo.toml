@@ -1,0 +1,33 @@
+[package]
+name = "termoxide_e2e"
+version = "0.1.0"
+edition = "2024"
+description = "End-to-end tests driving a TermOxide application through a real pseudo-terminal"
+license = "BSD-2-Clause"
+publish = false
+
+[[bin]]
+name = "probe"
+path = "src/bin/probe.rs"
+
+[dependencies]
+termoxide = { path = "../termoxide" }
+termoxide_event = { path = "../termoxide_event" }
+termoxide_reactive = { path = "../termoxide_reactive" }
+termoxide_rendering = { path = "../termoxide_rendering" }
+
+any_spawner = { version = "0.3", features = ["tokio"] }
+color-eyre = "0.6"
+ratatui = { version = "0.26", features = ["crossterm"] }
+tokio = { version = "1", features = ["rt", "macros"] }
+
+[dev-dependencies]
+portable-pty = "0.9"
+vt100 = "0.16"
+
+# Reads the pty's termios to check raw mode; the version `portable-pty` uses.
+[target.'cfg(unix)'.dev-dependencies]
+nix = { version = "0.28", features = ["term"] }
+
+[lints]
+workspace = true
