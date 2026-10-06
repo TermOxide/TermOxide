@@ -34,7 +34,16 @@ ratatui = { version = "0.26", features = ["crossterm"] }
 reactive_graph = { version = "0.2", features = ["effects"] }
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 color-eyre = "0.6"
+backtrace = "0.3"
+
+[dev-dependencies]
+termoxide = { path = ".", features = ["test-util"] }
+termoxide_rendering = { path = "../termoxide_rendering", features = ["test-util"] }
+tokio = { version = "1", features = ["macros", "rt", "test-util"] }
+any_spawner = { version = "0.3", features = ["tokio"] }
 
 [features]
 default = ["ratatui"]
 ratatui = ["termoxide_layout/ratatui"]
+# Exposes `run_with_backend` to the integration tests.
+test-util = []

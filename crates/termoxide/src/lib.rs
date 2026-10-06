@@ -20,15 +20,18 @@
 //! changes, and requests a redraw. An idle application therefore draws nothing,
 //! and [`MIN_FRAME`] caps how often a busy one can draw.
 
+mod capture;
+mod error;
+
 use std::{
+    cell::Cell,
     io::stdout,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::{Duration, Instant},
+    rc::Rc,
+    sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
 };
 
+use capture::Guard;
 use color_eyre::Result;
 use ratatui::{
     Terminal,
@@ -38,6 +41,10 @@ use ratatui::{
 use reactive_graph::effect::RenderEffect;
 use termoxide_event::{EventStream, EventStreamConfig, event::Event};
 use termoxide_rendering::{renderer::Renderer, view_node::ViewNode};
+// Same as `std::time::Instant`, but follows tokio's paused clock in tests.
+use tokio::time::Instant;
+
+pub use crate::error::{AppMethod, AppPanic, LoopError, LoopFailure, PanicLocation, Trace, TraceFrame};
 
 /// Shortest gap between two repaints (~60 fps).
 pub const MIN_FRAME: Duration = Duration::from_millis(16);
@@ -93,23 +100,37 @@ pub trait App {
 pub trait EventSource {
     /// Return every event available right now, oldest first. Must not block.
     fn poll_events(&self) -> Vec<Event>;
+
+    /// Stop the source once the loop is over.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error the source stopped on, if any.
+    fn teardown(self) -> termoxide_event::Result<()>
+    where
+        Self: Sized;
 }
 
 impl EventSource for EventStream {
     fn poll_events(&self) -> Vec<Event> { EventStream::poll_events(self) }
+
+    fn teardown(self) -> termoxide_event::Result<()> { EventStream::teardown(self) }
 }
 
-/// A pending repaint request, set by the render effect and consumed by the loop.
+/// What the render effect hands to the loop.
 ///
 /// The flag and the wakeup are separate on purpose: [`Notify`](tokio::sync::Notify)
 /// alone would force the loop to `await` a notification to learn a repaint is
 /// due, but the effect runs on the executor *after* the loop has already come
 /// back from `select!`. Storing the request in an [`AtomicBool`] lets the loop
 /// pick it up in the same iteration; the notify only wakes a loop that is idle.
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct Redraw {
     requested: AtomicBool,
     wake: tokio::sync::Notify,
+    /// The first panic of `track_view`: the effect's re-runs happen in a task
+    /// of their own, where a panic would only kill that task.
+    panic: Cell<Option<AppPanic>>,
 }
 
 impl Redraw {
@@ -121,6 +142,15 @@ impl Redraw {
 
     /// Take the pending request, if any.
     fn take(&self) -> bool { self.requested.swap(false, Ordering::AcqRel) }
+
+    /// Keep `panic` for the loop, unless an earlier one is already waiting.
+    fn report_panic(&self, panic: AppPanic) {
+        let first = self.panic.take().unwrap_or(panic);
+        self.panic.set(Some(first));
+        self.request();
+    }
+
+    fn take_panic(&self) -> Option<AppPanic> { self.panic.take() }
 }
 
 /// Decides when the loop owes the terminal a repaint.
@@ -161,11 +191,17 @@ fn stream_config<A: App>(app: &A) -> EventStreamConfig {
     EventStreamConfig::default().mouse_capture(app.mouse_capture())
 }
 
-/// Hand every pending event to the app, stopping at the first quit request.
+/// Hand every pending event to the app, stopping at the first quit request or
+/// panic.
 ///
 /// Returns `true` when the app asked to quit.
-fn pump_events<A: App, E: EventSource>(app: &A, events: &E) -> bool {
-    events.poll_events().into_iter().any(|event| app.handle_event(event))
+fn pump_events<A: App, E: EventSource>(app: &A, events: &E, guard: Guard) -> Result<bool, AppPanic> {
+    for event in events.poll_events() {
+        if guard.call(AppMethod::HandleEvent, || app.handle_event(event))? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Run `app` on the real terminal until it asks to stop.
@@ -175,41 +211,90 @@ fn pump_events<A: App, E: EventSource>(app: &A, events: &E) -> bool {
 ///
 /// # Errors
 ///
-/// Returns an error if the terminal cannot be set up, if a frame fails to
-/// render, or if the input reader thread stopped on an error of its own.
+/// Returns an error if the terminal cannot be set up. Any later failure stops
+/// the loop, restores the terminal, and is returned as a [`LoopError`]: a frame
+/// that failed to render, a panic in an [`App`] method, the input reader having
+/// stopped on an error, or a loop failure together with a reader failure.
+///
+/// # Panics
+///
+/// A panic in an [`App`] method is returned as [`LoopFailure::Panic`] instead
+/// of unwinding, with its location and, per [`Trace`], the app's stack. This
+/// relies on unwinding (not `panic = "abort"`) and on a panic hook the first
+/// call installs for the whole process, which forwards every other panic to
+/// the previous hook: install your own hooks, such as `color_eyre::install()`,
+/// before calling this.
 pub async fn run_with_app<A: App + Clone + 'static>(app: A) -> Result<()> {
-    let owner = termoxide_reactive::Owner::new();
-    owner.set();
-
-    let redraw = Arc::new(Redraw::default());
-    let _redraw_effect = {
-        let app_for_effect = app.clone();
-        let redraw = Arc::clone(&redraw);
-        RenderEffect::new(move |_| {
-            app_for_effect.track_view();
-            redraw.request();
-        })
-    };
-
     let events = EventStream::with_config(stream_config(&app));
 
     let terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
-    let mut renderer = Renderer::new(terminal)?;
+    let renderer = Renderer::new(terminal)?;
 
-    let result = drive(&app, &mut renderer, &events, &redraw).await;
+    run_with(app, renderer, events, capture::trace_from_env()).await
+}
+
+/// [`run_with_app`] on any backend and event source, with the stack trace
+/// policy given rather than read from the environment. For TermOxide's tests.
+#[cfg(feature = "test-util")]
+#[doc(hidden)]
+pub async fn run_with_backend<A, B, E>(app: A, renderer: Renderer<B>, events: E, trace: bool) -> Result<()>
+where
+    A: App + Clone + 'static,
+    B: Backend,
+    E: EventSource,
+{
+    run_with(app, renderer, events, trace).await
+}
+
+async fn run_with<A, B, E>(app: A, mut renderer: Renderer<B>, events: E, trace: bool) -> Result<()>
+where
+    A: App + Clone + 'static,
+    B: Backend,
+    E: EventSource,
+{
+    capture::install_hook();
+    let guard = Guard::new(trace);
+
+    let owner = termoxide_reactive::Owner::new();
+    owner.set();
+
+    let redraw = Rc::new(Redraw::default());
+    let _redraw_effect = {
+        let app_for_effect = app.clone();
+        let redraw = Rc::clone(&redraw);
+        RenderEffect::new(move |_| {
+            match guard.call(AppMethod::TrackView, || app_for_effect.track_view()) {
+                Ok(()) => redraw.request(),
+                Err(panic) => redraw.report_panic(panic),
+            }
+        })
+    };
+
+    // The effect's first run happens inside `RenderEffect::new`.
+    let failure = match redraw.take_panic() {
+        Some(panic) => Some(LoopFailure::Panic(panic)),
+        None => drive(&app, &mut renderer, &events, &redraw, guard).await.err(),
+    };
 
     // Restore the terminal before reporting: the reader thread owns raw mode,
     // and its own failure is a likely reason the loop stopped in the first
-    // place, so its result is worth surfacing rather than discarding.
-    let teardown = events.teardown();
-    result?;
-    teardown?;
-    Ok(())
+    // place, so it is reported alongside the loop's rather than discarded.
+    let teardown = events.teardown().err();
+    match LoopError::from_parts(failure, teardown) {
+        Some(error) => Err(error.into()),
+        None => Ok(()),
+    }
 }
 
 /// The loop proper, generic over the backend and the event source so it can be
 /// driven without a terminal.
-async fn drive<A, B, E>(app: &A, renderer: &mut Renderer<B>, events: &E, redraw: &Redraw) -> Result<()>
+async fn drive<A, B, E>(
+    app: &A,
+    renderer: &mut Renderer<B>,
+    events: &E,
+    redraw: &Redraw,
+    guard: Guard,
+) -> Result<(), LoopFailure>
 where
     A: App,
     B: Backend,
@@ -228,12 +313,12 @@ where
     loop {
         tokio::select! {
             _ = input.tick() => {
-                if pump_events(app, events) {
+                if pump_events(app, events, guard)? {
                     return Ok(());
                 }
             }
             _ = ticker.tick() => {
-                app.on_tick();
+                guard.call(AppMethod::OnTick, || app.on_tick())?;
 
                 // A resize raises no event and writes no signal, so it is only
                 // observable by asking the terminal.
@@ -251,179 +336,21 @@ where
         // whether this iteration owes a repaint.
         tokio::task::yield_now().await;
 
+        if let Some(panic) = redraw.take_panic() {
+            return Err(LoopFailure::Panic(panic));
+        }
+
         if redraw.take() {
             pacer.mark_dirty();
         }
 
         if pacer.should_draw(Instant::now()) {
-            let mut root = app.build_view(viewport);
-            renderer.render_frame(&mut root)?;
+            let mut root = guard.call(AppMethod::BuildView, || app.build_view(viewport))?;
+            renderer.render_frame(&mut root).map_err(LoopFailure::Render)?;
             pacer.record_draw(Instant::now());
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use std::cell::RefCell;
-
-    use termoxide_event::event::{KeyCode, KeyEvent, KeyModifiers};
-
-    use super::*;
-
-    fn key(c: char) -> Event { Event::KeyPress(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)) }
-
-    /// Records what the loop handed it, and quits on a nominated key.
-    struct RecordingApp {
-        seen: RefCell<Vec<Event>>,
-        quit_on: Option<char>,
-    }
-
-    impl RecordingApp {
-        fn new(quit_on: Option<char>) -> Self { Self { seen: RefCell::new(Vec::new()), quit_on } }
-    }
-
-    impl App for RecordingApp {
-        fn track_view(&self) {}
-
-        fn on_tick(&self) {}
-
-        fn handle_event(&self, event: Event) -> bool {
-            self.seen.borrow_mut().push(event);
-            match (&event, self.quit_on) {
-                (Event::KeyPress(pressed), Some(quit)) => pressed.code == KeyCode::Char(quit),
-                _ => false,
-            }
-        }
-
-        fn build_view(&self, viewport: Rect) -> ViewNode { ViewNode::container(viewport, Vec::new()) }
-    }
-
-    struct FakeEvents(Vec<Event>);
-
-    impl EventSource for FakeEvents {
-        fn poll_events(&self) -> Vec<Event> { self.0.clone() }
-    }
-
-    /// Opts out of mouse reporting, and does nothing else.
-    struct KeyboardOnlyApp;
-
-    impl App for KeyboardOnlyApp {
-        fn track_view(&self) {}
-
-        fn on_tick(&self) {}
-
-        fn handle_event(&self, _event: Event) -> bool { false }
-
-        fn build_view(&self, viewport: Rect) -> ViewNode { ViewNode::container(viewport, Vec::new()) }
-
-        fn mouse_capture(&self) -> bool { false }
-    }
-
-    // ── stream_config ────────────────────────────────────────────────────────
-
-    #[test]
-    fn stream_config_captures_the_mouse_by_default() {
-        assert_eq!(stream_config(&RecordingApp::new(None)), EventStreamConfig::default());
-    }
-
-    #[test]
-    fn stream_config_follows_an_app_opting_out_of_the_mouse() {
-        assert!(!stream_config(&KeyboardOnlyApp).mouse_capture);
-    }
-
-    // ── pump_events ──────────────────────────────────────────────────────────
-
-    #[test]
-    fn pump_events_reports_no_quit_when_nothing_is_pending() {
-        let app = RecordingApp::new(Some('q'));
-
-        assert!(!pump_events(&app, &FakeEvents(Vec::new())));
-        assert!(app.seen.borrow().is_empty());
-    }
-
-    #[test]
-    fn pump_events_forwards_every_event_in_order() {
-        let app = RecordingApp::new(None);
-        let events = FakeEvents(vec![Event::ChannelReady, key('a'), key('b')]);
-
-        assert!(!pump_events(&app, &events));
-        assert_eq!(app.seen.borrow().len(), 3);
-        assert!(matches!(app.seen.borrow()[0], Event::ChannelReady));
-        assert!(matches!(app.seen.borrow()[1], Event::KeyPress(k) if k.code == KeyCode::Char('a')));
-        assert!(matches!(app.seen.borrow()[2], Event::KeyPress(k) if k.code == KeyCode::Char('b')));
-    }
-
-    #[test]
-    fn pump_events_stops_delivering_after_a_quit_request() {
-        let app = RecordingApp::new(Some('q'));
-        let events = FakeEvents(vec![key('a'), key('q'), key('b')]);
-
-        assert!(pump_events(&app, &events));
-        assert_eq!(
-            app.seen.borrow().len(),
-            2,
-            "events queued behind the quit must not be delivered"
-        );
-    }
-
-    // ── FramePacer ───────────────────────────────────────────────────────────
-
-    #[test]
-    fn frame_pacer_draws_the_very_first_frame() {
-        let now = Instant::now();
-
-        assert!(FramePacer::new(now, MIN_FRAME).should_draw(now));
-    }
-
-    #[test]
-    fn frame_pacer_holds_a_second_frame_inside_the_budget() {
-        let now = Instant::now();
-        let mut pacer = FramePacer::new(now, MIN_FRAME);
-
-        pacer.record_draw(now);
-        pacer.mark_dirty();
-
-        assert!(!pacer.should_draw(now + MIN_FRAME / 2));
-        assert!(pacer.should_draw(now + MIN_FRAME));
-    }
-
-    #[test]
-    fn frame_pacer_stays_clean_until_something_marks_it_dirty() {
-        let now = Instant::now();
-        let mut pacer = FramePacer::new(now, MIN_FRAME);
-
-        pacer.record_draw(now);
-
-        // An idle application draws nothing, however much time passes.
-        assert!(!pacer.should_draw(now + MIN_FRAME * 100));
-
-        pacer.mark_dirty();
-        assert!(pacer.should_draw(now + MIN_FRAME * 100));
-    }
-
-    // ── Redraw ───────────────────────────────────────────────────────────────
-
-    #[test]
-    fn redraw_request_is_taken_exactly_once() {
-        let redraw = Redraw::default();
-
-        assert!(!redraw.take());
-
-        redraw.request();
-        assert!(redraw.take());
-        assert!(!redraw.take());
-    }
-
-    #[test]
-    fn redraw_collapses_a_burst_into_one_repaint() {
-        let redraw = Redraw::default();
-
-        redraw.request();
-        redraw.request();
-        redraw.request();
-
-        assert!(redraw.take());
-        assert!(!redraw.take());
-    }
-}
+mod tests;
