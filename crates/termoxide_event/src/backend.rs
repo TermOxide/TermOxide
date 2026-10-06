@@ -10,33 +10,58 @@
 //! providing another translation step and read loop — no consumer of the
 //! crate needs to change.
 
-use std::{sync::mpsc, time::Duration};
+use std::{
+    io::{self, Write, stdout},
+    sync::mpsc,
+    time::Duration,
+};
 
 use crossterm::{
-    event::{poll, read},
+    event::{DisableMouseCapture, EnableMouseCapture, poll, read},
+    execute,
     terminal::{disable_raw_mode, enable_raw_mode},
 };
 
 use crate::{
+    config::EventStreamConfig,
     error::{Error, Result},
-    event::{Event, KeyCode, KeyEvent, KeyModifiers},
+    event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind},
 };
 
 /// Translate a raw `crossterm` event into a crate [`Event`].
 ///
-/// Only key **press** events are kept (`KeyEventKind::Press`); key releases,
-/// repeats, and every non-key event (mouse, resize, focus, paste) yield
+/// Key **presses** (`KeyEventKind::Press`) and mouse actions are kept; key
+/// releases, repeats, and every remaining event (resize, focus, paste) yield
 /// `None` and are silently discarded. A recognised press further depends on
 /// [`to_keycode`] succeeding, so a press on an unsupported key also yields
-/// `None`.
+/// `None`. A mouse action, on the other hand, always translates:
+/// [`to_mouse_kind`] covers every kind `crossterm` reports.
 fn translate(event: crossterm::event::Event) -> Option<Event> {
     match event {
         crossterm::event::Event::Key(key) if key.kind == crossterm::event::KeyEventKind::Press => {
             let code = to_keycode(key.code)?;
             Some(Event::KeyPress(KeyEvent::new(code, to_modifiers(key.modifiers))))
         },
+        crossterm::event::Event::Mouse(mouse) => {
+            Some(Event::Mouse(MouseEvent::new(
+                to_mouse_kind(mouse.kind),
+                mouse.column,
+                mouse.row,
+                to_modifiers(mouse.modifiers),
+            )))
+        },
         _ => None,
     }
+}
+
+/// Whether a translated `event` may be delivered under `config`.
+///
+/// Opting out of mouse capture only skips turning reporting on: the terminal
+/// may still be reporting the mouse, for example after an application that
+/// crashed without restoring it. Mouse events are dropped here so an opted-out
+/// stream never delivers one.
+fn accepts(event: &Event, config: EventStreamConfig) -> bool {
+    config.mouse_capture || !matches!(event, Event::Mouse(_))
 }
 
 /// Map `crossterm` modifier flags onto the crate's [`KeyModifiers`].
@@ -90,12 +115,44 @@ fn to_keycode(code: crossterm::event::KeyCode) -> Option<KeyCode> {
     }
 }
 
+/// Map a `crossterm` mouse button onto the crate's [`MouseButton`].
+///
+/// Total, unlike [`to_keycode`]: a terminal reports exactly these three
+/// buttons.
+fn to_button(button: crossterm::event::MouseButton) -> MouseButton {
+    use crossterm::event::MouseButton as Ct;
+    match button {
+        Ct::Left => MouseButton::Left,
+        Ct::Right => MouseButton::Right,
+        Ct::Middle => MouseButton::Middle,
+    }
+}
+
+/// Map a `crossterm` mouse event kind onto the crate's [`MouseEventKind`].
+///
+/// Total as well: every kind `crossterm` can report has a counterpart here, so
+/// no mouse action is ever dropped on the way through.
+fn to_mouse_kind(kind: crossterm::event::MouseEventKind) -> MouseEventKind {
+    use crossterm::event::MouseEventKind as Ct;
+    match kind {
+        Ct::Down(button) => MouseEventKind::Down(to_button(button)),
+        Ct::Up(button) => MouseEventKind::Up(to_button(button)),
+        Ct::Drag(button) => MouseEventKind::Drag(to_button(button)),
+        Ct::Moved => MouseEventKind::Moved,
+        Ct::ScrollUp => MouseEventKind::ScrollUp,
+        Ct::ScrollDown => MouseEventKind::ScrollDown,
+        Ct::ScrollLeft => MouseEventKind::ScrollLeft,
+        Ct::ScrollRight => MouseEventKind::ScrollRight,
+    }
+}
+
 /// Run the input loop, forwarding translated events until asked to stop.
 ///
 /// Each iteration first checks `shutdown`: the loop returns `Ok(())` as soon
 /// as a stop signal is received *or* the sender side is disconnected.
 /// Otherwise it polls the terminal for up to 100 ms, and on activity reads one
-/// event, translates it, and sends the result over `events_tx`.
+/// event, translates it, and sends the result over `events_tx` — unless
+/// `config` rejects it (see [`accepts`]).
 ///
 /// The 100 ms poll timeout bounds how long a shutdown request can take to be
 /// noticed: the loop reacts within at most one poll interval.
@@ -107,7 +164,11 @@ fn to_keycode(code: crossterm::event::KeyCode) -> Option<KeyCode> {
 ///
 /// - [`Error::Terminal`] if polling or reading fails.
 /// - [`Error::Channel`] if the receiver has been dropped and a translated event can no longer be delivered.
-fn send_events(events_tx: &mpsc::Sender<Event>, shutdown: &mpsc::Receiver<()>) -> Result<()> {
+fn send_events(
+    events_tx: &mpsc::Sender<Event>,
+    shutdown: &mpsc::Receiver<()>,
+    config: EventStreamConfig,
+) -> Result<()> {
     loop {
         match shutdown.try_recv() {
             Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
@@ -116,7 +177,9 @@ fn send_events(events_tx: &mpsc::Sender<Event>, shutdown: &mpsc::Receiver<()>) -
 
         if poll(Duration::from_millis(100)).map_err(Error::Terminal)? {
             let event = read().map_err(Error::Terminal)?;
-            if let Some(translated_event) = translate(event) {
+            if let Some(translated_event) = translate(event)
+                && accepts(&translated_event, config)
+            {
                 events_tx.send(translated_event).map_err(Error::Channel)?;
             }
         }
@@ -125,27 +188,97 @@ fn send_events(events_tx: &mpsc::Sender<Event>, shutdown: &mpsc::Receiver<()>) -
     Ok(())
 }
 
-/// Enable raw mode, run [`send_events`], and restore the terminal afterwards.
+/// Put the terminal into the modes the reader needs: raw input and, unless
+/// `config` opts out of it, mouse reporting.
+///
+/// Mouse capture is on by default, so any application driven by the stream can
+/// react to clicks without asking for them. While it is on, the terminal stops
+/// handling text selection itself — most terminals still select with `Shift`
+/// held — which is why an application that ignores the mouse can turn it off
+/// (ADR-0007).
+///
+/// Enabling capture after raw mode is deliberate, and so is undoing both modes
+/// when it fails: the caller has no handle to restore the terminal with, so a
+/// half-finished setup would leave the terminal raw for good. Capture is
+/// switched back off too, since a write that fails midway may already have
+/// turned some mouse modes on.
+///
+/// # Errors
+///
+/// - [`Error::Terminal`] if raw mode or mouse reporting cannot be enabled.
+fn setup_terminal(config: EventStreamConfig) -> Result<()> {
+    enable_raw_mode().map_err(Error::Terminal)?;
+
+    if let Err(error) = enable_mouse(&mut stdout(), config) {
+        let _ = disable_mouse(&mut stdout(), config);
+        let _ = disable_raw_mode();
+        return Err(Error::Terminal(error));
+    }
+
+    Ok(())
+}
+
+/// Turn mouse reporting on by writing to `out`, unless `config` opts out of
+/// it — then nothing is written.
+///
+/// Takes any writer rather than `stdout` so the escape sequences can be
+/// checked without a real terminal.
+fn enable_mouse(out: &mut impl Write, config: EventStreamConfig) -> io::Result<()> {
+    if config.mouse_capture { execute!(out, EnableMouseCapture) } else { Ok(()) }
+}
+
+/// Turn mouse reporting off by writing to `out`, unless `config` opted out of
+/// it — then nothing is written, see [`restore_terminal`].
+fn disable_mouse(out: &mut impl Write, config: EventStreamConfig) -> io::Result<()> {
+    if config.mouse_capture { execute!(out, DisableMouseCapture) } else { Ok(()) }
+}
+
+/// Undo [`setup_terminal`], in reverse order.
+///
+/// Both restorations are attempted even when the first one fails, so a broken
+/// step never leaves the other mode enabled behind it; the first failure is
+/// the one reported. Mouse reporting is left alone when `config` opted out of
+/// it: the setup never turned it on, and disabling it anyway would write
+/// escape sequences to a possibly redirected stdout, or switch off reporting
+/// that another program owns.
+///
+/// # Errors
+///
+/// - [`Error::Terminal`] if mouse reporting or raw mode cannot be disabled.
+fn restore_terminal(config: EventStreamConfig) -> Result<()> {
+    let mouse = disable_mouse(&mut stdout(), config);
+    let raw = disable_raw_mode();
+
+    mouse.map_err(Error::Terminal)?;
+    raw.map_err(Error::Terminal)
+}
+
+/// Prepare the terminal, run [`send_events`], and restore the terminal
+/// afterwards.
 ///
 /// This is the entry point run on the background reader thread. It brackets
-/// the loop with `enable_raw_mode` / `disable_raw_mode` so the terminal is
+/// the loop with [`setup_terminal`] / [`restore_terminal`] so the terminal is
 /// always left in a sane state, even when the loop stops because of an error.
 ///
 /// # Errors
 ///
 /// Returns the error produced by [`send_events`], if any. When the loop itself
-/// succeeded but `disable_raw_mode` fails, that teardown failure is surfaced
-/// instead as an [`Error::Terminal`]; a loop error takes precedence over a
-/// teardown error and is preserved unchanged.
-pub(crate) fn read_events(events_tx: mpsc::Sender<Event>, shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
-    enable_raw_mode().map_err(Error::Terminal)?;
+/// succeeded but restoring the terminal fails, that teardown failure is
+/// surfaced instead as an [`Error::Terminal`]; a loop error takes precedence
+/// over a teardown error and is preserved unchanged.
+pub(crate) fn read_events(
+    events_tx: mpsc::Sender<Event>,
+    shutdown_rx: mpsc::Receiver<()>,
+    config: EventStreamConfig,
+) -> Result<()> {
+    setup_terminal(config)?;
 
-    let result = send_events(&events_tx, &shutdown_rx);
+    let result = send_events(&events_tx, &shutdown_rx, config);
 
-    if let Err(disable_error) = disable_raw_mode()
+    if let Err(restore_error) = restore_terminal(config)
         && result.is_ok()
     {
-        return Err(Error::Terminal(disable_error));
+        return Err(restore_error);
     }
 
     result
@@ -164,8 +297,9 @@ mod tests {
         KeyModifiers as CtModifiers,
         MediaKeyCode,
         ModifierKeyCode,
-        MouseEvent,
-        MouseEventKind,
+        MouseButton as CtButton,
+        MouseEvent as CtMouseEvent,
+        MouseEventKind as CtMouseKind,
     };
 
     use super::*;
@@ -183,7 +317,7 @@ mod tests {
         // 2s instead of hanging forever.
         let (done_tx, done_rx) = mpsc::channel();
         thread::spawn(move || {
-            let result = send_events(&events_tx, &shutdown_rx);
+            let result = send_events(&events_tx, &shutdown_rx, EventStreamConfig::default());
             let _ = done_tx.send(result);
         });
 
@@ -331,23 +465,170 @@ mod tests {
     }
 
     #[test]
-    fn translate_drops_non_key_events() {
+    fn translate_drops_events_carrying_no_input() {
         let events = [
             crossterm::event::Event::Resize(80, 24),
             crossterm::event::Event::FocusGained,
             crossterm::event::Event::FocusLost,
             crossterm::event::Event::Paste("hello".to_string()),
-            crossterm::event::Event::Mouse(MouseEvent {
-                kind: MouseEventKind::Moved,
-                column: 0,
-                row: 0,
-                modifiers: CtModifiers::NONE,
-            }),
         ];
 
         for event in events {
             let described = format!("{event:?}");
             assert_eq!(translate(event), None, "expected None for {described}");
         }
+    }
+
+    /// Wrap a `crossterm` mouse kind and position into a full terminal event.
+    ///
+    /// Mirrors [`key_event`] for the mouse side of [`translate`].
+    fn mouse_event(kind: CtMouseKind, column: u16, row: u16, modifiers: CtModifiers) -> crossterm::event::Event {
+        crossterm::event::Event::Mouse(CtMouseEvent { kind, column, row, modifiers })
+    }
+
+    #[test]
+    fn to_button_maps_every_button() {
+        let cases = [
+            (CtButton::Left, MouseButton::Left),
+            (CtButton::Right, MouseButton::Right),
+            (CtButton::Middle, MouseButton::Middle),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(to_button(input), expected, "unexpected mapping for {input:?}");
+        }
+    }
+
+    #[test]
+    fn to_mouse_kind_maps_every_kind() {
+        let cases = [
+            (CtMouseKind::Down(CtButton::Left), MouseEventKind::Down(MouseButton::Left)),
+            (CtMouseKind::Up(CtButton::Right), MouseEventKind::Up(MouseButton::Right)),
+            (CtMouseKind::Drag(CtButton::Middle), MouseEventKind::Drag(MouseButton::Middle)),
+            (CtMouseKind::Moved, MouseEventKind::Moved),
+            (CtMouseKind::ScrollUp, MouseEventKind::ScrollUp),
+            (CtMouseKind::ScrollDown, MouseEventKind::ScrollDown),
+            (CtMouseKind::ScrollLeft, MouseEventKind::ScrollLeft),
+            (CtMouseKind::ScrollRight, MouseEventKind::ScrollRight),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(to_mouse_kind(input), expected, "unexpected mapping for {input:?}");
+        }
+    }
+
+    #[test]
+    fn translate_keeps_a_mouse_action_with_its_position() {
+        let event = mouse_event(CtMouseKind::Down(CtButton::Left), 12, 34, CtModifiers::NONE);
+
+        assert_eq!(
+            translate(event),
+            Some(Event::Mouse(MouseEvent::new(
+                MouseEventKind::Down(MouseButton::Left),
+                12,
+                34,
+                KeyModifiers::NONE
+            )))
+        );
+    }
+
+    #[test]
+    fn translate_carries_modifiers_alongside_the_mouse_action() {
+        let event = mouse_event(CtMouseKind::ScrollUp, 0, 0, CtModifiers::CONTROL);
+
+        assert_eq!(
+            translate(event),
+            Some(Event::Mouse(MouseEvent::new(
+                MouseEventKind::ScrollUp,
+                0,
+                0,
+                KeyModifiers::CONTROL
+            ))),
+            "Ctrl+scroll must stay distinguishable from a bare scroll"
+        );
+    }
+
+    #[test]
+    fn translate_keeps_a_move_with_no_button_held() {
+        // `Moved` is the one kind carrying no button at all: it must survive
+        // translation rather than be mistaken for an unsupported event.
+        let event = mouse_event(CtMouseKind::Moved, 5, 6, CtModifiers::NONE);
+
+        assert_eq!(
+            translate(event),
+            Some(Event::Mouse(MouseEvent::new(MouseEventKind::Moved, 5, 6, KeyModifiers::NONE)))
+        );
+    }
+
+    #[test]
+    fn accepts_every_event_while_the_mouse_is_captured() {
+        let config = EventStreamConfig::default();
+        let click = Event::Mouse(MouseEvent::new(
+            MouseEventKind::Down(MouseButton::Left),
+            1,
+            2,
+            KeyModifiers::NONE,
+        ));
+        let press = Event::KeyPress(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+
+        assert!(accepts(&click, config));
+        assert!(accepts(&press, config));
+    }
+
+    #[test]
+    fn accepts_drops_only_mouse_events_once_capture_is_off() {
+        // The terminal may still report the mouse after an opt-out, for
+        // example when a crashed application left reporting on.
+        let config = EventStreamConfig::default().mouse_capture(false);
+        let click = Event::Mouse(MouseEvent::new(
+            MouseEventKind::Down(MouseButton::Left),
+            1,
+            2,
+            KeyModifiers::NONE,
+        ));
+        let press = Event::KeyPress(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+
+        assert!(!accepts(&click, config));
+        assert!(accepts(&press, config));
+    }
+
+    // On Unix, `crossterm` writes mouse capture as ANSI escape sequences into
+    // the writer it is given; Windows goes through the console API instead and
+    // writes nothing, so these checks only hold on Unix.
+
+    /// Run `toggle` against an in-memory writer and return what it wrote.
+    #[cfg(unix)]
+    fn written_by(toggle: fn(&mut Vec<u8>, EventStreamConfig) -> io::Result<()>, config: EventStreamConfig) -> String {
+        let mut out = Vec::new();
+        assert!(toggle(&mut out, config).is_ok(), "writing to memory cannot fail");
+        String::from_utf8(out).unwrap_or_default()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn enable_mouse_writes_capture_on_by_default() {
+        let written = written_by(enable_mouse, EventStreamConfig::default());
+
+        assert!(written.contains("\x1b[?1000h"), "unexpected output: {written:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn disable_mouse_writes_capture_off_by_default() {
+        let written = written_by(disable_mouse, EventStreamConfig::default());
+
+        assert!(written.contains("\x1b[?1000l"), "unexpected output: {written:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mouse_toggles_write_nothing_once_capture_is_off() {
+        // Setup and teardown must both leave the terminal alone: nothing may
+        // reach a redirected stdout, nor switch off another program's mouse
+        // reporting.
+        let config = EventStreamConfig::default().mouse_capture(false);
+
+        assert_eq!(written_by(enable_mouse, config), "");
+        assert_eq!(written_by(disable_mouse, config), "");
     }
 }

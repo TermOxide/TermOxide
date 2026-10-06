@@ -7,8 +7,9 @@
 //! - the stream handshake being routed nowhere
 //!
 //! Mouse hit-testing, focus transitions (Tab, `set_focus`) and resize broadcast
-//! are not covered: the router implements none of them yet, and
-//! `termoxide_event` carries neither mouse nor resize events today.
+//! are not covered: the router implements none of them yet. Mouse events do
+//! reach it now, but it routes them to `None`; `termoxide_event` still carries
+//! no resize event.
 
 use ratatui::{layout::Rect, style::Style};
 use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};

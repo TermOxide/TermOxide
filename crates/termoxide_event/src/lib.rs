@@ -10,14 +10,23 @@
 //! |Type|Role|
 //! |------|------|
 //! |[`EventStream`]|Handle owning the reader thread|
-//! |[`Event`]|A single event (handshake or key press) delivered by the stream|
+//! |[`EventStreamConfig`]|Settings a stream starts with, such as mouse reporting|
+//! |[`Event`]|A single event (handshake, key press or mouse action) delivered by the stream|
 //! |[`KeyEvent`](event::KeyEvent)|A key press: a key code plus its modifiers|
 //! |[`KeyCode`](event::KeyCode)|Backend-agnostic key identifier|
-//! |[`KeyModifiers`](event::KeyModifiers)|Modifier keys held during a press|
+//! |[`KeyModifiers`](event::KeyModifiers)|Modifier keys held during a press or a mouse action|
+//! |[`MouseEvent`](event::MouseEvent)|A mouse action: a kind, a cell position and its modifiers|
+//! |[`MouseEventKind`](event::MouseEventKind)|What the mouse did: button, move or scroll|
+//! |[`MouseButton`](event::MouseButton)|Which button a button action involved|
 //! |[`Error`] / [`Result`]|Error reported by the reader, and its `Result` alias|
 //!
-//! Raw mode is enabled while the stream is alive and restored when it is
-//! dropped, so the terminal is never left in a broken state.
+//! Raw mode and mouse reporting are enabled while the stream is alive and both
+//! restored when it is dropped, so the terminal is never left in a broken
+//! state. Mouse reporting is on by default: while it is on, the terminal stops
+//! handling text selection itself, which most terminals still offer with
+//! `Shift` held. An application that ignores the mouse can opt out with
+//! [`EventStream::with_config`] and
+//! [`EventStreamConfig::mouse_capture`].
 //!
 //! ## Quickstart
 //!
@@ -39,6 +48,9 @@
 //!                 println!("key pressed: {:?} with {:?}", key.code, key.modifiers);
 //!                 break 'run;
 //!             },
+//!             Event::Mouse(mouse) => {
+//!                 println!("mouse {:?} at {}:{}", mouse.kind, mouse.column, mouse.row);
+//!             },
 //!         }
 //!     }
 //!     thread::sleep(Duration::from_millis(16));
@@ -52,18 +64,21 @@
 //! ```
 
 pub mod backend;
+mod config;
 mod error;
 pub mod event;
 use std::{sync::mpsc, thread};
 
 use backend::read_events;
+pub use config::EventStreamConfig;
 pub use error::{Error, Result};
 use event::Event;
 
 /// An owning handle over a background terminal-input reader.
 ///
 /// Creating an `EventStream` spawns a thread that puts the terminal into raw
-/// mode and streams [`Event`]s back over a channel. The application consumes
+/// mode — and, unless opted out, mouse reporting — and streams [`Event`]s back
+/// over a channel. The application consumes
 /// them with [`poll_events`](Self::poll_events). The very first event is
 /// always [`Event::ChannelReady`].
 ///
@@ -83,20 +98,29 @@ pub struct EventStream {
 }
 
 impl EventStream {
-    /// Create a stream and start reading terminal input.
+    /// Create a stream with the default settings and start reading terminal
+    /// input.
+    ///
+    /// Same as [`with_config`](Self::with_config) with
+    /// [`EventStreamConfig::default`], so the mouse is reported.
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self { Self::with_config(EventStreamConfig::default()) }
+
+    /// Create a stream with the given settings and start reading terminal
+    /// input.
     ///
     /// Spawns the reader thread, which immediately emits
-    /// [`Event::ChannelReady`] and then runs the internal read loop,
-    /// enabling raw mode for the lifetime of the stream. Returns as soon as
-    /// the thread is spawned, without blocking on the first event.
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+    /// [`Event::ChannelReady`] and then runs the internal read loop, enabling
+    /// raw mode — and mouse reporting, if `config` asks for it — for the
+    /// lifetime of the stream. Returns as soon as the thread is spawned,
+    /// without blocking on the first event.
+    pub fn with_config(config: EventStreamConfig) -> Self {
         let (events_tx, events_rx) = mpsc::channel();
         let (shutdown_tx, shutdown_rx) = mpsc::sync_channel(1);
 
         let thread = thread::spawn(move || -> Result<()> {
             events_tx.send(Event::ChannelReady).map_err(Error::Channel)?;
-            read_events(events_tx, shutdown_rx)
+            read_events(events_tx, shutdown_rx, config)
         });
 
         Self { receiver: events_rx, shutdown: Some(shutdown_tx), thread: Some(thread) }
@@ -160,8 +184,8 @@ impl EventStream {
 impl Drop for EventStream {
     /// Stop the reader thread when the handle goes out of scope.
     ///
-    /// This is the RAII guarantee that raw mode is disabled and the terminal
-    /// restored even if the caller never calls
+    /// This is the RAII guarantee that raw mode and mouse reporting are
+    /// disabled and the terminal restored even if the caller never calls
     /// [`teardown`](EventStream::teardown). The join result is discarded
     /// here; use `teardown` to observe it.
     fn drop(&mut self) { let _ = self.stop(); }
