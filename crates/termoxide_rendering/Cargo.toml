@@ -13,3 +13,5 @@ termoxide_reactive = { path = "../termoxide_reactive" }
 
 [features]
 default = []
+# Exposes `Renderer::new_for_test` to other crates' tests.
+test-util = []

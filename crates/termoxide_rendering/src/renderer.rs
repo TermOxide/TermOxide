@@ -155,9 +155,10 @@ impl<B: Backend> Renderer<B> {
     }
 
     /// Create a `Renderer` for testing, which does not enter the alternate
-    /// screen.
-    #[cfg(test)]
-    pub(crate) fn new_for_test(terminal: Terminal<B>) -> Self { Self { terminal, terminal_mode_active: false } }
+    /// screen or otherwise touch stdout.
+    #[cfg(any(test, feature = "test-util"))]
+    #[doc(hidden)]
+    pub fn new_for_test(terminal: Terminal<B>) -> Self { Self { terminal, terminal_mode_active: false } }
 
     /// Return the current terminal viewport size as a [`Rect`].
     ///

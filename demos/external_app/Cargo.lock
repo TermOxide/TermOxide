@@ -782,6 +782,7 @@ dependencies = [
 name = "termoxide"
 version = "1.0.0-alpha"
 dependencies = [
+ "backtrace",
  "color-eyre",
  "ratatui",
  "reactive_graph",

@@ -5,6 +5,7 @@ comment:
 
 ignore:
   - "crates/cargo-extract" # Complete independent crate, not part of the main codebase
+  - "crates/termoxide_e2e" # Test-only crate: the PTY harness and its probe app are not product code
 
 coverage:
   precision: 2
