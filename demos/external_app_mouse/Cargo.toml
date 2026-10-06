@@ -1,5 +1,5 @@
 [package]
-name = "external_app_full"
+name = "external_app_mouse"
 version = "0.1.0"
 edition = "2024"
 
