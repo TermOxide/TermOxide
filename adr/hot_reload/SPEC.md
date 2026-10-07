@@ -93,9 +93,11 @@ all of it.
 ### 2.2 State encoding
 
 State crosses the boundary via `postcard::to_slice`/`from_bytes`, generic over any
-`S: Serialize + DeserializeOwned`, inside the guest-side macro expansion only. Host holds the resulting
+`S: Serialize + DeserializeOwned`, inside the guest-side macro expansion only. The outer host (§3) holds the resulting
 bytes as an opaque `Vec<u8>` and passes them back in unexamined — host code must never contain a type
-parameter for app state.
+parameter for app state. Every call that changes state returns the new bytes to the outer host, which
+keeps the last few generations (between two and five, number open) so a respawned subprocess (§4.3)
+resumes from them and a state that keeps crashing the child can be stepped back.
 
 ```rust
 pub const STATE_CAPACITY: usize = 4096;
@@ -150,11 +152,11 @@ IPC channel: tick/event/build_view requests and responses
 - Windows uses a named pipe. The Unix equivalent (Unix domain socket or FIFO) is not decided. A Unix
   socket file outlives a crash and must be cleaned up.
 - Child death is observed as the pipe closing. The pipe is still a byte stream, so messages need framing.
-- The subprocess's `stdin`, `stdout` and `stderr` are set to null explicitly at spawn — never left
-  inherited, which would draw over the TUI and let the child read the host's keystrokes. Both framework
-  and app logs write directly to the shared log file (§5).
-- The harness installs a panic hook that logs through the framework logger. Output emitted outside the
-  logger (a stray `println!`, an abort or fault message from the runtime) is lost by design.
+- The subprocess's `stdin` is set to null at spawn, so it can't read the host's keystrokes. Its `stdout`
+  and `stderr` are piped to the host, which logs each line through the framework logger (§5), tagged as
+  the child's: `stdout` at `info`, `stderr` at `debug`. Never left inherited, which would draw over the
+  TUI. Never pointed at the log file directly, which would bypass the §5 lock.
+- The harness installs a panic hook that logs through the framework logger.
 - Not yet built: every draft as of this writing runs `wasmtime` in the outer host process directly. This
   is the one section of this spec without a working implementation behind it.
 
@@ -193,6 +195,13 @@ Every call site (`on_tick.call(...)`, `handle_event.call(...)`, `build_view.call
 `Result` explicitly and, on `Err`, discard the current generation and continue with the previous one —
 **not** propagate with `?`. This is currently unimplemented everywhere; every existing draft's `drive()`
 loop uses `?` and exits the host process on a trap.
+
+A lost subprocess (the pipe closed, a §4.2 timeout, a malformed message, or the child exiting) is a
+different case: the whole child is gone, previous generation included. Kill it if still alive, reap it,
+log why, and respawn it in the background on a fresh pipe, starting from the outer host's state (§2.2).
+Never reconnect to it. Drop the in-flight call; never retry it. The host loop keeps rendering its last
+frame and handling input meanwhile. How many respawns within what window before the host stops and
+waits for the next rebuild is open; Erlang/OTP supervisor restart intensity is the reference to study.
 
 A failed rebuild (`build_and_load` returning `Ok(None)`/`Err`) already leaves the previous generation's
 binding untouched — the same pattern §4.3's fix needs to extend to in-flight traps, not a new mechanism.
@@ -240,11 +249,17 @@ Four destinations. Confusing any two of them is the bug class this section exist
 |---|---|---|
 | Outer host's real stdout | Rendered TUI | Never shared with anything else |
 | Subprocess named pipe | IPC protocol | Reserved exclusively — §3 |
-| Subprocess `stdin`/`stdout`/`stderr` | Nothing | Null — §3 |
+| Subprocess `stdin` | Nothing | Null — §3 |
+| Subprocess `stdout`/`stderr` | Stray prints, runtime crash output | Piped to host, logged line by line (`info`/`debug`) — §3 |
 | Shared log file | `[framework:host]`/`[framework:child]` lines | Both processes `OpenOptions::append(true)` directly |
 | Shared log file (same file) | `[app]` lines | Guest → host-provided `log(ptr, len)` import → same file |
 
-- One shared file, tagged per source — not per-source files, not a spawned terminal window.
+- One shared file per host run, tagged per source — not per-source files, not a spawned terminal window.
+  Named after the host's start time (no colons), in `%LOCALAPPDATA%\termoxide\<app>\logs\` on Windows,
+  `$XDG_STATE_HOME/termoxide/<app>/` on Linux (default `~/.local/state/…`), `~/Library/Logs/termoxide/<app>/`
+  on macOS; `<app>` is the executable's file stem. The host passes the path to the child at spawn.
+- Framework code logs through the `log` facade (`log::info!` etc.); the backend formats each tagged line and
+  commits it under the lock below.
 - Every writer formats the full line first, then writes it **while holding an exclusive cross-process
   lock on the log file for the entire write** — held for that one line only, never across user code.
   A single `write_all` call is **not** sufficient on its own: `Write::write_all` loops on `write` after a
@@ -256,8 +271,8 @@ Four destinations. Confusing any two of them is the bug class this section exist
   That is evidence the common path behaves, not proof of the guarantee; a short write is exactly the case
   such a run is unlikely to hit. The OS releases the lock if the holding process exits or is killed.
 - App-side logging never uses `WasiCtxBuilder::inherit_stdio()` — that wires the guest directly to the
-  subprocess's own stdio, which is null (§3), so output would be silently dropped and would bypass the
-  lock. Use a custom `stdout`/`stderr` writer instead: a
+  subprocess's own stdio, so its output would reach the log only as the child's relayed `stdout` (§3),
+  tagged as the framework's rather than the app's. Use a custom `stdout`/`stderr` writer instead: a
   small buffering sink that accumulates arbitrary partial writes and commits each completed line under
   the same lock as every other writer, regardless of the app's own write pattern. Install a
   `log::Log` backend forwarding to this sink inside the `wasm_app!` macro expansion, so the app author
