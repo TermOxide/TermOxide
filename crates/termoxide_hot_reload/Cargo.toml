@@ -1,0 +1,13 @@
+[package]
+name = "termoxide_hot_reload"
+version = "0.1.0"
+edition = "2024"
+description = "Hot reload for TermOxide apps during development"
+license = "BSD-2-Clause"
+
+[dependencies]
+color-eyre = "0.6"
+termoxide = { path = "../termoxide" }
+
+[lints]
+workspace = true
