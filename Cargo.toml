@@ -19,6 +19,11 @@ codegen-units = 1
 strip = true
 
 # Clippy lints configuration
+[workspace.lints.rust]
+# Set by cargo-tarpaulin, whose runs leave out the tests that spawn processes:
+# traced with `--follow-exec`, those processes crash.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tarpaulin)"] }
+
 [workspace.lints.clippy]
 correctness = { level = "deny", priority = -2 }
 suspicious = { level = "deny", priority = -2 }
