@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Capability policy (WASI) — Hot Reload ADR</title>
+<link rel="stylesheet" href="style.css"></head>
+<body><div class="wrap">
+<nav class="top"><a href="index.html">← All decisions</a><span>7 / 10</span></nav>
+<p class="eyebrow">Domain 7</p>
+<h1>Capability policy (WASI)</h1>
+<p class="lede">The sandbox in Domain 2 doesn't have to mean the app author loses filesystem, network, or stdio. Both can be true at once, and it's worth being precise about why.</p>
+<div class="toolbar">
+  <button data-expand="open">Expand all reasoning</button>
+  <button data-expand="closed">Collapse all</button>
+</div>
+<article class="d" id="d7-1"><div class="d-h"><span class="d-id">D7.1</span><h3>WASI is configured permissively by default — filesystem, network, and stdio</h3><span class="chip s-reserved">reserved</span></div><p class="d-dec">Filesystem via <code>WasiCtxBuilder::preopened_dir("/", DirPerms::all(), FilePerms::all())</code>; network via modern <code>wasmtime-wasi</code>'s socket support (<code>.inherit_network()</code> or explicit permissions — this needs the preview2/component-model WASI surface, not base preview1, which has no sockets at all); stdio via the custom sink from <a href="logging.html#d6-4">D6.4</a>, never <code>inherit_stdio()</code>. Practically the same freedom a native dylib would have had.</p><details><summary>Reasoning</summary><p>Fuel/epoch interruption (<a href="protection.html#d5-1">D5.1</a>) and linear-memory isolation are properties of wasm's <em>execution model</em> — Cranelift-inserted checks, the sandbox's own memory boundary — and hold regardless of what capabilities the guest is granted. Portability and the ABI fail-safe (<a href="transport.html#d2-2">D2.2</a>) are equally unaffected. None of the properties that motivated <a href="transport.html#d2-1">D2.1</a> depend on capabilities being restricted, so there was no reason to withhold them by default and every reason not to, per <a href="scope.html#d1-3">D1.3</a>.</p></details><details><summary>Consequences</summary><p>Marked reserved, not accepted: the shape (WASI wired, configured permissively) is decided, but WASI isn't wired into any draft at all yet — today's guests have zero fd/network/env access because nothing is wired, not because anything is deliberately withheld.</p></details></article>
+<article class="d" id="d7-2"><div class="d-h"><span class="d-id">D7.2</span><h3>Capability sandboxing against a malicious author is explicitly out of scope</h3><span class="chip s-accepted">accepted</span></div><p class="d-dec">What's given up by D7.1: a genuinely malicious app, once given real filesystem and network access, can do real damage. That's a known and accepted consequence, not an oversight.</p><details><summary>Reasoning</summary><p>Directly follows from the threat model in <a href="scope.html#d1-2">D1.2</a> — this was already decided, not a new tradeoff being introduced here. Going permissive on capabilities is just following through on it consistently rather than accidentally reintroducing a sandbox story nobody asked for.</p></details></article>
+<nav class="bottom"><a href="logging.html">← Log separation</a><a href="persistence.html">State persistence →</a></nav>
+</div><script>
+document.querySelectorAll('[data-expand]').forEach(function(b){
+  b.addEventListener('click', function(){
+    var open = b.dataset.expand === 'open';
+    document.querySelectorAll('details').forEach(function(d){ d.open = open; });
+  });
+});
+</script></body></html>
