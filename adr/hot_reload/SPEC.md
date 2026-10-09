@@ -255,9 +255,11 @@ Four destinations. Confusing any two of them is the bug class this section exist
 | Shared log file (same file) | `[app]` lines | Guest → host-provided `log(ptr, len)` import → same file |
 
 - One shared file per host run, tagged per source — not per-source files, not a spawned terminal window.
-  Named after the host's start time (no colons), in `%LOCALAPPDATA%\termoxide\<app>\logs\` on Windows,
-  `$XDG_STATE_HOME/termoxide/<app>/` on Linux (default `~/.local/state/…`), `~/Library/Logs/termoxide/<app>/`
-  on macOS; `<app>` is the executable's file stem. The host passes the path to the child at spawn.
+  Named after the host's start time (no colons) and pid, in `termoxide/<app>/logs/` under `dirs::state_dir()`,
+  falling back to `dirs::data_local_dir()`: `%LOCALAPPDATA%\termoxide\<app>\logs\` on Windows,
+  `$XDG_STATE_HOME/termoxide/<app>/logs/` on Linux (default under `~/.local/state/`),
+  `~/Library/Application Support/termoxide/<app>/logs/` on macOS; `<app>` is the executable's file stem.
+  The host passes the path to the child at spawn.
 - Framework code logs through the `log` facade (`log::info!` etc.); the backend formats each tagged line and
   commits it under the lock below.
 - Every writer formats the full line first, then writes it **while holding an exclusive cross-process
@@ -270,6 +272,12 @@ Four destinations. Confusing any two of them is the bug class this section exist
   concurrently, to the same file — 40,000 lines, zero malformed, on this project's Windows/NTFS setup.
   That is evidence the common path behaves, not proof of the guarantee; a short write is exactly the case
   such a run is unlikely to hit. The OS releases the lock if the holding process exits or is killed.
+- With `File::lock`, each process also serialises its own threads' writes (a mutex): on Unix the lock
+  belongs to the open file, shared by all its threads. Both processes open the file readable as well as
+  appending: Windows refuses to lock a handle opened with `append(true)` alone.
+- Both processes log their panics through the logger. The host's hook then hands over to the hook
+  installed before it (an app's own, such as `color_eyre`'s); the child's doesn't, since its stderr is
+  relayed into the log already.
 - App-side logging never uses `WasiCtxBuilder::inherit_stdio()` — that wires the guest directly to the
   subprocess's own stdio, so its output would reach the log only as the child's relayed `stdout` (§3),
   tagged as the framework's rather than the app's. Use a custom `stdout`/`stderr` writer instead: a
@@ -373,7 +381,10 @@ signature-checked and wire-schema-checked reload (§2.1, §2.3), opt-in persiste
    — stress-tested for this project's own read/write pattern (§5), which is evidence, not proof; Windows'
    documented guarantee is narrower (a handle opened with only `FILE_APPEND_DATA`) than what Rust's
    cross-platform `.append(true)` is confirmed to request in every case. The §5 lock makes the line-level
-   guarantee independent of this, but the lock itself is also untested on Windows here.
+   guarantee independent of this. The lock itself is now tested on Windows and Linux: three processes
+   append concurrently in the logging tests, and with each line deliberately written in two halves the
+   lock kept every line whole, while without it lines interleaved. This also surfaced the read-access
+   requirement in §5.
 3. Whether `wasmtime`'s cooperative async yielding composes cleanly with the fuel budget in §4.1. It needs
    `Config::async_support(true)` + `.call_async()`, `Config::consume_fuel(true)` with fuel supplied, and
    `Store::fuel_async_yield_interval(...)` — the yield interval and the total budget are separate settings,
