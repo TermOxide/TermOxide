@@ -8,6 +8,7 @@ members = [
     "crates/termoxide_event",
     "crates/termoxide_rendering",
     "crates/termoxide_e2e",
+    "crates/termoxide_hot_reload",
     "crates/cargo-extract",
 ]
 
