@@ -6,8 +6,10 @@
 extern crate self as termoxide_components;
 
 mod button;
+mod progress_bar;
 
 pub use button::{Button, ButtonBuilder, ButtonProps, Msg, button};
+pub use progress_bar::{ProgressBar, ProgressBarBuilder, ProgressBarProps, progress_bar};
 pub use termoxide_component_macros::RsxComponent;
 
 use termoxide_rendering::{
