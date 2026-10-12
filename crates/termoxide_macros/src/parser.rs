@@ -18,39 +18,34 @@ pub fn parse(input: TokenStream) -> Result<RsxNode, syn::Error> {
 
 struct Parser {
     tokens: Vec<TokenTree>,
-    pos:    usize,
+    pos: usize,
 }
 
 impl Parser {
-    fn new(input: TokenStream) -> Self {
-        Self { tokens: input.into_iter().collect(), pos: 0 }
-    }
+    fn new(input: TokenStream) -> Self { Self { tokens: input.into_iter().collect(), pos: 0 } }
 
-    fn peek(&self) -> Option<&TokenTree> {
-        self.tokens.get(self.pos)
-    }
+    fn peek(&self) -> Option<&TokenTree> { self.tokens.get(self.pos) }
 
-    fn peek2(&self) -> Option<&TokenTree> {
-        self.tokens.get(self.pos + 1)
-    }
+    fn peek2(&self) -> Option<&TokenTree> { self.tokens.get(self.pos + 1) }
 
     fn next(&mut self) -> Option<TokenTree> {
         let tt = self.tokens.get(self.pos).cloned();
-        if tt.is_some() { self.pos += 1; }
+        if tt.is_some() {
+            self.pos += 1;
+        }
         tt
     }
 
     fn expect_punct(&mut self, ch: char) -> Result<Span, syn::Error> {
         match self.next() {
             Some(TokenTree::Punct(p)) if p.as_char() == ch => Ok(p.span()),
-            Some(tt) => Err(syn::Error::new(
-                tt.span(),
-                format!("expected `{ch}`, found `{tt}`"),
-            )),
-            None => Err(syn::Error::new(
-                Span::call_site(),
-                format!("expected `{ch}`, found end of input"),
-            )),
+            Some(tt) => Err(syn::Error::new(tt.span(), format!("expected `{ch}`, found `{tt}`"))),
+            None => {
+                Err(syn::Error::new(
+                    Span::call_site(),
+                    format!("expected `{ch}`, found end of input"),
+                ))
+            },
         }
     }
 
@@ -63,8 +58,8 @@ impl Parser {
     }
 
     fn peek_close_tag(&self) -> bool {
-        matches!(self.peek(),  Some(TokenTree::Punct(p)) if p.as_char() == '<') &&
-        matches!(self.peek2(), Some(TokenTree::Punct(p)) if p.as_char() == '/')
+        matches!(self.peek(),  Some(TokenTree::Punct(p)) if p.as_char() == '<')
+            && matches!(self.peek2(), Some(TokenTree::Punct(p)) if p.as_char() == '/')
     }
 
     fn parse_node(&mut self) -> Result<RsxNode, syn::Error> {
@@ -79,7 +74,7 @@ impl Parser {
                     _ => unreachable!(),
                 };
                 Ok(RsxNode::expr(group_to_string(group.stream())))
-            }
+            },
 
             // string literal — text node
             Some(TokenTree::Literal(_)) => {
@@ -95,10 +90,10 @@ impl Parser {
                     s
                 };
                 Ok(RsxNode::text(content))
-            }
+            },
 
             Some(tt) => Err(syn::Error::new(tt.span(), "expected `<`, `{`, or a string literal")),
-            None     => Err(syn::Error::new(Span::call_site(), "unexpected end of input")),
+            None => Err(syn::Error::new(Span::call_site(), "unexpected end of input")),
         }
     }
 
@@ -120,7 +115,7 @@ impl Parser {
                 self.next(); // consume `/`
                 self.expect_punct('>')?;
                 Ok(RsxNode::element(tag, attrs, vec![]))
-            }
+            },
 
             // `>` — open tag, parse children then close tag
             Some(TokenTree::Punct(p)) if p.as_char() == '>' => {
@@ -128,10 +123,10 @@ impl Parser {
                 let children = self.parse_children()?;
                 self.parse_close_tag(&tag)?;
                 Ok(RsxNode::element(tag, attrs, children))
-            }
+            },
 
             Some(tt) => Err(syn::Error::new(tt.span(), "expected `>` or `/>`")),
-            None     => Err(syn::Error::new(Span::call_site(), "unclosed element tag")),
+            None => Err(syn::Error::new(Span::call_site(), "unclosed element tag")),
         }
     }
 
@@ -140,7 +135,7 @@ impl Parser {
         while !self.peek_close_tag() {
             match self.peek() {
                 None => return Err(syn::Error::new(Span::call_site(), "unclosed element — expected closing tag")),
-                _    => children.push(self.parse_node()?),
+                _ => children.push(self.parse_node()?),
             }
         }
         Ok(children)
@@ -192,15 +187,15 @@ impl Parser {
                             "bare `{expr}` is not valid as an attribute — did you mean `{...expr}` for spread?",
                         ));
                     }
-                }
+                },
 
                 // `ident = value` — named attribute
                 Some(TokenTree::Ident(_)) => {
                     attrs.push(self.parse_named_attr()?);
-                }
+                },
 
                 Some(tt) => return Err(syn::Error::new(tt.span(), "expected attribute name or `>`")),
-                None     => return Err(syn::Error::new(Span::call_site(), "unexpected end of input in attribute list")),
+                None => return Err(syn::Error::new(Span::call_site(), "unexpected end of input in attribute list")),
             }
         }
         Ok(attrs)
@@ -219,7 +214,7 @@ impl Parser {
                     _ => unreachable!(),
                 };
                 AttributeValue::Expr(RsxExpr::new(group_to_string(group.stream())))
-            }
+            },
 
             // literal value
             Some(TokenTree::Literal(_)) => {
@@ -228,7 +223,7 @@ impl Parser {
                     _ => unreachable!(),
                 };
                 AttributeValue::Lit(parse_literal(lit)?)
-            }
+            },
 
             // `true` / `false` — boolean literals written as idents in Rust tokens
             Some(TokenTree::Ident(i)) if i == "true" || i == "false" => {
@@ -237,23 +232,19 @@ impl Parser {
                     _ => unreachable!(),
                 };
                 AttributeValue::Lit(Lit::Bool(b))
-            }
+            },
 
             Some(tt) => return Err(syn::Error::new(tt.span(), "expected `{expr}` or a literal as attribute value")),
-            None     => return Err(syn::Error::new(key_ident.span(), "expected attribute value after `=`")),
+            None => return Err(syn::Error::new(key_ident.span(), "expected attribute value after `=`")),
         };
 
         Ok(Attribute::new(key, value))
     }
 }
 
-fn group_to_string(ts: TokenStream) -> String {
-    token_stream_to_string(ts)
-}
+fn group_to_string(ts: TokenStream) -> String { token_stream_to_string(ts) }
 
-fn token_stream_to_string(ts: TokenStream) -> String {
-    ts.to_string()
-}
+fn token_stream_to_string(ts: TokenStream) -> String { ts.to_string() }
 
 fn parse_literal(lit: Literal) -> Result<Lit, syn::Error> {
     let s = lit.to_string();
@@ -264,12 +255,17 @@ fn parse_literal(lit: Literal) -> Result<Lit, syn::Error> {
     }
 
     // Bool — handled upstream as Ident, but guard here anyway
-    if s == "true"  { return Ok(Lit::Bool(true));  }
-    if s == "false" { return Ok(Lit::Bool(false)); }
+    if s == "true" {
+        return Ok(Lit::Bool(true));
+    }
+    if s == "false" {
+        return Ok(Lit::Bool(false));
+    }
 
     // Float — contains `.`
     if s.contains('.') {
-        return s.parse::<f64>()
+        return s
+            .parse::<f64>()
             .map(Lit::Float)
             .map_err(|_| syn::Error::new(lit.span(), format!("invalid float literal `{s}`")));
     }
@@ -277,7 +273,8 @@ fn parse_literal(lit: Literal) -> Result<Lit, syn::Error> {
     // Integer
     // Strip suffixes like `u16`, `i32`, `usize` before parsing
     let stripped = s.trim_end_matches(|c: char| c.is_alphabetic() || c == '_');
-    stripped.parse::<i64>()
+    stripped
+        .parse::<i64>()
         .map(Lit::Int)
         .map_err(|_| syn::Error::new(lit.span(), format!("unsupported literal `{s}`")))
 }
