@@ -1160,6 +1160,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "termoxide_component_macros"
+version = "1.0.0-alpha"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "termoxide_components"
+version = "1.0.0-alpha"
+dependencies = [
+ "ratatui",
+ "termoxide_component_macros",
+ "termoxide_rendering",
+]
+
+[[package]]
 name = "termoxide_e2e"
 version = "0.1.0"
 dependencies = [
@@ -1198,7 +1216,10 @@ version = "1.0.0-alpha"
 dependencies = [
  "proc-macro2",
  "quote",
+ "ratatui",
  "syn 2.0.119",
+ "termoxide_components",
+ "termoxide_rendering",
 ]
 
 [[package]]

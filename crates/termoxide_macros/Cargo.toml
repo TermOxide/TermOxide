@@ -10,3 +10,8 @@ proc-macro = true
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full"] }
+ratatui = "0.26.3"
+
+[dev-dependencies]
+termoxide_rendering = { path = "../termoxide_rendering" }
+termoxide_components = { path = "../termoxide_components" }

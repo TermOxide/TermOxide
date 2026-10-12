@@ -2,11 +2,12 @@ use ratatui::{
     layout::Rect,
     widgets::{Gauge, Widget},
 };
-use crate::RsxComponent;
 use termoxide_rendering::{
     builder::{CommonFields, NodeBuilder},
     view_node::ViewNode,
 };
+
+use crate::RsxComponent;
 
 #[derive(RsxComponent)]
 #[rsx(component = ProgressBar, builder = ProgressBarBuilder, constructor = progress_bar)]
@@ -42,9 +43,7 @@ impl ProgressBarBuilder {
 }
 
 impl NodeBuilder for ProgressBarBuilder {
-    fn common(&mut self) -> &mut CommonFields {
-        &mut self.common
-    }
+    fn common(&mut self) -> &mut CommonFields { &mut self.common }
 
     fn build(self) -> ViewNode {
         let ratio = if self.max == 0 {
