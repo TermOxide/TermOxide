@@ -1,24 +1,9 @@
-//! The TermOxide application entry point.
+//! TermOxide's application loop.
 //!
-//! [`run_with_app`] owns the process-level plumbing an application needs — the
-//! reactive [`Owner`](termoxide_reactive::Owner), the terminal, the input
-//! reader thread — and drives the **input → update → build → render** cycle
-//! until the application asks to stop.
-//!
-//! ## Cadence
-//!
-//! Three independent rhythms share one `select!`:
-//!
-//! | Rhythm            | Period          | Purpose                                       |
-//! |-------------------|-----------------|-----------------------------------------------|
-//! | [`INPUT_POLL`]    | 8 ms            | drain terminal input; bounds input latency    |
-//! | [`TICK_INTERVAL`] | 100 ms          | fire [`App::on_tick`]; notice terminal resizes |
-//! | redraw request    | on signal write | a tracked signal changed, so repaint          |
-//!
-//! Repainting is driven by the reactive layer, not by the clock: a
-//! [`RenderEffect`] re-runs [`App::track_view`] whenever a signal it read
-//! changes, and requests a redraw. An idle application therefore draws nothing,
-//! and [`MIN_FRAME`] caps how often a busy one can draw.
+//! [`run_with_app`] owns the reactive runtime, terminal, and input reader while
+//! driving the input, update, build, and render cycle. Reactive changes request
+//! repaints; [`MIN_FRAME`] limits their frequency while [`TICK_INTERVAL`] drives
+//! time-based updates.
 
 mod capture;
 mod error;
@@ -46,41 +31,25 @@ use tokio::time::Instant;
 
 pub use crate::error::{AppMethod, AppPanic, LoopError, LoopFailure, PanicLocation, Trace, TraceFrame};
 
-/// Shortest gap between two repaints (~60 fps).
+/// Minimum time between repaints.
 pub const MIN_FRAME: Duration = Duration::from_millis(16);
 /// How often terminal input is drained.
-///
-/// Input latency is bounded by this, so it is deliberately far shorter than
-/// [`TICK_INTERVAL`]: draining input on the tick would make every keypress wait
-/// up to a full tick before the application saw it.
 pub const INPUT_POLL: Duration = Duration::from_millis(8);
 /// How often [`App::on_tick`] fires.
 pub const TICK_INTERVAL: Duration = Duration::from_millis(100);
 
-/// The contract an application implements to be driven by [`run_with_app`].
-///
-/// Every method takes `&self`: state lives in reactive signals, which are
-/// interior-mutable, so the loop never needs a unique borrow.
+/// Application callbacks used by [`run_with_app`].
 pub trait App {
-    /// Read every signal the view depends on.
-    ///
-    /// Called inside a [`RenderEffect`], so reading a signal here subscribes
-    /// the loop to it: any later write requests a repaint. Read, and discard —
-    /// the values themselves are fetched again in [`build_view`](Self::build_view).
+    /// Read the signals that should trigger a view rebuild.
     fn track_view(&self);
 
-    /// Advance time-based state. Fires every [`TICK_INTERVAL`].
+    /// Advance time-based state.
     fn on_tick(&self);
 
-    /// Handle one input event.
-    ///
-    /// Returns `true` to stop the loop. Events queued behind a `true` are
-    /// dropped undelivered.
+    /// Handle an input event. Return `true` to stop the loop.
     fn handle_event(&self, event: Event) -> bool;
 
-    /// Build the view tree for `viewport`.
-    ///
-    /// Called only on frames that actually repaint.
+    /// Build the view tree for `viewport` when a repaint is due.
     fn build_view(&self, viewport: Rect) -> ViewNode;
 
     /// Whether the terminal reports the mouse while the app runs.
@@ -93,12 +62,9 @@ pub trait App {
     fn mouse_capture(&self) -> bool { true }
 }
 
-/// A non-blocking source of input events.
-///
-/// Exists so the loop can be driven by a fake in tests; production uses
-/// [`EventStream`].
+/// Non-blocking input source used by the application loop.
 pub trait EventSource {
-    /// Return every event available right now, oldest first. Must not block.
+    /// Return currently available events in oldest-first order.
     fn poll_events(&self) -> Vec<Event>;
 
     /// Stop the source once the loop is over.
@@ -134,7 +100,7 @@ struct Redraw {
 }
 
 impl Redraw {
-    /// Ask for a repaint and wake the loop if it is parked.
+    /// Request a repaint and wake an idle loop.
     fn request(&self) {
         self.requested.store(true, Ordering::Release);
         self.wake.notify_one();
@@ -153,9 +119,7 @@ impl Redraw {
     fn take_panic(&self) -> Option<AppPanic> { self.panic.take() }
 }
 
-/// Decides when the loop owes the terminal a repaint.
-///
-/// Pure, so the pacing rules can be tested without a terminal.
+/// Tracks whether a repaint is dirty and whether its frame budget has elapsed.
 #[derive(Debug)]
 struct FramePacer {
     min_frame: Duration,
@@ -164,21 +128,24 @@ struct FramePacer {
 }
 
 impl FramePacer {
-    /// Start dirty, so the first frame is drawn immediately.
+    /// Start dirty so the first frame draws immediately.
     fn new(now: Instant, min_frame: Duration) -> Self {
         Self {
             min_frame,
-            // Backdate so the first frame is not held for `min_frame`.
-            // `checked_sub` because `now` can be close to the platform epoch.
+            // Backdate the first frame without assuming `Instant` can subtract.
             last_draw: now.checked_sub(min_frame).unwrap_or(now),
             dirty: true,
         }
     }
 
-    fn mark_dirty(&mut self) { self.dirty = true; }
+    fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
 
-    /// `true` when something changed *and* the frame budget has elapsed.
-    fn should_draw(&self, now: Instant) -> bool { self.dirty && now.duration_since(self.last_draw) >= self.min_frame }
+    /// Whether a dirty frame is ready to draw.
+    fn should_draw(&self, now: Instant) -> bool {
+        self.dirty && now.duration_since(self.last_draw) >= self.min_frame
+    }
 
     fn record_draw(&mut self, now: Instant) {
         self.dirty = false;
@@ -204,10 +171,7 @@ fn pump_events<A: App, E: EventSource>(app: &A, events: &E, guard: Guard) -> Res
     Ok(false)
 }
 
-/// Run `app` on the real terminal until it asks to stop.
-///
-/// Sets up the reactive owner, the alternate screen and the input reader, drives
-/// the loop, then restores the terminal before returning.
+/// Run `app` on the real terminal until it requests shutdown.
 ///
 /// # Errors
 ///
@@ -305,8 +269,7 @@ where
 
     let mut ticker = tokio::time::interval(TICK_INTERVAL);
     let mut input = tokio::time::interval(INPUT_POLL);
-    // Never replay missed ticks: a slow frame must not queue a burst of catch-up
-    // work behind it.
+    // Avoid bursts of catch-up work after a slow frame.
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     input.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
@@ -320,8 +283,7 @@ where
             _ = ticker.tick() => {
                 guard.call(AppMethod::OnTick, || app.on_tick())?;
 
-                // A resize raises no event and writes no signal, so it is only
-                // observable by asking the terminal.
+                // Resizes are observed by polling the terminal viewport.
                 let current = renderer.viewport();
                 if current != viewport {
                     viewport = current;
@@ -331,9 +293,7 @@ where
             _ = redraw.wake.notified() => {}
         }
 
-        // `RenderEffect` re-runs are scheduled on the executor rather than run
-        // inline by a signal write, so let the effect task run before asking
-        // whether this iteration owes a repaint.
+        // Let scheduled render effects run before checking for repaint work.
         tokio::task::yield_now().await;
 
         if let Some(panic) = redraw.take_panic() {
