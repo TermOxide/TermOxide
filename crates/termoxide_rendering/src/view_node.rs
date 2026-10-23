@@ -80,7 +80,7 @@ pub type ComponentId = u64;
 ///
 /// Each variant maps to a distinct rendering strategy inside
 /// [`Renderer::draw_node`][crate::renderer::Renderer].
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ViewContent {
     // ── Structural
@@ -145,7 +145,7 @@ pub enum ViewContent {
 /// | `content`     | Component      | Renderer                         |
 /// | `children`    | Component      | Renderer (recursive traversal)   |
 /// | `dirty`       | Reactive layer | RenderLoop (skip-if-clean)       |
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ViewNode {
     /// Optional component identity.

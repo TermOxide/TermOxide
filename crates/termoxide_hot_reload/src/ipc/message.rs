@@ -41,6 +41,11 @@ pub(crate) enum Response {
     /// The answer to the [`Request::Tick`] at which a new component replaced
     /// the running one, instead of that tick's [`Outcome`]: its state.
     Reloaded { state: Vec<u8> },
+    /// The answer to a request the app crashed on: the request was dropped and
+    /// the app restarted from its latest state, which this is.
+    Recovered { state: Vec<u8> },
+    /// In place of an answer too large for one frame, which was dropped.
+    TooLarge,
 }
 
 /// What an event or a tick did to the app.
