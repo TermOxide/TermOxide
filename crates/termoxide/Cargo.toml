@@ -25,16 +25,16 @@ long_description = "TermOxide is a framework for building terminal user interfac
 [dependencies]
 termoxide_macros = { path = "../termoxide_macros" }
 termoxide_layout = { path = "../termoxide_layout/" }
-termoxide_event = { path = "../termoxide_event" }
+termoxide_event = { path = "../termoxide_event", default-features = false }
 termoxide_reactive = { path = "../termoxide_reactive" }
-termoxide_rendering = { path = "../termoxide_rendering" }
+termoxide_rendering = { path = "../termoxide_rendering", default-features = false }
 
 # Render loop: terminal backend, reactive effects, async runtime and error reporting
-ratatui = { version = "0.26", features = ["crossterm"] }
-reactive_graph = { version = "0.2", features = ["effects"] }
-tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
-color-eyre = "0.6"
-backtrace = "0.3"
+ratatui = { version = "0.26", default-features = false }
+reactive_graph = { version = "0.2", features = ["effects"], optional = true }
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"], optional = true }
+color-eyre = { version = "0.6", optional = true }
+backtrace = { version = "0.3", optional = true }
 
 [dev-dependencies]
 termoxide = { path = ".", features = ["test-util"] }
@@ -43,7 +43,19 @@ tokio = { version = "1", features = ["macros", "rt", "test-util"] }
 any_spawner = { version = "0.3", features = ["tokio"] }
 
 [features]
-default = ["ratatui"]
+default = ["ratatui", "terminal"]
+# The run loop. Without it, only the `App` trait remains, which is what an app
+# built for wasm needs.
+terminal = [
+    "dep:reactive_graph",
+    "dep:tokio",
+    "dep:color-eyre",
+    "dep:backtrace",
+    "ratatui/crossterm",
+    "ratatui/underline-color",
+    "termoxide_event/terminal",
+    "termoxide_rendering/terminal",
+]
 ratatui = ["termoxide_layout/ratatui"]
 # Exposes `run_with_backend` to the integration tests.
-test-util = []
+test-util = ["terminal"]
