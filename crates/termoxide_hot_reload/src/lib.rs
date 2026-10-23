@@ -17,6 +17,9 @@ extern crate self as termoxide_hot_reload;
 mod build;
 #[cfg(feature = "host")]
 mod component;
+#[cfg(feature = "host")]
+#[doc(hidden)]
+pub mod dump;
 #[cfg(feature = "guest")]
 #[doc(hidden)]
 pub mod guest;
@@ -83,7 +86,8 @@ macro_rules! wasm_app {
 /// and the next run starts from its last entry. `TERMOXIDE_HOT_RELOAD_PERSIST=0`
 /// or `1` overrides that for one run, and `TERMOXIDE_HOT_RELOAD_FRESH=1` starts
 /// that run from a clean state. When the app stops for crashing too often, the
-/// trace is kept as `state.bin.crashed`.
+/// trace is kept as `state.bin.crashed`. `termoxide_dump <trace>` prints a
+/// trace's entries.
 #[cfg(feature = "host")]
 #[macro_export]
 macro_rules! run_app {
@@ -131,7 +135,7 @@ pub async fn run(package: Package, persistent: bool) -> color_eyre::Result<()> {
 
     let persists = snapshot::persists(env::var(PERSIST_ENV).ok().as_deref(), persistent);
     let snapshot = persists
-        .then(|| logging::app_dir().map(|dir| Snapshot::in_dir(&dir)))
+        .then(|| logging::app_dir().map(|dir| Snapshot::in_dir(&dir, package.manifest_dir)))
         .transpose()?;
     if let Some(snapshot) = &snapshot {
         log::info!("keeping the app's state in {}", snapshot.path().display());

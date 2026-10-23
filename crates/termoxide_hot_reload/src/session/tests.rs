@@ -252,10 +252,11 @@ fn a_state_is_described_as_json_without_starting_the_app() {
 
         let described = answer(&mut responder, Request::Describe { state: state(7, 3) }).await;
 
-        let Response::Described(Some(json)) = described else {
+        let Response::Described { fingerprint, app: Some(json) } = described else {
             panic!("expected a description, got {described:?}")
         };
         assert_eq!(json.split_whitespace().collect::<String>(), r#"{"shown":7,"hidden":3}"#);
+        assert_eq!(fingerprint, schema::fingerprint::<Counter>().ok());
         assert!(
             matches!(responder.step(Request::Tick), Err(IpcError::Unexpected)),
             "the app started"
@@ -272,7 +273,7 @@ fn a_state_saved_by_another_state_type_is_not_described() {
 
         assert!(matches!(
             answer(&mut responder, Request::Describe { state: saved }).await,
-            Response::Described(None)
+            Response::Described { fingerprint: Some(_), app: None }
         ));
     });
 }

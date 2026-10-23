@@ -294,11 +294,11 @@ fn a_damaged_snapshot_is_set_aside_and_the_app_starts_afresh() {
     session.send(b"aa");
     session.wait_for_text("presses: 2");
     quit(session);
-    // One entry holding the fingerprint, then a varint that never ends: the
-    // state type matches, the bytes don't decode.
+    // Its header, then one entry holding the fingerprint and a varint that
+    // never ends: the state type matches, the bytes don't decode.
     let trace = fs::read(fixture.snapshot()).unwrap();
-    let fingerprint = &first_state(&trace)[..8];
-    fs::write(fixture.snapshot(), [&[0, 9], fingerprint, &[0xFF]].concat()).unwrap();
+    let (header, state) = split_trace(&trace);
+    fs::write(fixture.snapshot(), [header, &[0, 9], &state[..8], &[0xFF]].concat()).unwrap();
 
     let session = fixture.run_with(&[PERSIST]);
 
@@ -306,13 +306,30 @@ fn a_damaged_snapshot_is_set_aside_and_the_app_starts_afresh() {
     assert!(fixture.snapshot().with_extension("bin.unreadable").exists());
 }
 
-/// The state in a trace's first entry: a postcard `{ at: u64, state: &[u8] }`,
-/// two varints and the bytes.
-fn first_state(trace: &[u8]) -> &[u8] {
-    let varint_end = |from: usize| from + trace[from..].iter().position(|byte| byte & 0x80 == 0).unwrap() + 1;
-    let len_at = varint_end(0);
-    let state_at = varint_end(len_at);
-    &trace[state_at..state_at + usize::from(trace[len_at])]
+/// What a trace starts with, as `termoxide_hot_reload` writes it.
+const TRACE_MAGIC: &[u8] = b"termoxide state trace 1
+";
+
+/// A trace's start, through the header naming the app, and the state in its
+/// first entry. Postcard writes the header's path and each entry's
+/// `{ at: u64, state: &[u8] }` as varints and bytes.
+fn split_trace(trace: &[u8]) -> (&[u8], &[u8]) {
+    // A varint's value and where it ends.
+    let varint = |from: usize| {
+        let (mut value, mut at) = (0, from);
+        loop {
+            value |= usize::from(trace[at] & 0x7F) << (7 * (at - from));
+            at += 1;
+            if trace[at - 1] & 0x80 == 0 {
+                return (value, at);
+            }
+        }
+    };
+    let (len, at) = varint(TRACE_MAGIC.len());
+    let header_end = at + len;
+    let (_, at) = varint(header_end);
+    let (len, at) = varint(at);
+    (&trace[..header_end], &trace[at..at + len])
 }
 
 #[test]
@@ -332,4 +349,54 @@ fn crashing_too_often_sets_the_trace_aside_and_the_next_run_starts_afresh() {
     assert!(fixture.snapshot().with_extension("bin.crashed").exists());
     let session = fixture.run_with(&[PERSIST]);
     session.wait_for_text_within(build_deadline(), "presses: 0");
+}
+
+/// Builds `termoxide_dump` where the fixtures build, then runs it on `trace`,
+/// so the app's component it builds is the one the fixture's run built.
+fn dump(trace: &Path) -> String {
+    let crates = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let status = Command::new(env!("CARGO"))
+        .args([
+            "build",
+            "--quiet",
+            "--features",
+            "host",
+            "--bin",
+            "termoxide_dump",
+            "--manifest-path",
+        ])
+        .arg(crates.join("termoxide_hot_reload/Cargo.toml"))
+        .env("CARGO_TARGET_DIR", Fixture::target_dir())
+        .status()
+        .unwrap();
+    assert!(status.success(), "building termoxide_dump failed");
+    let output = Command::new(Fixture::target_dir().join("debug/termoxide_dump"))
+        .arg(trace)
+        .env("CARGO_TARGET_DIR", Fixture::target_dir())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    String::from_utf8(output.stdout).unwrap()
+}
+
+#[test]
+fn termoxide_dump_prints_a_trace_as_the_app_decodes_it() {
+    let fixture = Fixture::copy("dump");
+    let mut session = fixture.run_with(&[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+    session.send(b"aa");
+    session.wait_for_text("presses: 2");
+    quit(session);
+
+    let printed = dump(&fixture.snapshot());
+
+    // The start, then one entry per press.
+    assert!(printed.contains(r#""count": 2"#), "{printed}");
+    assert!(
+        printed.ends_with(
+            "3 entries
+"
+        ),
+        "{printed}"
+    );
 }
