@@ -14,6 +14,10 @@ world guest {
   /// Writes one of the app's log records to the run's log file.
   import log: func(level: level, message: string);
 
+  /// The fingerprint of the protocol the component was built with: the
+  /// subprocess talks to it only if it matches its own.
+  export wire-schema: func() -> u64;
+
   /// Answers one `postcard`-encoded request with an encoded response, or says
   /// why it couldn't.
   export handle: func(request: list<u8>) -> result<list<u8>, string>;
