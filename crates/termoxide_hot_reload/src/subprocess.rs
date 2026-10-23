@@ -14,6 +14,7 @@ use crate::{
     component::{GuestInstance, Runtime},
     ipc::{self, HostChannel, IpcError, Listener, Outcome, Request, Response},
     logging::{LOG_ENV, relay_output},
+    schema,
 };
 
 /// Set on the subprocess to the name of the pipe it must connect to.
@@ -150,7 +151,7 @@ impl Generations {
             (None, request @ Request::Start { .. }) => {
                 log::info!("loading {}", first.display());
                 let component = self.runtime.compile(first)?;
-                self.current.insert(self.runtime.instantiate(&component)?).handle(&request)?
+                self.current.insert(self.generation(&component)?).handle(&request)?
             },
             (None, _) => return Err(eyre!("the host sent a request before starting the app")),
             (Some(current), request) => current.handle(&request)?,
@@ -194,20 +195,29 @@ impl Generations {
         }
     }
 
-    /// A new generation of `component`, started from the current state, or
-    /// afresh when it can't read it.
+    /// A new instance of `component`, once it is known to speak this
+    /// subprocess's protocol.
+    fn generation(&self, component: &Component) -> Result<GuestInstance> {
+        let mut generation = self.runtime.instantiate(component)?;
+        let (theirs, ours) = (generation.wire_schema()?, schema::wire().map_err(|e| eyre!(e))?);
+        if theirs != ours {
+            return Err(eyre!("the guest was built for another version of the protocol"));
+        }
+        Ok(generation)
+    }
+
+    /// A new generation of `component`, started from the current state. The
+    /// guest starts it afresh instead when another state type saved it.
     fn start(&self, component: &Component) -> Result<(GuestInstance, Vec<u8>)> {
-        let start = |state: Option<Vec<u8>>| -> Result<(GuestInstance, Vec<u8>)> {
-            let mut generation = self.runtime.instantiate(component)?;
-            match generation.handle(&Request::Start { state })? {
-                Response::Started { state, .. } => Ok((generation, state)),
-                _ => Err(eyre!("the new generation didn't start")),
-            }
-        };
-        start(Some(self.state.clone())).or_else(|e| {
-            // Most likely its state type changed, so the bytes no longer decode.
-            log::warn!("the new generation can't read the current state, so it starts afresh: {e:#}");
-            start(None)
-        })
+        let mut generation = self.generation(component)?;
+        match generation.handle(&Request::Start { state: Some(self.state.clone()) })? {
+            Response::Started { state, reset, .. } => {
+                if reset {
+                    log::warn!("the app's state type changed, so it starts afresh");
+                }
+                Ok((generation, state))
+            },
+            _ => Err(eyre!("the new generation didn't start")),
+        }
     }
 }
