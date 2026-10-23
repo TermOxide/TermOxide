@@ -965,6 +965,7 @@ version = "0.1.0"
 dependencies = [
  "any_spawner",
  "color-eyre",
+ "log",
  "ratatui",
  "serde",
  "termoxide",
@@ -2096,6 +2097,7 @@ dependencies = [
  "termoxide_reactive",
  "termoxide_rendering",
  "time",
+ "tokio",
  "wasmtime",
  "wasmtime-wasi",
  "wit-bindgen",
