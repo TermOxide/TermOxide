@@ -16,15 +16,8 @@ required-features = ["host"]
 
 [features]
 default = ["host"]
-# The executable. Its subprocess still runs the app natively, so it needs the
-# guest side too until it runs the component instead.
-host = [
-    "termoxide_hot_reload/host",
-    "termoxide_hot_reload/guest",
-    "dep:any_spawner",
-    "dep:color-eyre",
-    "dep:tokio",
-]
+# The executable: it builds the app as a component and runs it in a subprocess.
+host = ["termoxide_hot_reload/host", "dep:any_spawner", "dep:color-eyre", "dep:tokio"]
 # The app as a wasm component.
 guest = ["termoxide_hot_reload/guest"]
 
