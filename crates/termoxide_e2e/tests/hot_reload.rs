@@ -86,8 +86,8 @@ impl Fixture {
         fs::write(&path, source).unwrap();
     }
 
-    /// Waits for the run's log to contain `text`.
-    fn wait_for_log(&self, text: &str) {
+    /// Waits for the run's log to contain `text`, and returns it.
+    fn wait_for_log(&self, text: &str) -> String {
         let logs = self.dir.join("state/termoxide").join(&self.name).join("logs");
         let deadline = Instant::now() + build_deadline();
         loop {
@@ -98,7 +98,7 @@ impl Fixture {
                 .filter_map(|entry| fs::read_to_string(entry.path()).ok())
                 .collect();
             if log.contains(text) {
-                return;
+                return log;
             }
             assert!(Instant::now() < deadline, "the log never said {text:?}:\n{log}");
             thread::sleep(Duration::from_millis(100));
@@ -163,4 +163,91 @@ fn a_new_state_field_starts_the_app_afresh() {
 
     session.wait_for_text_within(build_deadline(), "afresh: 0");
     fixture.wait_for_log("starts afresh");
+}
+
+#[test]
+fn a_panic_restarts_the_app_with_its_count() {
+    let fixture = Fixture::copy("panic");
+    let mut session = run_and_press(&fixture, 2);
+
+    session.send(b"p");
+    fixture.wait_for_log("the app crashed");
+    session.send(b"a");
+
+    session.wait_for_text("presses: 3");
+}
+
+#[test]
+fn a_runaway_call_is_stopped_and_the_app_restarted_with_its_count() {
+    let fixture = Fixture::copy("loop");
+    let mut session = run_and_press(&fixture, 1);
+
+    session.send(b"l");
+    fixture.wait_for_log("the app crashed");
+    session.send(b"a");
+
+    session.wait_for_text("presses: 2");
+}
+
+#[test]
+fn crashing_too_often_stops_the_app_until_the_next_rebuild() {
+    let fixture = Fixture::copy("stop");
+    let mut session = run_and_press(&fixture, 2);
+
+    session.send(b"pppp");
+    session.wait_for_text("stopped until the next rebuild");
+    session.send(b"a");
+    fixture.edit(&[("\"presses: {}\"", "\"fixed: {}\"")]);
+
+    session.wait_for_text_within(build_deadline(), "fixed: 2");
+    session.send(b"a");
+    session.wait_for_text("fixed: 3");
+}
+
+#[test]
+fn ctrl_c_quits_a_stopped_app() {
+    let fixture = Fixture::copy("quit");
+    let mut session = run_and_press(&fixture, 1);
+    session.send(b"pppp");
+    session.wait_for_text("stopped until the next rebuild");
+
+    session.send(&[0x03]);
+
+    assert!(session.wait_for_exit().success());
+}
+
+#[test]
+fn a_lost_subprocess_is_restarted_from_the_hosts_state() {
+    let fixture = Fixture::copy("lost");
+    let mut session = run_and_press(&fixture, 2);
+    let log = fixture.wait_for_log("subprocess ");
+    let pid = log
+        .lines()
+        .find_map(|line| line.split("subprocess ").nth(1)?.strip_suffix(" connected"))
+        .expect("the subprocess's pid in the log");
+
+    assert!(Command::new("kill").args(["-9", pid]).status().unwrap().success());
+    session.send(b"a");
+    fixture.wait_for_log("restarted the subprocess");
+    session.send(b"a");
+
+    session.wait_for_text("presses: 3");
+}
+
+#[test]
+fn a_crash_right_after_a_reload_goes_back_to_the_previous_generation() {
+    let fixture = Fixture::copy("back");
+    let mut session = run_and_press(&fixture, 1);
+    fixture.edit(&[
+        ("self.count.update(|count| *count += 1);", "panic!(\"broken by the edit\");"),
+        ("\"presses: {}\"", "\"broken: {}\""),
+    ]);
+    session.wait_for_text_within(build_deadline(), "broken: 1");
+
+    session.send(b"a");
+
+    session.wait_for_text("presses: 1");
+    fixture.wait_for_log("going back to the generation before the last reload");
+    session.send(b"a");
+    session.wait_for_text("presses: 2");
 }
