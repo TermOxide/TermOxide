@@ -27,7 +27,10 @@
 
     devShells = eachSystem (pkgs: let
       stableToolchain = pkgs.rust-bin.stable.latest.default.override {
-        extensions = ["rust-src" "clippy"];
+        # `rust-analyzer` puts the proc-macro server matching this compiler in
+        # the sysroot, which the editor's rust-analyzer needs to expand derives.
+        extensions = ["rust-src" "clippy" "rust-analyzer"];
+        targets = ["wasm32-wasip2"];
       };
 
       nightlyRustfmt = pkgs.rust-bin.selectLatestNightlyWith (
