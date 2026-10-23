@@ -1,0 +1,35 @@
+# The app `tests/hot_reload.rs` edits while it runs. Each test copies it and
+# renames it, so tests running at once don't overwrite each other's builds.
+
+[package]
+name = "reload_app"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "reload_app"
+required-features = ["host"]
+
+[features]
+default = ["host"]
+host = ["termoxide_hot_reload/host", "dep:any_spawner", "dep:color-eyre", "dep:tokio"]
+guest = ["termoxide_hot_reload/guest"]
+
+[dependencies]
+ratatui = { version = "0.26", default-features = false }
+serde = { version = "1", features = ["derive"] }
+termoxide = { path = "../../../termoxide", default-features = false }
+termoxide_event = { path = "../../../termoxide_event", default-features = false }
+termoxide_hot_reload = { path = "../../../termoxide_hot_reload" }
+termoxide_reactive = { path = "../../../termoxide_reactive", features = ["serde"] }
+termoxide_rendering = { path = "../../../termoxide_rendering", default-features = false }
+
+any_spawner = { version = "0.3", features = ["tokio"], optional = true }
+color-eyre = { version = "0.6", optional = true }
+tokio = { version = "1", features = ["rt", "macros"], optional = true }
