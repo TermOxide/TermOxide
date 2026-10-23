@@ -6,13 +6,10 @@ use std::{
 };
 
 use log::Level;
-use serde::{Serialize, de::DeserializeOwned};
-use termoxide::App;
 
 use crate::{
     ipc::{self, HostChannel, IpcError, Listener, Request, Response},
     logging::{LOG_ENV, relay_output},
-    session::Session,
 };
 
 /// Set on the subprocess to the name of the pipe it must connect to.
@@ -89,12 +86,17 @@ impl Drop for Subprocess {
 /// Runs the subprocess side: connects to the host's `pipe` and runs `app` for
 /// it, answering its requests until the host goes away.
 ///
+/// The app runs natively here until it runs as a wasm guest, hence `guest`.
+///
 /// `app` is the app as built; the host's [`Request::Start`] says whether to
 /// run it or resume from the state it sends instead.
+#[cfg(feature = "guest")]
 pub(crate) async fn serve<A>(pipe: &str, app: A) -> ipc::Result<()>
 where
-    A: App + Clone + Serialize + DeserializeOwned + 'static,
+    A: termoxide::App + Clone + serde::Serialize + serde::de::DeserializeOwned + 'static,
 {
+    use crate::session::Session;
+
     let mut channel = ipc::connect(pipe, CONNECT_TIMEOUT)?;
     log::info!("connected to the host");
     let mut fresh = Some(app);

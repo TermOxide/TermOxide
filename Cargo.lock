@@ -1398,6 +1398,7 @@ dependencies = [
  "serde",
  "termoxide",
  "termoxide_event",
+ "termoxide_hot_reload",
  "termoxide_reactive",
  "termoxide_rendering",
  "time",
