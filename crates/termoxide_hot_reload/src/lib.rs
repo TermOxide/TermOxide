@@ -8,6 +8,14 @@
 // entry point (`run_app`), so either alone leaves code unused.
 #![cfg_attr(not(all(feature = "host", feature = "guest")), allow(dead_code, unused_imports))]
 
+// The guest's generated bindings name this crate by path, from the app's crate
+// and from this one alike.
+#[cfg(feature = "guest")]
+extern crate self as termoxide_hot_reload;
+
+#[cfg(feature = "guest")]
+#[doc(hidden)]
+pub mod guest;
 mod ipc;
 #[cfg(feature = "host")]
 mod logging;
