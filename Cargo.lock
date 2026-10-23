@@ -1393,8 +1393,11 @@ dependencies = [
 name = "termoxide_layout"
 version = "0.1.0"
 dependencies = [
+ "postcard",
  "ratatui",
+ "serde",
  "taffy",
+ "termoxide_layout",
 ]
 
 [[package]]
