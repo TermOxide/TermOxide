@@ -1,6 +1,7 @@
 use std::{
     cell::{Cell, RefCell},
     collections::VecDeque,
+    io,
     path::{Path, PathBuf},
     rc::Rc,
     sync::mpsc::{self, Receiver, TryRecvError},
@@ -20,7 +21,7 @@ use termoxide_rendering::view_node::ViewNode;
 
 use crate::{
     ipc::{IpcError, Request, Response},
-    snapshot::Snapshot,
+    snapshot::{Aside, DECODE_ENV, Snapshot},
     subprocess::Subprocess,
     watch::Rebuilds,
 };
@@ -46,7 +47,8 @@ struct Inner {
     /// Notified when what the screen should show changed.
     repaint: Trigger,
     mouse_capture: bool,
-    /// The app's latest state: the host's copy, to restart a lost subprocess from.
+    /// The app's latest state: the host's copy, to restart a lost subprocess
+    /// from, unrecorded changes included.
     state: RefCell<Vec<u8>>,
     rebuilds: Rebuilds,
     /// The component the subprocess runs, to start a new one with.
@@ -55,7 +57,8 @@ struct Inner {
     restarts: RefCell<Restarts>,
     /// The last view the app built, shown while it can't answer.
     view: RefCell<Option<ViewNode>>,
-    /// Where `state` is saved after every change, when the run persists.
+    /// Where `state` is traced after every recorded change, when the run
+    /// persists.
     snapshot: Option<Snapshot>,
     /// Saving has failed already: said once, not on every change.
     save_failed: Cell<bool>,
@@ -72,8 +75,8 @@ enum Link {
 impl RemoteApp {
     /// Starts the app in a subprocess running `guest` and logging to `log`,
     /// and swaps in each generation `rebuilds` builds. With a `snapshot`, it
-    /// starts from the state the last run saved there, unless `fresh`, and
-    /// saves every change to it.
+    /// starts from the last state the last run traced there, unless `fresh`,
+    /// and traces this run there.
     pub(crate) fn start(
         rebuilds: Rebuilds,
         guest: PathBuf,
@@ -82,7 +85,16 @@ impl RemoteApp {
         fresh: bool,
     ) -> Result<Self> {
         let saved = match &snapshot {
-            Some(snapshot) => snapshot.load(fresh)?,
+            Some(snapshot) => {
+                match snapshot.load(fresh) {
+                    Err(e) if e.kind() == io::ErrorKind::InvalidData => {
+                        let aside = snapshot.set_aside(Aside::Unreadable)?;
+                        log::warn!("{e}, so it is kept as {} and the app starts afresh", aside.display());
+                        None
+                    },
+                    loaded => loaded?,
+                }
+            },
             None => None,
         };
         let restored = saved.is_some();
@@ -91,7 +103,7 @@ impl RemoteApp {
                 // The snapshot matched the state type, so it ought to decode:
                 // it was damaged.
                 if let Some(snapshot) = &snapshot {
-                    let aside = snapshot.set_aside()?;
+                    let aside = snapshot.set_aside(Aside::Unreadable)?;
                     log::warn!("the app couldn't start from the snapshot: {e:#}, the subprocess's error is above");
                     log::warn!("so the snapshot is kept as {} and the app starts afresh", aside.display());
                 }
@@ -103,11 +115,11 @@ impl RemoteApp {
             log::warn!("the snapshot was saved by another state type, so the app starts afresh");
         }
         let Started { subprocess, mouse_capture, state, .. } = started;
-        Ok(Self(Rc::new(Inner {
+        let app = Self(Rc::new(Inner {
             link: RefCell::new(Link::Running(subprocess)),
             repaint: Trigger::new(),
             mouse_capture,
-            state: RefCell::new(state),
+            state: RefCell::new(Vec::new()),
             rebuilds,
             guest: RefCell::new(guest),
             log,
@@ -115,16 +127,21 @@ impl RemoteApp {
             view: RefCell::new(None),
             snapshot,
             save_failed: Cell::new(false),
-        })))
+        }));
+        // The trace starts with the state the app started from.
+        app.set_state(state, true);
+        Ok(app)
     }
 
-    /// Keeps `state` as the host's copy, and saves it when the run persists.
-    fn set_state(&self, state: Vec<u8>) {
-        if let Some(snapshot) = &self.0.snapshot
-            && let Err(e) = snapshot.save(&state)
+    /// Keeps `state` as the host's copy, and traces it when the run persists
+    /// and the change is `recorded`.
+    fn set_state(&self, state: Vec<u8>, recorded: bool) {
+        if recorded
+            && let Some(snapshot) = &self.0.snapshot
+            && let Err(e) = snapshot.record(&state)
             && !self.0.save_failed.replace(true)
         {
-            log::warn!("saving the app's state to {} failed: {e}", snapshot.path().display());
+            log::warn!("tracing the app's state to {} failed: {e}", snapshot.path().display());
         }
         *self.0.state.borrow_mut() = state;
     }
@@ -152,7 +169,7 @@ impl RemoteApp {
         match self.request(request) {
             Some(Response::Done(outcome)) => {
                 if let Some(state) = outcome.state {
-                    self.set_state(state);
+                    self.set_state(state, outcome.recorded);
                 }
                 if outcome.dirty {
                     self.0.repaint.notify();
@@ -164,7 +181,7 @@ impl RemoteApp {
             Some(Response::Reloaded { state }) => {
                 log::info!("reloaded the app");
                 self.0.restarts.borrow_mut().reset();
-                self.set_state(state);
+                self.set_state(state, true);
                 self.0.repaint.notify();
                 false
             },
@@ -182,7 +199,7 @@ impl RemoteApp {
 
     /// The subprocess restarted the app after a crash: counts it.
     fn recovered(&self, state: Vec<u8>) {
-        self.set_state(state);
+        self.set_state(state, true);
         self.0.repaint.notify();
         if !self.0.restarts.borrow_mut().allow(Instant::now()) {
             self.stop();
@@ -220,6 +237,19 @@ impl RemoteApp {
         );
         *self.0.link.borrow_mut() = Link::Stopped;
         self.0.repaint.notify();
+        // The latest state may be what crashes it: the next run mustn't start
+        // from it.
+        if let Some(snapshot) = &self.0.snapshot {
+            match snapshot.set_aside(Aside::Crashed) {
+                Ok(aside) => {
+                    log::warn!(
+                        "the state trace is kept as {}, readable with {DECODE_ENV}, and the next run starts afresh",
+                        aside.display()
+                    )
+                },
+                Err(e) => log::warn!("setting the state trace aside failed: {e}"),
+            }
+        }
     }
 
     /// Takes in the subprocess started in the background, once it is.
@@ -238,7 +268,7 @@ impl RemoteApp {
             Ok((subprocess, state)) => {
                 log::info!("restarted the subprocess");
                 *self.0.link.borrow_mut() = Link::Running(subprocess);
-                self.set_state(state);
+                self.set_state(state, true);
                 self.0.repaint.notify();
             },
             Err(e) => self.lose(&e),

@@ -21,6 +21,10 @@ pub(crate) enum Request {
     /// Hands the subprocess a freshly built component, to replace the running
     /// one at the next tick once it is compiled. Never reaches the component.
     Load { guest: PathBuf },
+    /// Asks a component that hasn't started the app for the app in `state`,
+    /// as text. What reading a state trace takes, since only the guest can
+    /// decode the app.
+    Describe { state: Vec<u8> },
 }
 
 /// A message the subprocess sends back to the host.
@@ -44,6 +48,9 @@ pub(crate) enum Response {
     /// The answer to a request the app crashed on: the request was dropped and
     /// the app restarted from its latest state, which this is.
     Recovered { state: Vec<u8> },
+    /// The answer to [`Request::Describe`]: the app as pretty-printed JSON, or
+    /// `None` when another state type saved it.
+    Described(Option<String>),
 }
 
 /// What an event or a tick did to the app.
@@ -56,4 +63,7 @@ pub(crate) struct Outcome {
     /// The app's state, if it changed since the last one sent: a change to
     /// any of its signals counts, not only to those the view reads.
     pub(crate) state: Option<Vec<u8>>,
+    /// A recorded signal changed, so `state` belongs in the state trace; an
+    /// unrecorded one alone doesn't.
+    pub(crate) recorded: bool,
 }
