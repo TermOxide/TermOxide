@@ -70,7 +70,7 @@ fn a_ping_gets_a_pong() {
     assert_eq!(child.recv(TIMEOUT).unwrap(), Request::Ping);
     child.send(&Response::Pong).unwrap();
 
-    assert_eq!(host.recv(TIMEOUT).unwrap(), Response::Pong);
+    assert!(matches!(host.recv(TIMEOUT).unwrap(), Response::Pong));
 }
 
 #[test]
