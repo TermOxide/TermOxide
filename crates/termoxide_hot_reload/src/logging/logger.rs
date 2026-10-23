@@ -9,8 +9,12 @@ use super::file::LogFile;
 /// tagged as the child's rather than the host's.
 pub(crate) const CHILD_TARGET: &str = "termoxide::child";
 
-/// The most detailed level written: the child's relayed stderr is `debug`.
+/// The most detailed level written for the framework's own records: the
+/// child's relayed stderr is `debug`.
 const LEVEL: LevelFilter = LevelFilter::Debug;
+/// The most detailed level written for any other crate's records: wasmtime's
+/// compiler alone logs a hundred thousand `debug` lines per component.
+const DEPENDENCY_LEVEL: LevelFilter = LevelFilter::Warn;
 
 /// Which side a line comes from, written at the start of it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,7 +46,7 @@ struct Logger {
 }
 
 impl Log for Logger {
-    fn enabled(&self, metadata: &Metadata<'_>) -> bool { metadata.level() <= LEVEL }
+    fn enabled(&self, metadata: &Metadata<'_>) -> bool { is_written(metadata) }
 
     fn log(&self, record: &Record<'_>) {
         if !self.enabled(record.metadata()) {
@@ -55,6 +59,17 @@ impl Log for Logger {
 
     /// Every line is written as it comes, so there is nothing to flush.
     fn flush(&self) {}
+}
+
+/// Whether a record is written: the framework's own up to `debug`, other
+/// crates' only from `warn` up.
+pub(super) fn is_written(metadata: &Metadata<'_>) -> bool {
+    let max = if metadata.target().starts_with("termoxide") {
+        LEVEL
+    } else {
+        DEPENDENCY_LEVEL
+    };
+    metadata.level() <= max
 }
 
 /// Makes the logger this process's `log` backend, tagging its own records
