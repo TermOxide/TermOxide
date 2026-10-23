@@ -1,8 +1,7 @@
 //! The app's state saved on disk, so it survives a restart of the host itself:
 //! a trace of the bytes the host keeps for a lost subprocess, fingerprint
 //! included, one entry per recorded change. A trace saved by another state type
-//! is caught like any other state, and one a run left behind can be read back
-//! with [`print_trace`].
+//! is caught like any other state.
 
 use std::{
     cell::RefCell,
@@ -12,15 +11,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use color_eyre::eyre::eyre;
 use serde::{Deserialize, Serialize};
-use time::{OffsetDateTime, macros::format_description};
-
-use crate::{
-    component::Runtime,
-    ipc::{Request, Response},
-    schema,
-};
 
 /// Turns persistence on (`1`, `true`) or off (`0`, `false`) for one run,
 /// whatever `run_app!` says.
@@ -28,9 +19,6 @@ pub(crate) const PERSIST_ENV: &str = "TERMOXIDE_HOT_RELOAD_PERSIST";
 /// Set to `1` or `true` to start from a clean state for one run: the trace is
 /// ignored, then replaced by the run's own.
 pub(crate) const FRESH_ENV: &str = "TERMOXIDE_HOT_RELOAD_FRESH";
-/// Set to a trace's path to print its entries, as the app reads them, instead
-/// of running the app.
-pub(crate) const DECODE_ENV: &str = "TERMOXIDE_HOT_RELOAD_DECODE";
 
 /// Whether a run persists: `persistent`, as `run_app!` was called, unless
 /// [`PERSIST_ENV`] is set to `setting`.
@@ -146,49 +134,6 @@ pub(crate) enum Aside {
     Unreadable,
     /// The app kept crashing from its latest state.
     Crashed,
-}
-
-/// Prints every entry of the trace at `path` with when it was recorded (UTC),
-/// as the app's component at `guest` reads it: only the guest can decode the
-/// app.
-pub(crate) fn print_trace(path: &Path, guest: &Path) -> color_eyre::Result<()> {
-    let trace = fs::read(path)?;
-    let (entries, cut_short) = entries(&trace);
-    let runtime = Runtime::new()?;
-    let component = runtime.compile(guest)?;
-    let mut instance = None;
-    let mut out = io::stdout().lock();
-    for entry in &entries {
-        let at = OffsetDateTime::from_unix_timestamp_nanos(i128::from(entry.at) * 1_000_000)?.format(
-            format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"),
-        )?;
-        let generation = match &mut instance {
-            Some(generation) => generation,
-            None => {
-                let mut generation = runtime.instantiate(&component)?;
-                if generation.wire_schema()? != schema::wire().map_err(|e| eyre!(e))? {
-                    return Err(eyre!("the guest was built for another version of the protocol"));
-                }
-                instance.insert(generation)
-            },
-        };
-        let app = match generation.handle(&Request::Describe { state: entry.state.to_vec() }) {
-            Ok(Response::Described(Some(app))) => app,
-            Ok(Response::Described(None)) => String::from("(saved by another state type)"),
-            Ok(_) => String::from("(the guest answered something else)"),
-            Err(e) => {
-                // A guest that trapped can't be called again.
-                instance = None;
-                format!("(can't be read: {e:#})")
-            },
-        };
-        writeln!(out, "{at}\n{app}\n")?;
-    }
-    writeln!(out, "{} entries", entries.len())?;
-    if cut_short {
-        writeln!(out, "and the last one cut short, by a host killed while writing it")?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]
