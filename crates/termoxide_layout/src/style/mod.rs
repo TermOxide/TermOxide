@@ -473,7 +473,6 @@ mod tests {
 
     // --- Color ---
 
-    #[cfg(feature = "future")]
     #[test]
     fn color_hex_valid() {
         assert_eq!(Color::from_hex_bytes(b"#ff5f00"), Some(Color::Rgb(255, 95, 0)));
@@ -482,7 +481,6 @@ mod tests {
         assert_eq!(Color::from_hex_bytes(b"#aAbBcC"), Some(Color::Rgb(0xAA, 0xBB, 0xCC)));
     }
 
-    #[cfg(feature = "future")]
     #[test]
     fn color_hex_invalid() {
         // no #
@@ -499,7 +497,6 @@ mod tests {
         assert!(Color::None.is_abstract());
         assert!(Color::Inherit.is_abstract());
         assert!(!Color::Named(NamedColor::Red).is_abstract());
-        #[cfg(feature = "future")]
         assert!(!Color::rgb(0, 0, 0).is_abstract());
     }
 
