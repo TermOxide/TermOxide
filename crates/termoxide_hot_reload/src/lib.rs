@@ -29,6 +29,8 @@ mod remote;
 mod session;
 #[cfg(feature = "host")]
 mod subprocess;
+#[cfg(feature = "host")]
+mod watch;
 
 #[cfg(feature = "host")]
 #[doc(hidden)]
@@ -62,7 +64,9 @@ macro_rules! wasm_app {
 
 /// Runs the app of the calling crate with hot reload: builds it as a wasm
 /// component, runs that in a subprocess, and drives it from this process, which
-/// keeps the terminal and the run loop.
+/// keeps the terminal and the run loop. Whenever the crate's `src` or manifest
+/// changes, the app is rebuilt in the background and swapped in, keeping its
+/// state.
 ///
 /// The crate's lib must be a `cdylib` with a `guest` feature that enables this
 /// crate's, and declare its app with [`wasm_app!`]. Both processes log to one
@@ -100,6 +104,8 @@ pub async fn run(package: Package) -> color_eyre::Result<()> {
             .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
     }
 
+    // Watching first, so an edit saved during the first build makes another.
+    let rebuilds = watch::Rebuilds::start(package)?;
     // Before the log and the terminal, so cargo's errors land on the screen.
     let guest = build::guest(package)?;
 
@@ -110,5 +116,5 @@ pub async fn run(package: Package) -> color_eyre::Result<()> {
 
     let mut subprocess = Subprocess::spawn(&log_path, &guest)?;
     subprocess.ping()?;
-    termoxide::run_with_app(RemoteApp::start(subprocess)?).await
+    termoxide::run_with_app(RemoteApp::start(subprocess, rebuilds)?).await
 }
