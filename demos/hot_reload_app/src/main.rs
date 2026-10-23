@@ -7,5 +7,5 @@ async fn main() -> Result<()> {
     Executor::init_tokio()?;
 
     let local = tokio::task::LocalSet::new();
-    local.run_until(termoxide_hot_reload::run_app!()).await
+    local.run_until(termoxide_hot_reload::run_app!(persistent)).await
 }
