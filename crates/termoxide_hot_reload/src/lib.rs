@@ -29,6 +29,8 @@ mod schema;
 #[cfg(feature = "guest")]
 mod session;
 #[cfg(feature = "host")]
+mod snapshot;
+#[cfg(feature = "host")]
 mod subprocess;
 #[cfg(feature = "host")]
 mod watch;
@@ -75,24 +77,33 @@ macro_rules! wasm_app {
 /// crate's, and declare its app with [`wasm_app!`]. Both processes log to one
 /// file per run; install your own panic hook (`color_eyre::install()`, say)
 /// before calling this.
+///
+/// `run_app!(persistent)` also keeps the app's state across runs, in a file
+/// next to the logs. `TERMOXIDE_HOT_RELOAD_PERSIST=0` or `1` overrides that
+/// for one run, and `TERMOXIDE_HOT_RELOAD_FRESH=1` starts that run from a clean
+/// state.
 #[cfg(feature = "host")]
 #[macro_export]
 macro_rules! run_app {
     () => {
-        $crate::run($crate::Package { manifest_dir: env!("CARGO_MANIFEST_DIR") })
+        $crate::run($crate::Package { manifest_dir: env!("CARGO_MANIFEST_DIR") }, false)
+    };
+    (persistent) => {
+        $crate::run($crate::Package { manifest_dir: env!("CARGO_MANIFEST_DIR") }, true)
     };
 }
 
 /// What [`run_app!`] expands to.
 #[cfg(feature = "host")]
 #[doc(hidden)]
-pub async fn run(package: Package) -> color_eyre::Result<()> {
+pub async fn run(package: Package, persistent: bool) -> color_eyre::Result<()> {
     use std::{env, path::PathBuf};
 
     use color_eyre::eyre::eyre;
     use logging::{LOG_ENV, LogFile, Tag};
     use remote::RemoteApp;
-    use subprocess::{GUEST_ENV, PIPE_ENV, Subprocess};
+    use snapshot::{FRESH_ENV, PERSIST_ENV, Snapshot};
+    use subprocess::{GUEST_ENV, PIPE_ENV};
 
     if let Ok(pipe) = env::var(PIPE_ENV) {
         let log = env::var_os(LOG_ENV).ok_or_else(|| eyre!("{LOG_ENV} is not set"))?;
@@ -116,7 +127,13 @@ pub async fn run(package: Package) -> color_eyre::Result<()> {
     logging::install(log, Tag::Host)?;
     logging::log_panics(true);
 
-    let mut subprocess = Subprocess::spawn(&log_path, &guest)?;
-    subprocess.ping()?;
-    termoxide::run_with_app(RemoteApp::start(subprocess, rebuilds, guest, log_path)?).await
+    let persists = snapshot::persists(env::var(PERSIST_ENV).ok().as_deref(), persistent);
+    let snapshot = persists
+        .then(|| logging::app_dir().map(|dir| Snapshot::in_dir(&dir)))
+        .transpose()?;
+    if let Some(snapshot) = &snapshot {
+        log::info!("keeping the app's state in {}", snapshot.path().display());
+    }
+    let fresh = snapshot::is_fresh(env::var(FRESH_ENV).ok().as_deref());
+    termoxide::run_with_app(RemoteApp::start(rebuilds, guest, log_path, snapshot, fresh)?).await
 }

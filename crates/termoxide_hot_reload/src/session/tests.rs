@@ -238,6 +238,6 @@ fn a_state_of_the_right_type_that_does_not_decode_is_an_error() {
             panic!("a corrupt state was accepted")
         };
 
-        assert!(matches!(error, IpcError::Decode(_)), "{error}");
+        assert!(matches!(error, IpcError::State(_)), "{error}");
     });
 }
