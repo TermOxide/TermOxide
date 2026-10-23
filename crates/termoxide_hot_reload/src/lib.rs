@@ -25,6 +25,7 @@ mod ipc;
 mod logging;
 #[cfg(feature = "host")]
 mod remote;
+mod schema;
 #[cfg(feature = "guest")]
 mod session;
 #[cfg(feature = "host")]
@@ -50,6 +51,8 @@ macro_rules! wasm_app {
             struct Guest;
 
             impl $crate::guest::bindings::Guest for Guest {
+                fn wire_schema() -> u64 { $crate::guest::wire_schema() }
+
                 fn handle(
                     request: ::std::vec::Vec<u8>,
                 ) -> ::std::result::Result<::std::vec::Vec<u8>, ::std::string::String> {
