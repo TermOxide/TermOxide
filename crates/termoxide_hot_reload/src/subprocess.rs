@@ -95,12 +95,11 @@ pub(crate) async fn serve<A>(pipe: &str, app: A) -> ipc::Result<()>
 where
     A: termoxide::App + Clone + serde::Serialize + serde::de::DeserializeOwned + 'static,
 {
-    use crate::session::Session;
+    use crate::session::{Responder, Step};
 
     let mut channel = ipc::connect(pipe, CONNECT_TIMEOUT)?;
     log::info!("connected to the host");
-    let mut fresh = Some(app);
-    let mut session: Option<Session<A>> = None;
+    let mut responder = Responder::new(app);
     loop {
         // `recv_timeout` treats a deadline that overflows as no deadline, so this
         // waits for the next request however long it takes.
@@ -109,19 +108,14 @@ where
             Err(IpcError::Closed) => return Ok(()),
             Err(e) => return Err(e),
         };
-        let response = if let Some(session) = session.as_mut() {
-            session.handle(request).await?
-        } else {
-            match request {
-                Request::Ping => Response::Pong,
-                Request::Start { state } => {
-                    let app = fresh.take().ok_or(IpcError::Unexpected)?;
-                    let (started, response) = Session::start(app, state.as_deref())?;
-                    session = Some(started);
-                    response
-                },
-                _ => return Err(IpcError::Unexpected),
-            }
+        let response = match responder.step(request)? {
+            Step::Reply(response) => response,
+            Step::Settle { quit } => {
+                // A signal write schedules the render effect on tokio rather
+                // than running it.
+                tokio::task::yield_now().await;
+                responder.settled(quit)?
+            },
         };
         channel.send(&response)?;
     }

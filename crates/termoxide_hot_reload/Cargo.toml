@@ -21,16 +21,21 @@ interprocess = { version = "2.4.4", optional = true }
 log = { version = "0.4", features = ["std"], optional = true }
 time = { version = "0.3.55", features = ["formatting", "local-offset", "macros"], optional = true }
 
-reactive_graph = { version = "0.2", features = ["effects"], optional = true }
 # `yield_now`, so the app's render effect runs before its reply is sent.
 tokio = { version = "1", features = ["rt"], optional = true }
+
+any_spawner = { version = "0.3", optional = true }
+futures = { version = "0.3", default-features = false, features = ["executor", "std"], optional = true }
+reactive_graph = { version = "0.2", features = ["effects"], optional = true }
+wit-bindgen = { version = "0.63", optional = true }
 
 [features]
 # The native side: the process that owns the terminal, and the subprocess it
 # spawns and talks to over the pipe.
-host = ["dep:color-eyre", "dep:dirs", "dep:interprocess", "dep:log", "dep:time", "termoxide/terminal"]
-# The app's side: what runs the app and answers the host's requests.
-guest = ["dep:reactive_graph", "dep:tokio"]
+host = ["dep:color-eyre", "dep:dirs", "dep:interprocess", "dep:log", "dep:time", "dep:tokio", "termoxide/terminal"]
+# The app's side: what runs the app and answers the host's requests, natively
+# or as a wasm component.
+guest = ["dep:any_spawner", "dep:futures", "dep:reactive_graph", "dep:wit-bindgen"]
 
 [dev-dependencies]
 termoxide_hot_reload = { path = ".", features = ["host", "guest"] }
