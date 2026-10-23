@@ -65,14 +65,23 @@ impl Fixture {
     }
 
     /// Runs the app, with its logs kept in its own directory.
-    fn run(&self) -> Session {
+    fn run(&self) -> Session { self.run_with(&[]) }
+
+    /// Runs the app with `env` set as well.
+    fn run_with(&self, env: &[(&str, &str)]) -> Session {
         let mut command = CommandBuilder::new(self.build());
+        for (key, value) in env {
+            command.env(key, value);
+        }
         command.cwd(&self.dir);
         command.env("CARGO", env!("CARGO"));
         command.env("CARGO_TARGET_DIR", Self::target_dir());
         command.env("XDG_STATE_HOME", self.dir.join("state"));
         Session::spawn(command)
     }
+
+    /// Where a persistent run keeps the app's state.
+    fn snapshot(&self) -> PathBuf { self.dir.join("state/termoxide").join(&self.name).join("state.bin") }
 
     /// Makes each `(from, to)` replacement in the app's `lib.rs`, then saves it
     /// once, as an editor would.
@@ -250,4 +259,48 @@ fn a_crash_right_after_a_reload_goes_back_to_the_previous_generation() {
     fixture.wait_for_log("going back to the generation before the last reload");
     session.send(b"a");
     session.wait_for_text("presses: 2");
+}
+
+const PERSIST: (&str, &str) = ("TERMOXIDE_HOT_RELOAD_PERSIST", "1");
+
+/// Quits the app with `q` and waits for it to exit.
+fn quit(mut session: Session) {
+    session.send(b"q");
+    assert!(session.wait_for_exit().success());
+}
+
+#[test]
+fn the_state_survives_a_restart_of_the_host() {
+    let fixture = Fixture::copy("persist");
+    let mut session = fixture.run_with(&[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+    session.send(b"aaa");
+    session.wait_for_text("presses: 3");
+    quit(session);
+
+    let session = fixture.run_with(&[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 3");
+    quit(session);
+
+    let session = fixture.run_with(&[PERSIST, ("TERMOXIDE_HOT_RELOAD_FRESH", "1")]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+}
+
+#[test]
+fn a_damaged_snapshot_is_set_aside_and_the_app_starts_afresh() {
+    let fixture = Fixture::copy("damaged");
+    let mut session = fixture.run_with(&[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+    session.send(b"aa");
+    session.wait_for_text("presses: 2");
+    quit(session);
+    // Its fingerprint, then a varint that never ends: the state type matches,
+    // the bytes don't decode.
+    let saved = fs::read(fixture.snapshot()).unwrap();
+    fs::write(fixture.snapshot(), [&saved[..8], &[0xFF]].concat()).unwrap();
+
+    let session = fixture.run_with(&[PERSIST]);
+
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+    assert!(fixture.snapshot().with_extension("bin.unreadable").exists());
 }

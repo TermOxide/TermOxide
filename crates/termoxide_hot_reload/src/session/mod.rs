@@ -148,7 +148,7 @@ fn decode<A: DeserializeOwned>(state: &[u8], fingerprint: Option<u64>) -> ipc::R
     if fingerprint.is_some_and(|fingerprint| fingerprint != u64::from_le_bytes(*saved)) {
         return Ok(None);
     }
-    postcard::from_bytes(app).map(Some).map_err(IpcError::Decode)
+    postcard::from_bytes(app).map(Some).map_err(IpcError::State)
 }
 
 #[cfg(test)]
