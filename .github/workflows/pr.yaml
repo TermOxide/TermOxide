@@ -120,6 +120,15 @@ jobs:
             arguments: ""
             toolchain: "stable"
             components: ""
+          # What a hot-reloaded app compiles against: no terminal, built for
+          # wasm. The e2e tests and the hot-reload host are native by design.
+          - name: wasm
+            command: "build"
+            arguments: "--no-default-features --target wasm32-wasip2"
+            toolchain: "stable"
+            components: ""
+            targets: "wasm32-wasip2"
+            skip: "termoxide_e2e termoxide_hot_reload"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -134,11 +143,13 @@ jobs:
           action: push
           toolchain: ${{ matrix.action.toolchain }}
           components: ${{ matrix.action.components }}
+          targets: ${{ matrix.action.targets }}
 
       - name: Run ${{ matrix.action.name }} on changed crates
         id: check
         env:
           CRATES: ${{ needs.detect.outputs.crates }}
+          SKIP: ${{ matrix.action.skip }}
         run: |
           crates=$(echo "$CRATES" | jq -r '.[]')
           if [[ -z "$crates" ]]; then
@@ -147,6 +158,10 @@ jobs:
           fi
           failed=0
           for crate in $crates; do
+            if [[ " $SKIP " == *" $crate "* ]]; then
+              echo "Skipping ${crate} for ${{ matrix.action.name }}."
+              continue
+            fi
             echo "::group::cargo ${{ matrix.action.command }} -p ${crate} ${{ matrix.action.arguments }}"
             cargo ${{ matrix.action.command }} -p "$crate" ${{ matrix.action.arguments }} || failed=1
             echo "::endgroup::"
@@ -157,9 +172,10 @@ jobs:
       # [workspace] table) so the changed-crates detector never reports them.
       # Check them explicitly on every run: they are what proves the crates
       # still compile from outside the workspace, for an external consumer.
+      # Demo apps are native apps, so they have no wasm build.
       - name: Run ${{ matrix.action.name }} on demo apps
         id: demos
-        if: always()
+        if: always() && matrix.action.name != 'wasm'
         env:
           # Land demo artifacts in the workspace target dir, which is cached.
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
@@ -194,7 +210,7 @@ jobs:
           retention-days: 1
 
       - name: Upload demos result artifact
-        if: always()
+        if: always() && matrix.action.name != 'wasm'
         uses: actions/upload-artifact@v7
         with:
           name: demos-${{ matrix.action.name }}
@@ -489,10 +505,8 @@ jobs:
             // -- Matrix sections (crates, demos) ------------------------------
             // Both scopes run the same lint/format/build matrix and upload the
             // same one-line artifact per leg, so render them the same way.
-            const matrixChecks = ['lint', 'format', 'build'];
-
-            const renderMatrixSection = (heading, artifactPrefix, fileName) => {
-              const results = matrixChecks.map(name => {
+            const renderMatrixSection = (heading, artifactPrefix, fileName, checks) => {
+              const results = checks.map(name => {
                 const raw = readArtifact(`${artifactPrefix}-${name}`, fileName);
                 return { name, passed: raw === 'success', available: raw !== null };
               });
@@ -528,11 +542,12 @@ jobs:
               '## 🔧 Code Guidelines',
               'guidelines',
               'check-result.txt',
+              ['lint', 'format', 'build', 'wasm'],
             );
 
             // Demo apps sit outside the root workspace, so they get their own
             // section rather than hiding behind the changed-crates status.
-            const demos = renderMatrixSection('## 🎬 Demo Apps', 'demos', 'demos-result.txt');
+            const demos = renderMatrixSection('## 🎬 Demo Apps', 'demos', 'demos-result.txt', ['lint', 'format', 'build']);
 
             // -- Tests section ------------------------------------------------
             const testsSection =
