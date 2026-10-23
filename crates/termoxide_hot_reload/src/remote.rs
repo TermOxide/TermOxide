@@ -9,6 +9,7 @@ use termoxide_rendering::view_node::ViewNode;
 use crate::{
     ipc::{self, IpcError, Request, Response},
     subprocess::Subprocess,
+    watch::Rebuilds,
 };
 
 /// The host's stand-in for the app: every call is answered by the subprocess,
@@ -23,11 +24,13 @@ struct Inner {
     mouse_capture: bool,
     /// The app's latest state: the host's copy, to restart a lost subprocess from.
     state: RefCell<Vec<u8>>,
+    rebuilds: Rebuilds,
 }
 
 impl RemoteApp {
-    /// Starts the app in `subprocess`, from scratch.
-    pub(crate) fn start(mut subprocess: Subprocess) -> ipc::Result<Self> {
+    /// Starts the app in `subprocess`, from scratch, and swaps in each
+    /// generation `rebuilds` builds.
+    pub(crate) fn start(mut subprocess: Subprocess, rebuilds: Rebuilds) -> ipc::Result<Self> {
         let Response::Started { mouse_capture, state } = subprocess.request(&Request::Start { state: None })? else {
             return Err(IpcError::Unexpected);
         };
@@ -36,6 +39,7 @@ impl RemoteApp {
             repaint: Trigger::new(),
             mouse_capture,
             state: RefCell::new(state),
+            rebuilds,
         })))
     }
 
@@ -46,16 +50,36 @@ impl RemoteApp {
     /// Sends an event or a tick, keeping whatever it changed. Returns whether
     /// the app asked to quit.
     fn apply(&self, request: &Request) -> bool {
-        let Response::Done(outcome) = self.request(request) else {
-            lost(&IpcError::Unexpected)
-        };
-        if let Some(state) = outcome.state {
-            *self.0.state.borrow_mut() = state;
+        match self.request(request) {
+            Response::Done(outcome) => {
+                if let Some(state) = outcome.state {
+                    *self.0.state.borrow_mut() = state;
+                }
+                if outcome.dirty {
+                    self.0.repaint.notify();
+                }
+                outcome.quit
+            },
+            // A new generation took this tick's place: its view may differ even
+            // if no signal changed.
+            Response::Reloaded { state } => {
+                log::info!("reloaded the app");
+                *self.0.state.borrow_mut() = state;
+                self.0.repaint.notify();
+                false
+            },
+            _ => lost(&IpcError::Unexpected),
         }
-        if outcome.dirty {
-            self.0.repaint.notify();
+    }
+
+    /// Hands the subprocess the newest component built, if any: it compiles it
+    /// alongside the running generation, and swaps at a later tick.
+    fn load_rebuilt(&self) {
+        if let Some(guest) = self.0.rebuilds.latest() {
+            let Response::Loading = self.request(&Request::Load { guest }) else {
+                lost(&IpcError::Unexpected)
+            };
         }
-        outcome.quit
     }
 }
 
@@ -69,7 +93,10 @@ fn lost(error: &IpcError) -> ! { panic!("hot-reload subprocess lost: {error}") }
 impl App for RemoteApp {
     fn track_view(&self) { self.0.repaint.track(); }
 
-    fn on_tick(&self) { self.apply(&Request::Tick); }
+    fn on_tick(&self) {
+        self.load_rebuilt();
+        self.apply(&Request::Tick);
+    }
 
     fn handle_event(&self, event: Event) -> bool { self.apply(&Request::Event(event)) }
 
