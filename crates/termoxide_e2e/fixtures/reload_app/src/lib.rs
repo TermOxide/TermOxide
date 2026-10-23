@@ -1,4 +1,5 @@
-//! Counts presses of `a`; `q` quits.
+//! Counts presses of `a`; `q` quits; `p` panics and `l` loops forever, to
+//! crash it.
 
 use ratatui::{layout::Rect, style::Style};
 use serde::{Deserialize, Serialize};
@@ -26,6 +27,10 @@ impl App for Presses {
             Event::KeyPress(key) if key.code == KeyCode::Char('a') => {
                 self.count.update(|count| *count += 1);
                 false
+            },
+            Event::KeyPress(key) if key.code == KeyCode::Char('p') => panic!("asked to crash"),
+            Event::KeyPress(key) if key.code == KeyCode::Char('l') => loop {
+                std::hint::spin_loop();
             },
             Event::KeyPress(key) => key.code == KeyCode::Char('q'),
             _ => false,

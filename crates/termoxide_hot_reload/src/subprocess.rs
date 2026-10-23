@@ -8,6 +8,7 @@ use std::{
 
 use color_eyre::{Result, eyre::eyre};
 use log::Level;
+use termoxide_event::event::{Event, MouseEventKind};
 use wasmtime::component::Component;
 
 use crate::{
@@ -24,8 +25,13 @@ pub(crate) const GUEST_ENV: &str = "TERMOXIDE_HOT_RELOAD_GUEST";
 
 /// How long the subprocess has to connect once spawned.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-/// How long the subprocess has to answer a request.
-const RESPONSE_TIMEOUT: Duration = Duration::from_secs(1);
+/// How long the subprocess has to answer a request: room for a reload or a
+/// recovery, which instantiates a generation, checks it and starts it, each
+/// within a guest call's budget.
+const RESPONSE_TIMEOUT: Duration = Duration::from_secs(3);
+/// How many key presses and clicks a new generation answers before the one it
+/// replaced is let go: a crash after that restarts the new one.
+const TRUSTED_AFTER: u32 = 5;
 /// How long the subprocess has to start the app: it compiles the component
 /// first.
 const START_TIMEOUT: Duration = Duration::from_secs(60);
@@ -104,7 +110,15 @@ impl Drop for Subprocess {
 pub(crate) fn serve(pipe: &str, guest: &Path) -> Result<()> {
     let mut channel = ipc::connect(pipe, CONNECT_TIMEOUT)?;
     log::info!("connected to the host");
-    let mut generations = Generations { runtime: Runtime::new()?, current: None, next: None, state: Vec::new() };
+    let mut generations = Generations {
+        runtime: Runtime::new()?,
+        current: None,
+        component: None,
+        previous: None,
+        answered: 0,
+        next: None,
+        state: Vec::new(),
+    };
     loop {
         // `recv_timeout` treats a deadline that overflows as no deadline, so this
         // waits for the next request however long it takes.
@@ -114,7 +128,23 @@ pub(crate) fn serve(pipe: &str, guest: &Path) -> Result<()> {
             Err(e) => return Err(e.into()),
         };
         let response = generations.answer(request, guest)?;
-        channel.send(&response)?;
+        match channel.send(&response) {
+            Err(IpcError::PayloadTooLarge { len, max }) => {
+                log::error!("the app's answer is too large to send ({len} bytes, {max} at most), so it was dropped");
+                channel.send(&Response::TooLarge)?;
+            },
+            sent => sent?,
+        }
+    }
+}
+
+/// Whether `request` is something the user did on purpose: a key press or a
+/// click, not the mouse moving.
+fn is_input(request: &Request) -> bool {
+    match request {
+        Request::Event(Event::KeyPress(_)) => true,
+        Request::Event(Event::Mouse(mouse)) => matches!(mouse.kind, MouseEventKind::Down(_)),
+        _ => false,
     }
 }
 
@@ -123,6 +153,13 @@ pub(crate) fn serve(pipe: &str, guest: &Path) -> Result<()> {
 struct Generations {
     runtime: Runtime,
     current: Option<GuestInstance>,
+    /// What `current` is an instance of, to restart it after a crash.
+    component: Option<Component>,
+    /// The generation before the last reload, to go back to if the new one
+    /// crashes before it has answered [`TRUSTED_AFTER`] inputs.
+    previous: Option<Component>,
+    /// How many inputs the running generation has answered since the reload.
+    answered: u32,
     next: Option<Receiver<Result<Component>>>,
     /// The app's latest state, read from the answers passing through: what a
     /// new generation starts from.
@@ -146,21 +183,35 @@ impl Generations {
             return Ok(reloaded);
         }
 
+        let input = is_input(&request);
         let response = match (&mut self.current, request) {
             (None, Request::Ping) => Response::Pong,
             (None, request @ Request::Start { .. }) => {
                 log::info!("loading {}", first.display());
                 let component = self.runtime.compile(first)?;
-                self.current.insert(self.generation(&component)?).handle(&request)?
+                let response = self.current.insert(self.generation(&component)?).handle(&request)?;
+                self.component = Some(component);
+                response
             },
             (None, _) => return Err(eyre!("the host sent a request before starting the app")),
-            (Some(current), request) => current.handle(&request)?,
+            (Some(current), request) => {
+                match current.handle(&request) {
+                    Ok(response) => response,
+                    Err(e) => return self.recover(&e),
+                }
+            },
         };
         match &response {
             Response::Started { state, .. } | Response::Done(Outcome { state: Some(state), .. }) => {
                 self.state.clone_from(state);
             },
             _ => {},
+        }
+        if input && self.previous.is_some() {
+            self.answered += 1;
+            if self.answered >= TRUSTED_AFTER {
+                self.previous = None;
+            }
         }
         Ok(response)
     }
@@ -185,6 +236,8 @@ impl Generations {
             Ok((generation, state)) => {
                 log::info!("reloaded the app");
                 self.current = Some(generation);
+                self.previous = self.component.replace(component.clone());
+                self.answered = 0;
                 self.state.clone_from(&state);
                 Some(Response::Reloaded { state })
             },
@@ -193,6 +246,26 @@ impl Generations {
                 None
             },
         }
+    }
+
+    /// Replaces the generation that crashed on a request, the request dropped:
+    /// with the one before the last reload if it is still kept, else with a
+    /// new instance of the same, from the latest state either way. The host counts
+    /// these, and stops the app when they come too often.
+    fn recover(&mut self, error: &color_eyre::Report) -> Result<Response> {
+        log::error!("the app crashed, so its request was dropped: {error:#}");
+        let component = match self.previous.take() {
+            Some(previous) => {
+                log::warn!("going back to the generation before the last reload");
+                previous
+            },
+            None => self.component.clone().ok_or_else(|| eyre!("no generation to restart"))?,
+        };
+        let (generation, state) = self.start(&component)?;
+        self.current = Some(generation);
+        self.component = Some(component);
+        self.state.clone_from(&state);
+        Ok(Response::Recovered { state })
     }
 
     /// A new instance of `component`, once it is known to speak this
