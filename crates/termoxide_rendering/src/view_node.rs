@@ -81,6 +81,7 @@ pub type ComponentId = u64;
 /// Each variant maps to a distinct rendering strategy inside
 /// [`Renderer::draw_node`][crate::renderer::Renderer].
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ViewContent {
     // ── Structural
     // ────────────────────────────────────────────────────────── //
@@ -94,6 +95,7 @@ pub enum ViewContent {
     Container {
         /// Ratatui style painted across [`ViewNode::area`] before children are
         /// drawn on top.
+        #[cfg_attr(feature = "serde", serde(with = "crate::wire::style"))]
         style: Style,
     },
 
@@ -108,6 +110,7 @@ pub enum ViewContent {
         /// The string to render, already resolved (no reactive binding here).
         text: String,
         /// Ratatui style (foreground, background, modifiers).
+        #[cfg_attr(feature = "serde", serde(with = "crate::wire::style"))]
         style: Style,
     },
 }
@@ -143,6 +146,7 @@ pub enum ViewContent {
 /// | `children`    | Component      | Renderer (recursive traversal)   |
 /// | `dirty`       | Reactive layer | RenderLoop (skip-if-clean)       |
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ViewNode {
     /// Optional component identity.
     ///
