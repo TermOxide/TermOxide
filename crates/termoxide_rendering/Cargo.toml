@@ -10,6 +10,7 @@ crossterm = { version = "0.27", optional = true }
 termoxide_event = { path = "../termoxide_event", default-features = false }
 termoxide_layout = { path = "../termoxide_layout" }
 termoxide_reactive = { path = "../termoxide_reactive" }
+serde = { version = "1", features = ["derive"], optional = true }
 
 [features]
 default = ["terminal"]
@@ -17,3 +18,9 @@ default = ["terminal"]
 terminal = ["dep:crossterm", "ratatui/crossterm", "ratatui/underline-color", "termoxide_event/terminal"]
 # Exposes `Renderer::new_for_test` to other crates' tests.
 test-util = ["terminal"]
+# Views as bytes, to cross a process or wasm boundary.
+serde = ["dep:serde", "ratatui/serde", "termoxide_layout/ratatui", "termoxide_layout/serde"]
+
+[dev-dependencies]
+termoxide_rendering = { path = ".", features = ["serde"] }
+postcard = { version = "1", features = ["use-std"] }

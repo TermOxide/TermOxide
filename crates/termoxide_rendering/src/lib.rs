@@ -48,3 +48,5 @@ pub mod event_router;
 #[cfg(feature = "terminal")]
 pub mod renderer;
 pub mod view_node;
+#[cfg(feature = "serde")]
+mod wire;
