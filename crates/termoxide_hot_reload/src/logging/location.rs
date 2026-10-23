@@ -10,12 +10,12 @@ pub(crate) const LOG_ENV: &str = "TERMOXIDE_HOT_RELOAD_LOG";
 /// of the per-user directory. `dirs` reads no variable on Windows or macOS.
 pub(crate) const STATE_DIR_ENV: &str = "TERMOXIDE_STATE_DIR";
 
-/// `termoxide/<app>/logs` in the per-user state directory, or in the local
-/// data directory where there is none:
-/// - Windows: `%LOCALAPPDATA%\termoxide\<app>\logs`
-/// - Linux: `$XDG_STATE_HOME/termoxide/<app>/logs`, by default under `~/.local/state`
-/// - macOS: `~/Library/Application Support/termoxide/<app>/logs`
-pub(super) fn log_dir() -> io::Result<PathBuf> { Ok(root(env::var_os(STATE_DIR_ENV))?.join(app_name()?).join("logs")) }
+/// `termoxide/<app>` in the per-user state directory, or in the local data
+/// directory where there is none, holding the app's logs and its snapshot:
+/// - Windows: `%LOCALAPPDATA%\termoxide\<app>`
+/// - Linux: `$XDG_STATE_HOME/termoxide/<app>`, by default under `~/.local/state`
+/// - macOS: `~/Library/Application Support/termoxide/<app>`
+pub(crate) fn app_dir() -> io::Result<PathBuf> { Ok(root(env::var_os(STATE_DIR_ENV))?.join(app_name()?)) }
 
 pub(super) fn root(set: Option<OsString>) -> io::Result<PathBuf> {
     if let Some(dir) = set.filter(|dir| !dir.is_empty()) {
@@ -23,9 +23,12 @@ pub(super) fn root(set: Option<OsString>) -> io::Result<PathBuf> {
     }
     let base = state_dir()
         .or_else(data_local_dir)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no per-user directory to put logs in"))?;
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no per-user directory to keep the app's files in"))?;
     Ok(base.join("termoxide"))
 }
+
+/// `logs` in [`app_dir`].
+pub(super) fn log_dir() -> io::Result<PathBuf> { Ok(app_dir()?.join("logs")) }
 
 /// The executable's file stem, standing in for the app's name.
 fn app_name() -> io::Result<String> {
