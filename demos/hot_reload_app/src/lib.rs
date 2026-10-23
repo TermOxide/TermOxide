@@ -1,10 +1,13 @@
-//! A counter that ticks, to try hot reload on: built natively for the
-//! executable, and as a wasm component for the guest.
+//! The mouse demo of `external_app_mouse` with hot reload: built natively for
+//! the executable, and as a wasm component for the guest.
 
-use ratatui::{layout::Rect, style::Style};
+use ratatui::{
+    layout::Rect,
+    style::{Color, Style},
+};
 use serde::{Deserialize, Serialize};
 use termoxide::App;
-use termoxide_event::event::{Event, KeyCode};
+use termoxide_event::event::{Event, KeyCode, KeyModifiers};
 use termoxide_reactive::Signal;
 use termoxide_rendering::{
     builder::{Container, NodeBuilder, el, text},
@@ -12,35 +15,112 @@ use termoxide_rendering::{
 };
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
-pub struct Counter {
+pub struct AppState {
+    count: Signal<u32>,
     ticks: Signal<u64>,
+    last_key: Signal<String>,
+    last_mouse: Signal<String>,
 }
 
-impl Default for Counter {
-    fn default() -> Self { Self { ticks: Signal::new(0) } }
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            count: Signal::new(0),
+            ticks: Signal::new(0),
+            last_key: Signal::new(String::from("waiting for input")),
+            last_mouse: Signal::new(String::from("waiting for input")),
+        }
+    }
 }
 
-impl App for Counter {
-    fn track_view(&self) { let _ = self.ticks.get(); }
+impl AppState {
+    fn line(viewport: Rect, row_offset: u16, content: String, style: Style) -> Option<ViewNode> {
+        if row_offset >= viewport.height {
+            return None;
+        }
+
+        Some(
+            text(content)
+                .area(Rect::new(viewport.x, viewport.y.saturating_add(row_offset), viewport.width, 1))
+                .style(style)
+                .build(),
+        )
+    }
+}
+
+impl App for AppState {
+    fn track_view(&self) {
+        let _ = self.count.get();
+        let _ = self.ticks.get();
+        let _ = self.last_key.get();
+        let _ = self.last_mouse.get();
+    }
 
     fn on_tick(&self) { self.ticks.update(|ticks| *ticks += 1); }
 
     fn handle_event(&self, event: Event) -> bool {
-        let quit = matches!(event, Event::KeyPress(key) if key.code == KeyCode::Char('q'));
-        if quit {
-            log::info!("quitting after {} ticks", self.ticks.get_untracked());
+        match event {
+            Event::ChannelReady => false,
+            Event::KeyPress(key) => {
+                self.count.update(|count| *count += 1);
+                self.last_key.set(format!("key {}+{:?}", key.modifiers, key.code));
+                let quit = key.code == KeyCode::Char('q')
+                    || (key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL);
+                if quit {
+                    log::info!("quitting after {} key presses", self.count.get_untracked());
+                }
+                quit
+            },
+            Event::Mouse(mouse) => {
+                self.last_mouse.set(format!(
+                    "{:?} at {}:{} with {}",
+                    mouse.kind, mouse.column, mouse.row, mouse.modifiers
+                ));
+                false
+            },
         }
-        quit
     }
 
-    fn build_view(&self, viewport: Rect) -> ViewNode {
-        let line = text(format!("ticks: {} (q quits)", self.ticks.get_untracked()))
-            .area(Rect::new(viewport.x, viewport.y, viewport.width, 1))
-            .style(Style::default())
-            .build();
+    fn mouse_capture(&self) -> bool { true }
 
-        el(Container).area(viewport).children(vec![line]).build()
+    fn build_view(&self, viewport: Rect) -> ViewNode {
+        let children: Vec<ViewNode> = [
+            Self::line(
+                viewport,
+                0,
+                "hot-reloaded termoxide app".to_string(),
+                Style::default().fg(Color::Cyan),
+            ),
+            Self::line(
+                viewport,
+                1,
+                format!(
+                    "ticks: {} | key presses: {} | last key: {}",
+                    self.ticks.get_untracked(),
+                    self.count.get_untracked(),
+                    self.last_key.get_untracked(),
+                ),
+                Style::default().fg(Color::Yellow),
+            ),
+            Self::line(
+                viewport,
+                2,
+                format!("last mouse event: {}", self.last_mouse.get_untracked()),
+                Style::default().fg(Color::Magenta),
+            ),
+            Self::line(
+                viewport,
+                3,
+                "Controls: any key counts, the mouse is reported, q or Ctrl-C quits".to_string(),
+                Style::default().fg(Color::Green),
+            ),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+
+        el(Container).area(viewport).children(children).build()
     }
 }
 
-termoxide_hot_reload::wasm_app!(Counter::default());
+termoxide_hot_reload::wasm_app!(AppState::default());
