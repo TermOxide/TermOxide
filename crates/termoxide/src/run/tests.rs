@@ -1,8 +1,11 @@
 use std::cell::RefCell;
 
+use ratatui::layout::Rect;
 use termoxide_event::event::{KeyCode, KeyEvent, KeyModifiers};
+use termoxide_rendering::view_node::ViewNode;
 
 use super::*;
+use crate::error::Trace;
 
 fn key(c: char) -> Event { Event::KeyPress(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)) }
 

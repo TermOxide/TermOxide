@@ -63,15 +63,23 @@
 //! }
 //! ```
 
+#[cfg(feature = "terminal")]
 pub mod backend;
+#[cfg(feature = "terminal")]
 mod config;
+#[cfg(feature = "terminal")]
 mod error;
 pub mod event;
+#[cfg(feature = "terminal")]
 use std::{sync::mpsc, thread};
 
+#[cfg(feature = "terminal")]
 use backend::read_events;
+#[cfg(feature = "terminal")]
 pub use config::EventStreamConfig;
+#[cfg(feature = "terminal")]
 pub use error::{Error, Result};
+#[cfg(feature = "terminal")]
 use event::Event;
 
 /// An owning handle over a background terminal-input reader.
@@ -86,6 +94,7 @@ use event::Event;
 /// [`teardown`](Self::teardown)) signals the thread to stop, joins it, and
 /// lets it restore the terminal. Thanks to the [`Drop`] implementation this
 /// happens even if the handle simply goes out of scope.
+#[cfg(feature = "terminal")]
 pub struct EventStream {
     /// Receiving end of the channel translated events arrive on.
     receiver: mpsc::Receiver<Event>,
@@ -97,6 +106,7 @@ pub struct EventStream {
     thread: Option<thread::JoinHandle<Result<()>>>,
 }
 
+#[cfg(feature = "terminal")]
 impl EventStream {
     /// Create a stream with the default settings and start reading terminal
     /// input.
@@ -181,6 +191,7 @@ impl EventStream {
     }
 }
 
+#[cfg(feature = "terminal")]
 impl Drop for EventStream {
     /// Stop the reader thread when the handle goes out of scope.
     ///
