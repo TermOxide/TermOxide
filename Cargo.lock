@@ -1422,7 +1422,10 @@ name = "termoxide_reactive"
 version = "0.1.0"
 dependencies = [
  "any_spawner",
+ "postcard",
  "reactive_graph",
+ "serde",
+ "termoxide_reactive",
  "tokio",
 ]
 
