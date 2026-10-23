@@ -57,7 +57,13 @@ impl Listener {
         let deadline = Instant::now() + timeout;
         loop {
             match self.listener.accept() {
-                Ok(stream) => return Ok(Channel::new(stream)),
+                Ok(stream) => {
+                    // macOS and the BSDs hand the listener's non-blocking mode
+                    // down to the accepted connection; Linux doesn't. The
+                    // channel reads and writes it blocking.
+                    stream.set_nonblocking(false)?;
+                    return Ok(Channel::new(stream));
+                },
                 Err(e) if e.kind() != io::ErrorKind::WouldBlock => return Err(e.into()),
                 Err(_) if Instant::now() >= deadline => return Err(IpcError::Timeout),
                 Err(_) => thread::sleep(RETRY_DELAY),
