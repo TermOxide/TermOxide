@@ -1,7 +1,7 @@
 //! The app's state saved on disk, so it survives a restart of the host itself:
 //! a trace of the bytes the host keeps for a lost subprocess, fingerprint
 //! included, one entry per recorded change. A trace saved by another state type
-//! is caught like any other state.
+//! is caught like any other state, and `termoxide_dump` prints one back.
 
 use std::{
     cell::RefCell,
@@ -33,44 +33,70 @@ pub(crate) fn persists(setting: Option<&str>, persistent: bool) -> bool {
 /// Whether [`FRESH_ENV`], set to `setting`, asks to start from a clean state.
 pub(crate) fn is_fresh(setting: Option<&str>) -> bool { matches!(setting, Some("1" | "true")) }
 
+/// What a trace starts with, readable in a text viewer, so a file that isn't
+/// one, or is one of another layout, is told apart. Bumped with the layout.
+const MAGIC: &[u8] = b"termoxide state trace 1
+";
+
+/// What follows [`MAGIC`]: whose trace it is.
+#[derive(Serialize, Deserialize)]
+struct Header<'a> {
+    /// The app's crate: what builds the component that can decode the trace.
+    manifest_dir: &'a str,
+}
+
 /// One recorded state.
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Entry<'a> {
     /// When, in milliseconds since the Unix epoch.
-    at: u64,
+    pub(crate) at: u64,
     #[serde(borrow)]
-    state: &'a [u8],
+    pub(crate) state: &'a [u8],
 }
 
-/// The complete entries of `trace`, in order, and whether more bytes follow
-/// them: a last entry cut short by a host killed while writing it.
-pub(crate) fn entries(trace: &[u8]) -> (Vec<Entry<'_>>, bool) {
+/// A trace, as read from its bytes.
+pub(crate) struct Trace<'a> {
+    pub(crate) manifest_dir: &'a str,
+    /// Its complete entries, in order.
+    pub(crate) entries: Vec<Entry<'a>>,
+    /// More bytes follow the entries: a last one cut short by a host killed
+    /// while writing it.
+    pub(crate) cut_short: bool,
+}
+
+/// `bytes` as a trace, or `None` when they don't start like one.
+pub(crate) fn parse(bytes: &[u8]) -> Option<Trace<'_>> {
+    let (header, mut rest) = postcard::take_from_bytes::<Header<'_>>(bytes.strip_prefix(MAGIC)?).ok()?;
     let mut entries = Vec::new();
-    let mut rest = trace;
     while let Ok((entry, after)) = postcard::take_from_bytes::<Entry<'_>>(rest) {
         entries.push(entry);
         rest = after;
     }
-    (entries, !rest.is_empty())
+    Some(Trace { manifest_dir: header.manifest_dir, entries, cut_short: !rest.is_empty() })
 }
 
 /// Where the app's state is traced between runs: one fixed path per app, so a
 /// new run finds what the last one wrote.
 pub(crate) struct Snapshot {
     path: PathBuf,
+    /// The app's crate, named in the trace's header.
+    manifest_dir: &'static str,
     /// This run's trace, open for appending once its first entry is written.
     trace: RefCell<Option<File>>,
 }
 
 impl Snapshot {
-    /// `state.bin` in `dir`, the app's directory, next to its logs.
-    pub(crate) fn in_dir(dir: &Path) -> Self { Self { path: dir.join("state.bin"), trace: RefCell::new(None) } }
+    /// `state.bin` in `dir`, the app's directory, next to its logs, for the
+    /// app whose crate is at `manifest_dir`.
+    pub(crate) fn in_dir(dir: &Path, manifest_dir: &'static str) -> Self {
+        Self { path: dir.join("state.bin"), manifest_dir, trace: RefCell::new(None) }
+    }
 
     pub(crate) fn path(&self) -> &Path { &self.path }
 
     /// The last state an earlier run recorded, if there is one and the run
-    /// doesn't start `fresh`. A trace without a complete entry is an
-    /// [`InvalidData`](io::ErrorKind::InvalidData) error.
+    /// doesn't start `fresh`. A file that isn't a trace, or a trace without a
+    /// complete entry, is an [`InvalidData`](io::ErrorKind::InvalidData) error.
     pub(crate) fn load(&self, fresh: bool) -> io::Result<Option<Vec<u8>>> {
         if fresh {
             log::info!(
@@ -84,7 +110,10 @@ impl Snapshot {
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e),
         };
-        match entries(&trace).0.last() {
+        let Some(trace) = parse(&trace) else {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "the snapshot isn't a state trace"));
+        };
+        match trace.entries.last() {
             Some(entry) => Ok(Some(entry.state.to_vec())),
             None => Err(io::Error::new(io::ErrorKind::InvalidData, "the trace holds no complete entry")),
         }
@@ -107,8 +136,9 @@ impl Snapshot {
         if let Some(dir) = self.path.parent() {
             fs::create_dir_all(dir)?;
         }
+        let header = postcard::to_stdvec(&Header { manifest_dir: self.manifest_dir }).map_err(io::Error::other)?;
         let partial = self.path.with_extension("bin.partial");
-        fs::write(&partial, &entry)?;
+        fs::write(&partial, [MAGIC, &header, &entry].concat())?;
         fs::rename(&partial, &self.path)?;
         *trace = Some(OpenOptions::new().append(true).open(&self.path)?);
         Ok(())
