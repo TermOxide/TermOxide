@@ -8,7 +8,7 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use termoxide::App;
 use termoxide_event::event::{Event, KeyCode, KeyModifiers};
-use termoxide_reactive::Signal;
+use termoxide_reactive::{Signal, Unrecorded};
 use termoxide_rendering::{
     builder::{Container, NodeBuilder, el, text},
     view_node::ViewNode,
@@ -17,7 +17,9 @@ use termoxide_rendering::{
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct AppState {
     count: Signal<u32>,
-    ticks: Signal<u64>,
+    /// Changes ten times a second: kept with the state, but not worth a
+    /// trace entry of its own.
+    ticks: Signal<u64, Unrecorded>,
     last_key: Signal<String>,
     last_mouse: Signal<String>,
 }
@@ -26,7 +28,7 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             count: Signal::new(0),
-            ticks: Signal::new(0),
+            ticks: Signal::new(0).unrecorded(),
             last_key: Signal::new(String::from("waiting for input")),
             last_mouse: Signal::new(String::from("waiting for input")),
         }
