@@ -28,10 +28,14 @@ impl Drop for TempDir {
     fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); }
 }
 
+/// The crate the traces name.
+const APP: &str = "/apps/clock";
+
 /// The states traced at `path`, in order.
 fn traced(path: &Path) -> Vec<Vec<u8>> {
-    entries(&fs::read(path).unwrap())
-        .0
+    parse(&fs::read(path).unwrap())
+        .unwrap()
+        .entries
         .iter()
         .map(|entry| entry.state.to_vec())
         .collect()
@@ -40,14 +44,14 @@ fn traced(path: &Path) -> Vec<Vec<u8>> {
 #[test]
 fn a_run_traces_every_state_and_the_next_one_starts_from_the_last() {
     let dir = TempDir::new();
-    let run = Snapshot::in_dir(&dir.0.join("app"));
+    let run = Snapshot::in_dir(&dir.0.join("app"), APP);
 
     run.record(b"first").unwrap();
     run.record(b"second").unwrap();
 
     assert_eq!(traced(run.path()), [b"first".to_vec(), b"second".to_vec()]);
     assert_eq!(
-        Snapshot::in_dir(&dir.0.join("app")).load(false).unwrap(),
+        Snapshot::in_dir(&dir.0.join("app"), APP).load(false).unwrap(),
         Some(b"second".to_vec())
     );
     assert_eq!(
@@ -60,9 +64,9 @@ fn a_run_traces_every_state_and_the_next_one_starts_from_the_last() {
 #[test]
 fn a_new_run_replaces_the_last_runs_trace() {
     let dir = TempDir::new();
-    Snapshot::in_dir(&dir.0).record(b"last run").unwrap();
+    Snapshot::in_dir(&dir.0, APP).record(b"last run").unwrap();
 
-    let run = Snapshot::in_dir(&dir.0);
+    let run = Snapshot::in_dir(&dir.0, APP);
     run.record(b"this run").unwrap();
 
     assert_eq!(traced(run.path()), [b"this run".to_vec()]);
@@ -71,7 +75,7 @@ fn a_new_run_replaces_the_last_runs_trace() {
 #[test]
 fn an_entry_cut_short_is_skipped() {
     let dir = TempDir::new();
-    let run = Snapshot::in_dir(&dir.0);
+    let run = Snapshot::in_dir(&dir.0, APP);
     run.record(b"whole").unwrap();
     run.record(b"cut short").unwrap();
     let trace = fs::read(run.path()).unwrap();
@@ -79,14 +83,36 @@ fn an_entry_cut_short_is_skipped() {
     fs::write(run.path(), cut).unwrap();
 
     assert_eq!(run.load(false).unwrap(), Some(b"whole".to_vec()));
-    assert!(entries(cut).1);
+    assert!(parse(cut).unwrap().cut_short);
+}
+
+#[test]
+fn a_trace_names_the_app_that_wrote_it() {
+    let dir = TempDir::new();
+    let run = Snapshot::in_dir(&dir.0, APP);
+    run.record(b"state").unwrap();
+
+    assert_eq!(parse(&fs::read(run.path()).unwrap()).unwrap().manifest_dir, APP);
+}
+
+#[test]
+fn a_file_that_isnt_a_trace_is_invalid() {
+    let dir = TempDir::new();
+    let run = Snapshot::in_dir(&dir.0, APP);
+    fs::write(run.path(), b"not a trace").unwrap();
+
+    assert_eq!(run.load(false).unwrap_err().kind(), io::ErrorKind::InvalidData);
 }
 
 #[test]
 fn a_trace_without_a_complete_entry_is_invalid() {
     let dir = TempDir::new();
-    let run = Snapshot::in_dir(&dir.0);
-    fs::write(run.path(), [0xFF]).unwrap();
+    let run = Snapshot::in_dir(&dir.0, APP);
+    fs::write(
+        run.path(),
+        [MAGIC, &postcard::to_stdvec(&Header { manifest_dir: APP }).unwrap(), &[0xFF]].concat(),
+    )
+    .unwrap();
 
     assert_eq!(run.load(false).unwrap_err().kind(), io::ErrorKind::InvalidData);
 }
@@ -95,13 +121,13 @@ fn a_trace_without_a_complete_entry_is_invalid() {
 fn there_is_nothing_to_load_before_the_first_run() {
     let dir = TempDir::new();
 
-    assert_eq!(Snapshot::in_dir(&dir.0).load(false).unwrap(), None);
+    assert_eq!(Snapshot::in_dir(&dir.0, APP).load(false).unwrap(), None);
 }
 
 #[test]
 fn a_fresh_run_ignores_the_trace() {
     let dir = TempDir::new();
-    let run = Snapshot::in_dir(&dir.0);
+    let run = Snapshot::in_dir(&dir.0, APP);
     run.record(b"saved").unwrap();
 
     assert_eq!(run.load(true).unwrap(), None);
@@ -111,7 +137,7 @@ fn a_fresh_run_ignores_the_trace() {
 #[test]
 fn a_trace_set_aside_keeps_its_entries_and_the_next_state_starts_another() {
     let dir = TempDir::new();
-    let run = Snapshot::in_dir(&dir.0);
+    let run = Snapshot::in_dir(&dir.0, APP);
     run.record(b"crashing").unwrap();
 
     let aside = run.set_aside(Aside::Crashed).unwrap();
@@ -125,7 +151,7 @@ fn a_trace_set_aside_keeps_its_entries_and_the_next_state_starts_another() {
 #[test]
 fn an_unreadable_trace_is_set_aside_under_its_own_name() {
     let dir = TempDir::new();
-    let run = Snapshot::in_dir(&dir.0);
+    let run = Snapshot::in_dir(&dir.0, APP);
     run.record(b"garbled").unwrap();
 
     let aside = run.set_aside(Aside::Unreadable).unwrap();
