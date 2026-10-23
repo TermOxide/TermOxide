@@ -294,13 +294,60 @@ fn a_damaged_snapshot_is_set_aside_and_the_app_starts_afresh() {
     session.send(b"aa");
     session.wait_for_text("presses: 2");
     quit(session);
-    // Its fingerprint, then a varint that never ends: the state type matches,
-    // the bytes don't decode.
-    let saved = fs::read(fixture.snapshot()).unwrap();
-    fs::write(fixture.snapshot(), [&saved[..8], &[0xFF]].concat()).unwrap();
+    // One entry holding the fingerprint, then a varint that never ends: the
+    // state type matches, the bytes don't decode.
+    let trace = fs::read(fixture.snapshot()).unwrap();
+    let fingerprint = &first_state(&trace)[..8];
+    fs::write(fixture.snapshot(), [&[0, 9], fingerprint, &[0xFF]].concat()).unwrap();
 
     let session = fixture.run_with(&[PERSIST]);
 
     session.wait_for_text_within(build_deadline(), "presses: 0");
     assert!(fixture.snapshot().with_extension("bin.unreadable").exists());
+}
+
+/// The state in a trace's first entry: a postcard `{ at: u64, state: &[u8] }`,
+/// two varints and the bytes.
+fn first_state(trace: &[u8]) -> &[u8] {
+    let varint_end = |from: usize| from + trace[from..].iter().position(|byte| byte & 0x80 == 0).unwrap() + 1;
+    let len_at = varint_end(0);
+    let state_at = varint_end(len_at);
+    &trace[state_at..state_at + usize::from(trace[len_at])]
+}
+
+#[test]
+fn crashing_too_often_sets_the_trace_aside_and_the_next_run_starts_afresh() {
+    let fixture = Fixture::copy("crashed");
+    let mut session = fixture.run_with(&[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+    session.send(b"aa");
+    session.wait_for_text("presses: 2");
+
+    session.send(b"pppp");
+    session.wait_for_text("stopped until the next rebuild");
+    fixture.wait_for_log("the state trace is kept");
+    session.send(&[0x03]);
+    assert!(session.wait_for_exit().success());
+
+    assert!(fixture.snapshot().with_extension("bin.crashed").exists());
+    let session = fixture.run_with(&[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+}
+
+#[test]
+fn a_trace_reads_back_as_the_app_decodes_it() {
+    let fixture = Fixture::copy("decode");
+    let mut session = fixture.run_with(&[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+    session.send(b"aa");
+    session.wait_for_text("presses: 2");
+    quit(session);
+
+    let trace = fixture.snapshot();
+    let mut session = fixture.run_with(&[("TERMOXIDE_HOT_RELOAD_DECODE", trace.to_str().unwrap())]);
+
+    // The start, then one entry per press.
+    session.wait_for_text_within(build_deadline(), "3 entries");
+    assert!(session.contents().contains(r#""count": 2"#), "{}", session.contents());
+    assert!(session.wait_for_exit().success());
 }
