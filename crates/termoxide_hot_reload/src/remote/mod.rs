@@ -21,7 +21,7 @@ use termoxide_rendering::view_node::ViewNode;
 
 use crate::{
     ipc::{IpcError, Request, Response},
-    snapshot::{Aside, DECODE_ENV, Snapshot},
+    snapshot::{Aside, Snapshot},
     subprocess::Subprocess,
     watch::Rebuilds,
 };
@@ -242,10 +242,7 @@ impl RemoteApp {
         if let Some(snapshot) = &self.0.snapshot {
             match snapshot.set_aside(Aside::Crashed) {
                 Ok(aside) => {
-                    log::warn!(
-                        "the state trace is kept as {}, readable with {DECODE_ENV}, and the next run starts afresh",
-                        aside.display()
-                    )
+                    log::warn!("the state trace is kept as {}, and the next run starts afresh", aside.display());
                 },
                 Err(e) => log::warn!("setting the state trace aside failed: {e}"),
             }
