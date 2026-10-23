@@ -1,6 +1,7 @@
 use any_spawner::Executor;
 use color_eyre::Result;
 use ratatui::{layout::Rect, style::Style};
+use serde::{Deserialize, Serialize};
 use termoxide::App;
 use termoxide_event::event::{Event, KeyCode};
 use termoxide_hot_reload::run_app;
@@ -10,7 +11,7 @@ use termoxide_rendering::{
     view_node::ViewNode,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 struct Counter {
     ticks: Signal<u64>,
 }
