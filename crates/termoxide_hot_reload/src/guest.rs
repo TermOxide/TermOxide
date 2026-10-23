@@ -31,32 +31,6 @@ pub mod bindings {
 #[doc(hidden)]
 pub use wit_bindgen;
 
-/// Exports `app`, the app as first built, as a hot-reload guest when compiled
-/// for wasm; expands to nothing otherwise.
-///
-/// ```ignore
-/// termoxide_hot_reload::wasm_app!(Counter::new());
-/// ```
-#[macro_export]
-macro_rules! wasm_app {
-    ($app:expr) => {
-        #[cfg(target_arch = "wasm32")]
-        const _: () = {
-            struct Guest;
-
-            impl $crate::guest::bindings::Guest for Guest {
-                fn handle(
-                    request: ::std::vec::Vec<u8>,
-                ) -> ::std::result::Result<::std::vec::Vec<u8>, ::std::string::String> {
-                    $crate::guest::handle(request, || $app)
-                }
-            }
-
-            $crate::guest::bindings::export_guest!(Guest);
-        };
-    };
-}
-
 thread_local! {
     /// The app's [`Responder`], made on the first request. A `wasm_app!` can't
     /// name its type here, hence `Any`.
