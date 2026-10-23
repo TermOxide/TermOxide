@@ -17,7 +17,7 @@ Read §1 and §2 before writing any code. Everything else can be read on demand.
 
 These hold everywhere. A change that violates one is a design change, not a bug fix.
 
-1. **The app author's surface is a state type and three functions.** No host code, no FFI, no manual
+1. **The app author's surface is the framework's own `App` trait.** No host code, no FFI, no manual
    export list on the app side — a single macro invocation generates the rest.
 2. **The guest never touches the terminal.** Rendering, raw mode, and the alternate screen are owned
    exclusively by the outer host process, on every transport.
@@ -40,26 +40,27 @@ These hold everywhere. A change that violates one is a design change, not a bug 
 ## 2. Core types
 
 ```rust
-/// The entire app-author surface. `wasm_app!(App)` generates every
-/// #[no_mangle] export from this.
-pub trait WasmApp {
-    type State: Default + Serialize + DeserializeOwned;
-    fn on_tick(state: &mut Self::State);
-    fn handle_event(state: &mut Self::State, event: Event) -> bool;   // returns quit
-    fn build_view(state: &Self::State, width: u16, height: u16) -> Vec<Line>;
-}
-
-pub struct Line { pub color: Color, pub text: String }
-
-/// Framework-fixed, not backend-specific. Needs enriching (RGB, bold/
-/// italic/underline/dim/strikethrough, background) before v1 — see §9.
-pub enum Color { Default, Cyan, Yellow, Green, Magenta }
-
-pub enum Event {
-    ChannelReady,
-    KeyPress { code: KeyCode, modifiers: Modifiers },
+/// The entire app-author surface: termoxide's own trait, the one a native app
+/// implements. `wasm_app!(App)` generates every export from it.
+pub trait App {
+    fn track_view(&self);
+    fn on_tick(&self);
+    fn handle_event(&self, event: Event) -> bool;   // returns quit
+    fn build_view(&self, viewport: Rect) -> ViewNode;
+    fn mouse_capture(&self) -> bool { true }
 }
 ```
+
+- The app value is the state: its fields are `Signal`s, and the app type derives `Serialize` and
+  `Deserialize`. A signal crosses as its value and comes back as a new signal holding it
+  (`termoxide_reactive`'s `serde` feature); subscriptions don't cross.
+- `Event` is `termoxide_event`'s; `ViewNode` is `termoxide_rendering`'s, with no `Raw` content. Both cross
+  through their crates' `serde` feature.
+- In a `ViewNode`, colours cross as `termoxide_layout`'s `Color`. The style and area are ratatui's `Style`
+  (with `Modifier`) and `Rect`, stand-ins until the resolved style (with `FontStyle` for modifiers) and a
+  framework rect replace them; each swap is a wire-schema change (§2.3). Underline colours don't cross.
+- The guest runs the reactive runtime itself, on a local executor. How it tells the host a repaint is due
+  (what `track_view`'s render effect does natively) is open.
 
 Host-side, the whole config surface is where the swappable crate lives — no per-app function pointers,
 no per-app type parameter:
@@ -73,6 +74,10 @@ pub fn run_persistent(config: WasmConfig, snapshot_path: PathBuf) -> Result<()>;
 
 ### 2.1 Export names and signature checking
 
+The guest is a `wasm32-wasip2` component: the exports below are functions of a WIT world, with `postcard`
+bytes crossing as `list<u8>`. The exact WIT is open; `state_ptr`, `output_ptr` and `memory` belong to the
+drafts' core-module ABI and have no counterpart in a component.
+
 ```rust
 pub const EXPORT_STATE_PTR: &str = "state_ptr";
 pub const EXPORT_OUTPUT_PTR: &str = "output_ptr";
@@ -82,7 +87,8 @@ pub const EXPORT_BUILD_VIEW: &str = "build_view";
 pub const EXPORT_MEMORY: &str = "memory";
 ```
 
-Resolve every export via `Instance::get_typed_func::<Params, Results>(&mut store, NAME)`. This validates
+Resolve every export via a typed function (`Instance::get_typed_func::<Params, Results>(&mut store, NAME)`, or
+`wasmtime::component`'s equivalent, checked against the WIT types). This validates
 the requested signature against the module's actual declared type at load time and returns `Err` on a
 mismatch — do not resolve exports any other way. This checks **function types only**. It says nothing
 about the meaning of the bytes passed through linear memory: a stale guest can keep identical function
@@ -92,17 +98,12 @@ all of it.
 
 ### 2.2 State encoding
 
-State crosses the boundary via `postcard::to_slice`/`from_bytes`, generic over any
-`S: Serialize + DeserializeOwned`, inside the guest-side macro expansion only. The outer host (§3) holds the resulting
+State crosses the boundary via `postcard`, as the encoded app value (`A: App + Serialize + DeserializeOwned`),
+inside the guest-side macro expansion only. The outer host (§3) holds the resulting
 bytes as an opaque `Vec<u8>` and passes them back in unexamined — host code must never contain a type
 parameter for app state. Every call that changes state returns the new bytes to the outer host, which
 keeps the last few generations (between two and five, number open) so a respawned subprocess (§4.3)
 resumes from them and a state that keeps crashing the child can be stepped back.
-
-```rust
-pub const STATE_CAPACITY: usize = 4096;
-pub const OUTPUT_CAPACITY: usize = 2048;
-```
 
 ### 2.3 Wire-schema and state compatibility
 
@@ -110,8 +111,8 @@ Two separate fingerprints, checked at two separate points. Neither is covered by
 
 ```rust
 /// Exported by the guest. Covers every byte-level convention the framework defines:
-/// tag tables (Color, KeyCode, modifier bits, event kinds), line encoding, buffer
-/// capacities, state-encoding convention. Version number or build-time fingerprint — open.
+/// tag tables (the event types, ViewContent, Color, style modifier bits), view
+/// encoding, state-encoding convention. Version number or build-time fingerprint — open.
 pub const EXPORT_WIRE_SCHEMA: &str = "wire_schema";
 ```
 
@@ -130,6 +131,14 @@ pub const EXPORT_WIRE_SCHEMA: &str = "wire_schema";
 Not built on any draft. The drafts' generated decode currently does `postcard::from_bytes(bytes)
 .unwrap_or_default()`, which loses state silently on a decode error and does nothing about a decode that
 succeeds wrongly.
+
+### 2.4 Guest build
+
+The guest compiles against `termoxide`, `termoxide_event` and `termoxide_rendering` with
+`default-features = false`: their `terminal` feature (on by default) holds `crossterm`, the renderer, the
+input reader and the run loop, none of which build for WASI. What remains is the `App` trait, `ViewNode` and
+the event types. CI's `wasm` leg builds every changed crate that way for `wasm32-wasip2`, except the e2e
+tests and the hot-reload host.
 
 ---
 
@@ -302,7 +311,7 @@ WasiCtxBuilder::new()
 ```
 
 Base WASI preview1 has no socket support at all; network access requires the preview2/component-model
-surface. Not yet wired into any draft — today's guests have zero filesystem/network/env access because
+surface, which is why the guest targets `wasm32-wasip2`. Not yet wired into any draft — today's guests have zero filesystem/network/env access because
 nothing is wired, not because anything is deliberately withheld.
 
 ---
@@ -344,22 +353,22 @@ mod __termoxide_native_bridge { /* near-empty — see below */ }
 ```
 
 Native linking needs no named-symbol export or runtime resolution at all: once `logic` is just another
-crate in the same compilation graph, the host's native entry point is an ordinary generic function —
-`run_native::<A: WasmApp>()` calling `A::on_tick(&mut state)` directly. There is nothing for the macro's
+crate in the same compilation graph, the host's native entry point is termoxide's own `run_with_app(app)`,
+the loop a native app already runs. There is nothing for the macro's
 native branch to generate beyond what the app's own trait impl already provides.
 
 `logic`'s `[lib] crate-type` must list both `cdylib` (the artifact the dev path loads) and `rlib` (so the
 native host can depend on it as an ordinary crate) — not a new pattern; the hot-lib-reloader draft already
 uses the equivalent dual declaration (`["rlib", "dylib"]`) for the same reason, one level native.
 
-The app author's source is identical in both cases: one `impl WasmApp for App`, one `wasm_app!(App)` call.
+The app author's source is identical in both cases: one `impl App`, one `wasm_app!(App)` call.
 The `cfg` branching is entirely internal to the macro's expansion. Not yet built on any draft.
 
 ---
 
 ## 9. v1 scope
 
-**In:** the `WasmApp` trait, `wasm_app!` macro-generated exports, `postcard`-encoded generic state,
+**In:** termoxide's `App` trait, `wasm_app!` macro-generated exports, the `postcard`-encoded app value,
 signature-checked and wire-schema-checked reload (§2.1, §2.3), opt-in persistence (§7).
 
 **Out of v1, structurally preserved:**
@@ -367,7 +376,7 @@ signature-checked and wire-schema-checked reload (§2.1, §2.3), opt-in persiste
 | Capability | What must be true now |
 |---|---|
 | Partial/diff-based redraw | State and view data cross as generic, opaque bytes — never a fixed per-field layout |
-| Backend-agnosticism (ratatui / crossterm / other) | Guest never depends on a rendering backend's types; only host translates `Color`/`Line` |
+| Backend-agnosticism (ratatui / crossterm / other) | Guest never depends on a terminal backend; ratatui's `Style`/`Rect` in `ViewNode` are stand-ins, to be replaced (§2) |
 | Async / multi-threaded host loop | Host↔subprocess communication is pipe-based IPC, already the shape async runtimes expect |
 | Component Model / WIT migration | Encoding is generic (`postcard` over any `Serialize` type), not hand-rolled per app |
 
@@ -375,8 +384,9 @@ signature-checked and wire-schema-checked reload (§2.1, §2.3), opt-in persiste
 
 ## 10. Unverified — check before relying on
 
-1. Richer `Color`/style vocabulary (RGB, bold/italic/underline/dim/strikethrough, background) — shape
-   depends on the backend-agnosticism work in §9 landing first; don't lock in a representation before that.
+1. The guest on `wasm32-wasip2` — the spike (reactive runtime on a local executor, `postcard` round trips,
+   identical bytes on `wasm32` and `x86_64`) ran on `wasm32-wasip1`; on wasip2 only the crates' builds are
+   checked so far.
 2. Windows' exact atomic-append guarantee for `OpenOptions::append(true)` under all handle-sharing modes
    — stress-tested for this project's own read/write pattern (§5), which is evidence, not proof; Windows'
    documented guarantee is narrower (a handle opened with only `FILE_APPEND_DATA`) than what Rust's
@@ -395,7 +405,7 @@ signature-checked and wire-schema-checked reload (§2.1, §2.3), opt-in persiste
 ## 11. Glossary
 
 **Generation** — one loaded version of the app's `logic` module; a reload produces a new one.
-**Guest** — the app's compiled `logic` module, running inside `wasmtime`.
+**Guest** — the app's `logic` compiled to a `wasm32-wasip2` component, running inside `wasmtime`.
 **Host** — the outer, framework-owned process that owns the terminal.
 **Subprocess** — the framework-controlled child process that hosts `wasmtime`, between host and guest.
 **Trap** — a wasm execution fault (OOB memory access, fuel/epoch exhaustion) caught as a Rust `Result::Err`.
