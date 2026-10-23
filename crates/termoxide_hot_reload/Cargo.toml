@@ -50,7 +50,7 @@ host = [
     "termoxide/terminal",
 ]
 # The app as a wasm component: what runs it and answers the host's requests.
-guest = ["dep:any_spawner", "dep:futures", "dep:log", "dep:reactive_graph", "dep:wit-bindgen"]
+guest = ["dep:any_spawner", "dep:futures", "dep:log", "dep:reactive_graph", "dep:serde_json", "dep:wit-bindgen"]
 
 [dev-dependencies]
 termoxide_hot_reload = { path = ".", features = ["host", "guest"] }
