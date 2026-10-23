@@ -213,10 +213,6 @@ impl<B: Backend> Renderer<B> {
             ViewContent::Text { text, style } => {
                 Self::draw_text(buf, node.area, text, *style);
             },
-
-            ViewContent::Raw(f) => {
-                f(buf, node.area);
-            },
         }
 
         // Recurse into children (document order).
@@ -349,10 +345,11 @@ mod tests {
     #[test]
     fn draw_node_renders_children_after_parent() {
         let area = Rect::new(0, 0, 1, 1);
-        let parent = ViewNode::raw(area, |buf, rect| {
-            buf.get_mut(rect.x, rect.y).set_symbol("A");
-        })
-        .with_children(vec![ViewNode::text(area, "B", Style::default())]);
+        let parent = ViewNode::text(area, "A", Style::default()).with_children(vec![ViewNode::text(
+            area,
+            "B",
+            Style::default(),
+        )]);
 
         let mut buf = Buffer::empty(area);
         Renderer::<TestBackend>::draw_node(&parent, &mut buf);
