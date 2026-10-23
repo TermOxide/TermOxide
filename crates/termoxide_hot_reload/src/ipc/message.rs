@@ -48,9 +48,10 @@ pub(crate) enum Response {
     /// The answer to a request the app crashed on: the request was dropped and
     /// the app restarted from its latest state, which this is.
     Recovered { state: Vec<u8> },
-    /// The answer to [`Request::Describe`]: the app as pretty-printed JSON, or
-    /// `None` when another state type saved it.
-    Described(Option<String>),
+    /// The answer to [`Request::Describe`]: the fingerprint of the state type
+    /// that saved the state, if it holds one, and the app as pretty-printed
+    /// JSON, or `None` when another state type saved it.
+    Described { fingerprint: Option<u64>, app: Option<String> },
 }
 
 /// What an event or a tick did to the app.

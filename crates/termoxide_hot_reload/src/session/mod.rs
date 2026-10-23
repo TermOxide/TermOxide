@@ -44,7 +44,9 @@ impl<A: App + Clone + Serialize + DeserializeOwned + 'static> Responder<A> {
     /// Starts working on `request`.
     pub(crate) fn step(&mut self, request: Request) -> ipc::Result<Step> {
         if let Request::Describe { state } = request {
-            return Ok(Step::Reply(Response::Described(describe::<A>(&state, self.fingerprint)?)));
+            let fingerprint = state.first_chunk::<8>().map(|saved| u64::from_le_bytes(*saved));
+            let app = describe::<A>(&state, self.fingerprint)?;
+            return Ok(Step::Reply(Response::Described { fingerprint, app }));
         }
         if let Some(session) = &mut self.session {
             return session.apply(request);

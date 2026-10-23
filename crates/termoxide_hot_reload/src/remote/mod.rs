@@ -242,7 +242,10 @@ impl RemoteApp {
         if let Some(snapshot) = &self.0.snapshot {
             match snapshot.set_aside(Aside::Crashed) {
                 Ok(aside) => {
-                    log::warn!("the state trace is kept as {}, and the next run starts afresh", aside.display());
+                    log::warn!(
+                        "the state trace is kept as {}, readable with termoxide_dump, and the next run starts afresh",
+                        aside.display()
+                    );
                 },
                 Err(e) => log::warn!("setting the state trace aside failed: {e}"),
             }
