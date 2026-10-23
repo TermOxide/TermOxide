@@ -1,7 +1,5 @@
 use any_spawner::Executor;
 use color_eyre::Result;
-use hot_reload_app::Counter;
-use termoxide_hot_reload::run_app;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -9,5 +7,5 @@ async fn main() -> Result<()> {
     Executor::init_tokio()?;
 
     let local = tokio::task::LocalSet::new();
-    local.run_until(run_app(Counter::default())).await
+    local.run_until(termoxide_hot_reload::run_app!()).await
 }
