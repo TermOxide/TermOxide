@@ -2,8 +2,9 @@
 
 **Project:** signal-driven, JSX-like TUI framework in Rust
 **Status:** design complete, partially drafted — transport and ABI live-tested across four candidates
-(including the naive full-process-restart baseline); the subprocess/IPC layer, fuel/epoch config,
-trap-to-recovery wiring, the rebuild step's background thread, and its kill timeout are not yet built.
+(including the naive full-process-restart baseline). Built: the subprocess running the app's component,
+the protocol, and the shared log. Not yet built: fuel/epoch config, trap-to-recovery wiring, rebuilding on
+save (its background thread and kill timeout), and the schema fingerprints.
 Reload latency is `cargo build`-dominated and not sub-second — do not promise a specific number anywhere
 derived from this document.
 **Companion:** `adr/hot_reload/index.html` — same decisions with reasoning and rejected alternatives. This
@@ -41,7 +42,7 @@ These hold everywhere. A change that violates one is a design change, not a bug 
 
 ```rust
 /// The entire app-author surface: termoxide's own trait, the one a native app
-/// implements. `wasm_app!(App)` generates every export from it.
+/// implements. `wasm_app!(expr)` builds the app with `expr` and exports it.
 pub trait App {
     fn track_view(&self);
     fn on_tick(&self);
@@ -59,33 +60,37 @@ pub trait App {
 - In a `ViewNode`, colours cross as `termoxide_layout`'s `Color`. The style and area are ratatui's `Style`
   (with `Modifier`) and `Rect`, stand-ins until the resolved style (with `FontStyle` for modifiers) and a
   framework rect replace them; each swap is a wire-schema change (§2.3). Underline colours don't cross.
-- The guest runs the reactive runtime itself, on a local executor. How it tells the host a repaint is due
-  (what `track_view`'s render effect does natively) is open.
+- The guest runs the reactive runtime itself, on a local executor. It tells the host a repaint is due with
+  a dirty flag on its replies (§3), set by `track_view`'s render effect once the guest has yielded to let it
+  run.
 
-Host-side, the whole config surface is where the swappable crate lives — no per-app function pointers,
-no per-app type parameter:
+Host-side, the whole config surface is the app's crate itself — no per-app function pointers, no per-app
+type parameter. Its `cdylib` declares the app; its executable only calls `run_app!()`, which captures the
+crate's manifest directory to build the guest from (§2.4):
 
 ```rust
-pub struct WasmConfig { pub logic_dir: PathBuf }
+// lib.rs, a `cdylib` + `rlib`
+termoxide_hot_reload::wasm_app!(Counter::default());
 
-pub fn run(config: WasmConfig) -> Result<()>;
-pub fn run_persistent(config: WasmConfig, snapshot_path: PathBuf) -> Result<()>;
+// main.rs, the host, inside a tokio `LocalSet`
+termoxide_hot_reload::run_app!().await
 ```
 
 ### 2.1 Export names and signature checking
 
-The guest is a `wasm32-wasip2` component: the exports below are functions of a WIT world, with `postcard`
-bytes crossing as `list<u8>`. The exact WIT is open; `state_ptr`, `output_ptr` and `memory` belong to the
-drafts' core-module ABI and have no counterpart in a component.
+The guest is a `wasm32-wasip2` component with one export and one import:
 
-```rust
-pub const EXPORT_STATE_PTR: &str = "state_ptr";
-pub const EXPORT_OUTPUT_PTR: &str = "output_ptr";
-pub const EXPORT_ON_TICK: &str = "on_tick";
-pub const EXPORT_HANDLE_EVENT: &str = "handle_event";
-pub const EXPORT_BUILD_VIEW: &str = "build_view";
-pub const EXPORT_MEMORY: &str = "memory";
+```wit
+world guest {
+  enum level { error, warn, info, debug, trace }
+  import log: func(level: level, message: string);
+  export handle: func(request: list<u8>) -> result<list<u8>, string>;
+}
 ```
+
+`handle` takes a `postcard`-encoded request of the protocol (§3) and returns the encoded response, so the
+subprocess forwards the pipe's messages unchanged. `log` carries the app's log records (§5). The drafts'
+core-module exports (`state_ptr`, `output_ptr`, `memory`, one per call) have no counterpart.
 
 Resolve every export via a typed function (`Instance::get_typed_func::<Params, Results>(&mut store, NAME)`, or
 `wasmtime::component`'s equivalent, checked against the WIT types). This validates
@@ -94,14 +99,16 @@ mismatch — do not resolve exports any other way. This checks **function types 
 about the meaning of the bytes passed through linear memory: a stale guest can keep identical function
 signatures while changing tag tables, line encoding, buffer sizes or state layout, and both sides will
 decode successfully into wrong values. That is what §2.3 is for; this check is half of invariant 3, not
-all of it.
+all of it. With a single `handle`, it covers that one signature: every argument is bytes anyway.
 
 ### 2.2 State encoding
 
 State crosses the boundary via `postcard`, as the encoded app value (`A: App + Serialize + DeserializeOwned`),
 inside the guest-side macro expansion only. The outer host (§3) holds the resulting
 bytes as an opaque `Vec<u8>` and passes them back in unexamined — host code must never contain a type
-parameter for app state. Every call that changes state returns the new bytes to the outer host, which
+parameter for app state. Every call that changes state returns the new bytes to the outer host, and only
+those: the guest compares the encoded app with the last bytes it sent, so any signal counts, not only those
+the view reads. The host
 keeps the last few generations (between two and five, number open) so a respawned subprocess (§4.3)
 resumes from them and a state that keeps crashing the child can be stepped back.
 
@@ -138,7 +145,14 @@ The guest compiles against `termoxide`, `termoxide_event` and `termoxide_renderi
 `default-features = false`: their `terminal` feature (on by default) holds `crossterm`, the renderer, the
 input reader and the run loop, none of which build for WASI. What remains is the `App` trait, `ViewNode` and
 the event types. CI's `wasm` leg builds every changed crate that way for `wasm32-wasip2`, except the e2e
-tests and the hot-reload host.
+tests.
+
+`termoxide_hot_reload` has two explicit features: `host` for the executable (terminal side, pipe, log file,
+`wasmtime`, building the guest) and `guest` for the component (running the app, its executor, its logger);
+ungated code is the protocol both share. The app's lib is a `cdylib` + `rlib` with a `guest` feature that
+enables the crate's. Before taking the terminal over, the host runs `cargo build --lib --target
+wasm32-wasip2 --no-default-features --features guest` on the app's manifest and takes the `.wasm` from
+cargo's JSON output; rebuilding on save reuses this.
 
 ---
 
@@ -151,7 +165,7 @@ outer host (owns the terminal, invariant 2)
 subprocess (hosts wasmtime; no TTY, renders nothing)
   │  dedicated named pipe, reserved exclusively for this
   ▼
-IPC channel: tick/event/build_view requests and responses
+IPC channel: one request enum, one reply enum
 ```
 
 - The channel is a named pipe. The host creates the server end **before** spawning the child, under a
@@ -161,13 +175,19 @@ IPC channel: tick/event/build_view requests and responses
 - Windows uses a named pipe. The Unix equivalent (Unix domain socket or FIFO) is not decided. A Unix
   socket file outlives a crash and must be cleaned up.
 - Child death is observed as the pipe closing. The pipe is still a byte stream, so messages need framing.
+- One request enum (ping, start with the host's state bytes, event, tick, build view) and one reply enum.
+  Event and tick replies carry the quit flag, the dirty flag (§2) and the state bytes only when they changed
+  (§2.2). The first slice runs the app natively in the child; `wasmtime` comes after.
 - The subprocess's `stdin` is set to null at spawn, so it can't read the host's keystrokes. Its `stdout`
   and `stderr` are piped to the host, which logs each line through the framework logger (§5), tagged as
   the child's: `stdout` at `info`, `stderr` at `debug`. Never left inherited, which would draw over the
   TUI. Never pointed at the log file directly, which would bypass the §5 lock.
 - The harness installs a panic hook that logs through the framework logger.
-- Not yet built: every draft as of this writing runs `wasmtime` in the outer host process directly. This
-  is the one section of this spec without a working implementation behind it.
+- The subprocess loads the component when `Start` arrives — compiling it takes seconds, so `Start` has its
+  own timeout (60 s) — and hands every request to `handle`. It serves on a thread of its own, outside the
+  app's async runtime: `wasmtime` runs the component's stdio on a runtime of its own, and one can't start
+  inside another. The guest lets the render effect run by polling its local executor, where a native run
+  yields to tokio.
 
 ---
 
@@ -261,7 +281,7 @@ Four destinations. Confusing any two of them is the bug class this section exist
 | Subprocess `stdin` | Nothing | Null — §3 |
 | Subprocess `stdout`/`stderr` | Stray prints, runtime crash output | Piped to host, logged line by line (`info`/`debug`) — §3 |
 | Shared log file | `[framework:host]`/`[framework:child]` lines | Both processes `OpenOptions::append(true)` directly |
-| Shared log file (same file) | `[app]` lines | Guest → host-provided `log(ptr, len)` import → same file |
+| Shared log file (same file) | `[app]` lines | Guest's `log` records → `log` import; guest's stdout/stderr → line sink (`info`/`debug`) |
 
 - One shared file per host run, tagged per source — not per-source files, not a spawned terminal window.
   Named after the host's start time (no colons) and pid, in `termoxide/<app>/logs/` under `dirs::state_dir()`,
@@ -270,7 +290,8 @@ Four destinations. Confusing any two of them is the bug class this section exist
   `~/Library/Application Support/termoxide/<app>/logs/` on macOS; `<app>` is the executable's file stem.
   The host passes the path to the child at spawn.
 - Framework code logs through the `log` facade (`log::info!` etc.); the backend formats each tagged line and
-  commits it under the lock below.
+  commits it under the lock below. It writes the framework's records from `debug` and other crates' only
+  from `warn`: `wasmtime`'s compiler alone logs about a hundred thousand `debug` lines per component.
 - Every writer formats the full line first, then writes it **while holding an exclusive cross-process
   lock on the log file for the entire write** — held for that one line only, never across user code.
   A single `write_all` call is **not** sufficient on its own: `Write::write_all` loops on `write` after a
@@ -287,14 +308,15 @@ Four destinations. Confusing any two of them is the bug class this section exist
 - Both processes log their panics through the logger. The host's hook then hands over to the hook
   installed before it (an app's own, such as `color_eyre`'s); the child's doesn't, since its stderr is
   relayed into the log already.
-- App-side logging never uses `WasiCtxBuilder::inherit_stdio()` — that wires the guest directly to the
+- App-side output never uses `WasiCtxBuilder::inherit_stdio()` — that wires the guest directly to the
   subprocess's own stdio, so its output would reach the log only as the child's relayed `stdout` (§3),
-  tagged as the framework's rather than the app's. Use a custom `stdout`/`stderr` writer instead: a
-  small buffering sink that accumulates arbitrary partial writes and commits each completed line under
-  the same lock as every other writer, regardless of the app's own write pattern. Install a
-  `log::Log` backend forwarding to this sink inside the `wasm_app!` macro expansion, so the app author
-  uses ordinary `log::info!`/`warn!` — never raw `println!`/`eprintln!`, which were confirmed live to
-  compile but silently no-op at runtime on `wasm32-unknown-unknown` with no WASI wired.
+  tagged as the framework's rather than the app's. The guest's stdout and stderr go to a line sink
+  instead: one buffer shared by every stream `wasmtime` opens, committing each completed line under the
+  same lock as every other writer, whatever the app's write pattern; stdout at `info`, stderr at `debug`.
+- The guest installs a `log::Log` backend before building the app, forwarding each record through the
+  `log` import, so the app author uses ordinary `log::info!`/`warn!`. It forwards every crate's records
+  from `debug` up: inside the guest it can't tell the app's crates from its dependencies. Records and
+  output are both tagged `[app]`.
 
 ---
 
@@ -319,9 +341,9 @@ nothing is wired, not because anything is deliberately withheld.
 ## 7. Persistence
 
 ```rust
-pub fn run_persistent(config: WasmConfig, snapshot_path: PathBuf) -> Result<()> {
+pub fn run_persistent(package: Package, snapshot_path: PathBuf) -> Result<()> {
     let initial = std::fs::read(&snapshot_path).unwrap_or_default();
-    drive(config, initial, |bytes| { let _ = std::fs::write(&snapshot_path, bytes); })
+    drive(package, initial, |bytes| { let _ = std::fs::write(&snapshot_path, bytes); })
 }
 ```
 
@@ -344,12 +366,10 @@ path (optimized `logic`, still run through hot-reload during iteration), so `cfg
 wrong gate.
 
 ```rust
-// wasm_app!(App) expands to one of these, chosen by the compiler, not the macro:
+// wasm_app!(expr) expands to this, kept or dropped by the compiler, not the macro:
 #[cfg(target_arch = "wasm32")]
-mod __termoxide_wasm_exports { /* state_ptr/output_ptr/on_tick/handle_event/build_view, postcard marshaling — §2 */ }
-
-#[cfg(not(target_arch = "wasm32"))]
-mod __termoxide_native_bridge { /* near-empty — see below */ }
+const _: () = { /* the `handle` export, over the app built with `expr` — §2.1 */ };
+// and to nothing natively.
 ```
 
 Native linking needs no named-symbol export or runtime resolution at all: once `logic` is just another
@@ -361,8 +381,9 @@ native branch to generate beyond what the app's own trait impl already provides.
 native host can depend on it as an ordinary crate) — not a new pattern; the hot-lib-reloader draft already
 uses the equivalent dual declaration (`["rlib", "dylib"]`) for the same reason, one level native.
 
-The app author's source is identical in both cases: one `impl App`, one `wasm_app!(App)` call.
-The `cfg` branching is entirely internal to the macro's expansion. Not yet built on any draft.
+The app author's source is identical in both cases: one `impl App`, one `wasm_app!` call. The `cfg`
+branching is entirely internal to the macro's expansion. The dev side is built; linking natively for release
+is not.
 
 ---
 
