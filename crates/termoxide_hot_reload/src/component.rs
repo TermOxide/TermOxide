@@ -1,7 +1,13 @@
-use std::path::Path;
+use std::{
+    path::{Path, PathBuf},
+    sync::mpsc::{self, Receiver},
+    thread,
+};
 
 use color_eyre::{Result, eyre::eyre};
 use wasmtime::{
+    Cache,
+    Config,
     Engine,
     Store,
     component::{Component, HasSelf, Linker, ResourceTable},
@@ -15,7 +21,14 @@ use crate::{
 
 wasmtime::component::bindgen!({ world: "guest", path: "wit" });
 
-/// The app's wasm component, loaded in the subprocess.
+/// What the subprocess runs the app's components with: one engine and one
+/// linker for every generation.
+pub(crate) struct Runtime {
+    engine: Engine,
+    linker: Linker<State>,
+}
+
+/// One generation of the app: an instance of its component.
 pub(crate) struct GuestInstance {
     store: Store<State>,
     guest: Guest,
@@ -45,24 +58,56 @@ impl GuestImports for State {
     }
 }
 
-impl GuestInstance {
-    /// Compiles and instantiates the component at `path`.
-    pub(crate) fn load(path: &Path) -> Result<Self> {
-        let engine = Engine::default();
-        let component = Component::from_file(&engine, path).map_err(|e| eyre!("loading {}: {e:#}", path.display()))?;
+impl Runtime {
+    pub(crate) fn new() -> Result<Self> {
+        let mut config = Config::new();
+        // Compiling a component takes seconds; the cache makes an unchanged one
+        // load fast across runs. Without it, every load just compiles.
+        match Cache::from_file(None) {
+            Ok(cache) => {
+                config.cache(Some(cache));
+            },
+            Err(e) => log::warn!("no compilation cache: {e:#}"),
+        }
+        let engine = Engine::new(&config).map_err(|e| eyre!("{e:#}"))?;
         let mut linker = Linker::new(&engine);
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker).map_err(|e| eyre!("{e:#}"))?;
         Guest::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state).map_err(|e| eyre!("{e:#}"))?;
+        Ok(Self { engine, linker })
+    }
+
+    /// Compiles the component at `path`.
+    pub(crate) fn compile(&self, path: &Path) -> Result<Component> {
+        Component::from_file(&self.engine, path).map_err(|e| eyre!("compiling {}: {e:#}", path.display()))
+    }
+
+    /// Compiles the component at `path` on a thread of its own, so the running
+    /// generation keeps answering meanwhile.
+    pub(crate) fn compile_in_background(&self, path: PathBuf) -> Receiver<Result<Component>> {
+        let engine = self.engine.clone();
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let component =
+                Component::from_file(&engine, &path).map_err(|e| eyre!("compiling {}: {e:#}", path.display()));
+            let _ = tx.send(component);
+        });
+        rx
+    }
+
+    /// Starts a new generation of `component`.
+    pub(crate) fn instantiate(&self, component: &Component) -> Result<GuestInstance> {
         // Stdout at `info` and stderr at `debug`, as the subprocess's own.
         let ctx = WasiCtx::builder()
             .stdout(AppOutput::new(log::Level::Info))
             .stderr(AppOutput::new(log::Level::Debug))
             .build();
-        let mut store = Store::new(&engine, State { ctx, table: ResourceTable::new() });
-        let guest = Guest::instantiate(&mut store, &component, &linker).map_err(|e| eyre!("{e:#}"))?;
-        Ok(Self { store, guest })
+        let mut store = Store::new(&self.engine, State { ctx, table: ResourceTable::new() });
+        let guest = Guest::instantiate(&mut store, component, &self.linker).map_err(|e| eyre!("{e:#}"))?;
+        Ok(GuestInstance { store, guest })
     }
+}
 
+impl GuestInstance {
     /// Hands `request` to the app and returns its answer.
     pub(crate) fn handle(&mut self, request: &Request) -> Result<Response> {
         let request = postcard::to_allocvec(request)?;
