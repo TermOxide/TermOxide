@@ -2,15 +2,17 @@ use std::{
     env,
     path::Path,
     process::{Child, Command, Stdio},
+    sync::mpsc::{Receiver, TryRecvError},
     time::Duration,
 };
 
-use color_eyre::eyre::eyre;
+use color_eyre::{Result, eyre::eyre};
 use log::Level;
+use wasmtime::component::Component;
 
 use crate::{
-    component::GuestInstance,
-    ipc::{self, HostChannel, IpcError, Listener, Request, Response},
+    component::{GuestInstance, Runtime},
+    ipc::{self, HostChannel, IpcError, Listener, Outcome, Request, Response},
     logging::{LOG_ENV, relay_output},
 };
 
@@ -98,13 +100,10 @@ impl Drop for Subprocess {
 
 /// Runs the subprocess side: connects to the host's `pipe` and hands its
 /// requests to the app's component at `guest`, until the host goes away.
-///
-/// The component is loaded on [`Request::Start`]: compiling it takes a while,
-/// and a ping must not wait for that.
-pub(crate) fn serve(pipe: &str, guest: &Path) -> color_eyre::Result<()> {
+pub(crate) fn serve(pipe: &str, guest: &Path) -> Result<()> {
     let mut channel = ipc::connect(pipe, CONNECT_TIMEOUT)?;
     log::info!("connected to the host");
-    let mut instance = None;
+    let mut generations = Generations { runtime: Runtime::new()?, current: None, next: None, state: Vec::new() };
     loop {
         // `recv_timeout` treats a deadline that overflows as no deadline, so this
         // waits for the next request however long it takes.
@@ -113,15 +112,102 @@ pub(crate) fn serve(pipe: &str, guest: &Path) -> color_eyre::Result<()> {
             Err(IpcError::Closed) => return Ok(()),
             Err(e) => return Err(e.into()),
         };
-        let response = match (&mut instance, request) {
+        let response = generations.answer(request, guest)?;
+        channel.send(&response)?;
+    }
+}
+
+/// The subprocess's generations of the app: the running one, and the next one
+/// while it compiles.
+struct Generations {
+    runtime: Runtime,
+    current: Option<GuestInstance>,
+    next: Option<Receiver<Result<Component>>>,
+    /// The app's latest state, read from the answers passing through: what a
+    /// new generation starts from.
+    state: Vec<u8>,
+}
+
+impl Generations {
+    /// Answers `request`. The first generation is the component at `first`,
+    /// loaded on [`Request::Start`]: compiling takes a while, and a ping must not
+    /// wait for that. A new one replaces it at the first tick after it compiled.
+    fn answer(&mut self, request: Request, first: &Path) -> Result<Response> {
+        if let Request::Load { guest } = request {
+            log::info!("compiling {}", guest.display());
+            self.next = Some(self.runtime.compile_in_background(guest));
+            return Ok(Response::Loading);
+        }
+        if matches!(request, Request::Tick)
+            && let Some(component) = self.compiled()
+            && let Some(reloaded) = self.swap(&component)
+        {
+            return Ok(reloaded);
+        }
+
+        let response = match (&mut self.current, request) {
             (None, Request::Ping) => Response::Pong,
             (None, request @ Request::Start { .. }) => {
-                log::info!("loading {}", guest.display());
-                instance.insert(GuestInstance::load(guest)?).handle(&request)?
+                log::info!("loading {}", first.display());
+                let component = self.runtime.compile(first)?;
+                self.current.insert(self.runtime.instantiate(&component)?).handle(&request)?
             },
             (None, _) => return Err(eyre!("the host sent a request before starting the app")),
-            (Some(instance), request) => instance.handle(&request)?,
+            (Some(current), request) => current.handle(&request)?,
         };
-        channel.send(&response)?;
+        match &response {
+            Response::Started { state, .. } | Response::Done(Outcome { state: Some(state), .. }) => {
+                self.state.clone_from(state);
+            },
+            _ => {},
+        }
+        Ok(response)
+    }
+
+    /// The next generation's component, once compiled. A failed compile is
+    /// logged and forgotten: the running generation stays.
+    fn compiled(&mut self) -> Option<Component> {
+        let compiled = match self.next.as_ref()?.try_recv() {
+            Ok(compiled) => compiled,
+            Err(TryRecvError::Empty) => return None,
+            Err(TryRecvError::Disconnected) => Err(eyre!("compiling the new generation stopped")),
+        };
+        self.next = None;
+        compiled.map_err(|e| log::error!("{e:#}; keeping the running generation")).ok()
+    }
+
+    /// Starts `component` from the current state and makes it the running
+    /// generation, returning the answer to the tick it takes the place of. If
+    /// it fails to start, logs why and keeps the running one.
+    fn swap(&mut self, component: &Component) -> Option<Response> {
+        match self.start(component) {
+            Ok((generation, state)) => {
+                log::info!("reloaded the app");
+                self.current = Some(generation);
+                self.state.clone_from(&state);
+                Some(Response::Reloaded { state })
+            },
+            Err(e) => {
+                log::error!("the new generation failed to start, keeping the running one: {e:#}");
+                None
+            },
+        }
+    }
+
+    /// A new generation of `component`, started from the current state, or
+    /// afresh when it can't read it.
+    fn start(&self, component: &Component) -> Result<(GuestInstance, Vec<u8>)> {
+        let start = |state: Option<Vec<u8>>| -> Result<(GuestInstance, Vec<u8>)> {
+            let mut generation = self.runtime.instantiate(component)?;
+            match generation.handle(&Request::Start { state })? {
+                Response::Started { state, .. } => Ok((generation, state)),
+                _ => Err(eyre!("the new generation didn't start")),
+            }
+        };
+        start(Some(self.state.clone())).or_else(|e| {
+            // Most likely its state type changed, so the bytes no longer decode.
+            log::warn!("the new generation can't read the current state, so it starts afresh: {e:#}");
+            start(None)
+        })
     }
 }
