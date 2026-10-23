@@ -31,7 +31,8 @@ impl RemoteApp {
     /// Starts the app in `subprocess`, from scratch, and swaps in each
     /// generation `rebuilds` builds.
     pub(crate) fn start(mut subprocess: Subprocess, rebuilds: Rebuilds) -> ipc::Result<Self> {
-        let Response::Started { mouse_capture, state } = subprocess.request(&Request::Start { state: None })? else {
+        let Response::Started { mouse_capture, state, .. } = subprocess.request(&Request::Start { state: None })?
+        else {
             return Err(IpcError::Unexpected);
         };
         Ok(Self(Rc::new(Inner {
