@@ -83,8 +83,7 @@ macro_rules! wasm_app {
 /// and the next run starts from its last entry. `TERMOXIDE_HOT_RELOAD_PERSIST=0`
 /// or `1` overrides that for one run, and `TERMOXIDE_HOT_RELOAD_FRESH=1` starts
 /// that run from a clean state. When the app stops for crashing too often, the
-/// trace is kept as `state.bin.crashed`; `TERMOXIDE_HOT_RELOAD_DECODE=<trace>`
-/// prints a trace's entries instead of running the app.
+/// trace is kept as `state.bin.crashed`.
 #[cfg(feature = "host")]
 #[macro_export]
 macro_rules! run_app {
@@ -105,7 +104,7 @@ pub async fn run(package: Package, persistent: bool) -> color_eyre::Result<()> {
     use color_eyre::eyre::eyre;
     use logging::{LOG_ENV, LogFile, Tag};
     use remote::RemoteApp;
-    use snapshot::{DECODE_ENV, FRESH_ENV, PERSIST_ENV, Snapshot};
+    use snapshot::{FRESH_ENV, PERSIST_ENV, Snapshot};
     use subprocess::{GUEST_ENV, PIPE_ENV};
 
     if let Ok(pipe) = env::var(PIPE_ENV) {
@@ -123,9 +122,6 @@ pub async fn run(package: Package, persistent: bool) -> color_eyre::Result<()> {
 
     // Before the log and the terminal, so cargo's errors land on the screen.
     let guest = build::guest(package)?;
-    if let Some(trace) = env::var_os(DECODE_ENV) {
-        return snapshot::print_trace(&PathBuf::from(trace), &guest);
-    }
     let rebuilds = watch::Rebuilds::start(package)?;
 
     let log = LogFile::create()?;

@@ -333,21 +333,3 @@ fn crashing_too_often_sets_the_trace_aside_and_the_next_run_starts_afresh() {
     let session = fixture.run_with(&[PERSIST]);
     session.wait_for_text_within(build_deadline(), "presses: 0");
 }
-
-#[test]
-fn a_trace_reads_back_as_the_app_decodes_it() {
-    let fixture = Fixture::copy("decode");
-    let mut session = fixture.run_with(&[PERSIST]);
-    session.wait_for_text_within(build_deadline(), "presses: 0");
-    session.send(b"aa");
-    session.wait_for_text("presses: 2");
-    quit(session);
-
-    let trace = fixture.snapshot();
-    let mut session = fixture.run_with(&[("TERMOXIDE_HOT_RELOAD_DECODE", trace.to_str().unwrap())]);
-
-    // The start, then one entry per press.
-    session.wait_for_text_within(build_deadline(), "3 entries");
-    assert!(session.contents().contains(r#""count": 2"#), "{}", session.contents());
-    assert!(session.wait_for_exit().success());
-}
