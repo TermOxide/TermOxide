@@ -15,9 +15,7 @@ pub(crate) use channel::ChildChannel;
 #[cfg(feature = "host")]
 pub(crate) use channel::HostChannel;
 pub(crate) use error::{IpcError, Result};
-#[cfg(feature = "guest")]
-pub(crate) use message::Outcome;
-pub(crate) use message::{Request, Response};
+pub(crate) use message::{Outcome, Request, Response};
 #[cfg(feature = "host")]
 pub(crate) use transport::{Listener, connect};
 
