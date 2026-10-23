@@ -10,8 +10,15 @@ license = "BSD-2-Clause"
 reactive_graph = { version = "0.2", features = ["effects"] }
 # Runtime-agnostic task spawner; the consuming application picks the executor.
 any_spawner = { version = "0.3" }
+serde = { version = "1", optional = true }
+
+[features]
+# Signals as their values, to carry app state across a hot reload.
+serde = ["dep:serde"]
 
 [dev-dependencies]
 # Tests drive the reactive graph from a Tokio current-thread runtime.
 any_spawner = { version = "0.3", features = ["tokio"] }
 tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
+termoxide_reactive = { path = ".", features = ["serde"] }
+postcard = { version = "1", features = ["use-std"] }
