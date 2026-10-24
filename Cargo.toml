@@ -19,6 +19,10 @@ codegen-units = 1
 strip = true
 
 # Clippy lints configuration
+[workspace.lints.rust]
+# Set by cargo-tarpaulin, whose runs leave out the hot-reload e2e tests.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tarpaulin)"] }
+
 [workspace.lints.clippy]
 correctness = { level = "deny", priority = -2 }
 suspicious = { level = "deny", priority = -2 }

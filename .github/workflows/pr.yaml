@@ -240,6 +240,8 @@ jobs:
         with:
           action: push
           packages: '["cargo-tarpaulin"]'
+          # The hot-reload e2e tests build the fixture app's wasm guest.
+          targets: "wasm32-wasip2"
 
       # The push step above warms and saves the cache, but the steps below are
       # what actually consume it. We pull it here, right before it's needed, so
@@ -250,6 +252,8 @@ jobs:
         with:
           action: pull
           packages: '["cargo-tarpaulin"]'
+          # The hot-reload e2e tests build the fixture app's wasm guest.
+          targets: "wasm32-wasip2"
 
       - name: Run tests with coverage
         id: tests
@@ -273,6 +277,16 @@ jobs:
           done
           cargo tarpaulin $pkg_args --follow-exec --ignore-tests --exclude-files "*/tests/*" --exclude-files "crates/termoxide_e2e/*" --out Lcov --output-dir ./coverage
 
+      # Compiled out of tarpaulin's runs (`cfg(tarpaulin)`): traced, they abort
+      # on a segfault. See crates/termoxide_e2e/README.md.
+      - name: Run the hot-reload e2e tests
+        id: hot-reload-e2e
+        if: >-
+          steps.tests.outputs.ran == 'true'
+          && (contains(fromJSON(needs.detect.outputs.crates), 'termoxide_hot_reload')
+          || contains(fromJSON(needs.detect.outputs.crates), 'termoxide_e2e'))
+        run: cargo test -p termoxide_e2e --test hot_reload
+
       # Only upload when tarpaulin actually ran: on the no-crates-changed skip
       # path, no fresh lcov.info exists and codecov-action falls back to a
       # stale target/tarpaulin/coverage.json restored from cache, which gets
@@ -288,6 +302,11 @@ jobs:
         if: always()
         run: |
           outcome="${{ steps.tests.outcome }}"
+          # Skipped when neither crate changed, which doesn't fail the suite.
+          case "${{ steps.hot-reload-e2e.outcome }}" in
+            success|skipped) ;;
+            *) outcome="failure" ;;
+          esac
           icon=$([ "$outcome" = "success" ] && echo "✅" || echo "❌")
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
