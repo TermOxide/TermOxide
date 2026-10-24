@@ -118,5 +118,5 @@ pub async fn run(package: Package) -> color_eyre::Result<()> {
 
     let mut subprocess = Subprocess::spawn(&log_path, &guest)?;
     subprocess.ping()?;
-    termoxide::run_with_app(RemoteApp::start(subprocess, rebuilds)?).await
+    termoxide::run_with_app(RemoteApp::start(subprocess, rebuilds, guest, log_path)?).await
 }
