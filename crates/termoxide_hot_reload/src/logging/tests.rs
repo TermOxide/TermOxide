@@ -12,11 +12,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use log::{Level, Record};
+use log::{Level, Metadata, Record};
 
 use super::{
     location::{file_name, log_dir},
-    logger::{format_line, now},
+    logger::{format_line, is_written, now},
     *,
 };
 
@@ -183,4 +183,16 @@ fn lines_from_several_processes_stay_whole() {
     let found: HashSet<String> = contents.lines().map(str::to_owned).collect();
     assert_eq!(contents.lines().count(), expected.len(), "lines were lost or split");
     assert!(found == expected, "a line was interleaved with another");
+}
+
+#[test]
+fn framework_records_are_written_from_debug_and_other_crates_from_warn() {
+    let written = |target: &str, level: Level| is_written(&Metadata::builder().target(target).level(level).build());
+
+    assert!(written("termoxide_hot_reload::subprocess", Level::Debug));
+    assert!(written("termoxide::child", Level::Debug));
+    assert!(!written("termoxide_hot_reload::subprocess", Level::Trace));
+    assert!(!written("cranelift_codegen::timing", Level::Debug));
+    assert!(!written("wasmtime::runtime", Level::Info));
+    assert!(written("wasmtime::runtime", Level::Warn));
 }

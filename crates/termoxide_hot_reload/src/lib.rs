@@ -1,45 +1,114 @@
-use std::{env, path::PathBuf};
+//! Hot reload for TermOxide apps.
+//!
+//! Two features, one per side: `host` for the native executable (the process
+//! that owns the terminal, and the subprocess it spawns to run the app's wasm
+//! component), `guest` for the app built as that component. What neither gates
+//! is the protocol they share.
 
-use color_eyre::{Result, eyre::eyre};
-use serde::{Serialize, de::DeserializeOwned};
-use termoxide::App;
+// Without a side, only the shared protocol compiles, and nothing uses it.
+#![cfg_attr(not(any(feature = "host", feature = "guest")), allow(dead_code, unused_imports))]
 
+// The guest's generated bindings name this crate by path, from the app's crate
+// and from this one alike.
+#[cfg(feature = "guest")]
+extern crate self as termoxide_hot_reload;
+
+#[cfg(feature = "host")]
+mod build;
+#[cfg(feature = "host")]
+mod component;
+#[cfg(feature = "guest")]
+#[doc(hidden)]
+pub mod guest;
 mod ipc;
+#[cfg(feature = "host")]
 mod logging;
+#[cfg(feature = "host")]
 mod remote;
+#[cfg(feature = "guest")]
 mod session;
+#[cfg(feature = "host")]
 mod subprocess;
 
-use logging::{LOG_ENV, LogFile, Tag};
-use remote::RemoteApp;
-use subprocess::{PIPE_ENV, Subprocess};
+#[cfg(feature = "host")]
+#[doc(hidden)]
+pub use build::Package;
 
-/// Runs `app` in a hot-reload subprocess, driven from this process.
+/// Exports `app`, the app as first built, as the hot-reload guest when the
+/// crate is compiled for wasm; expands to nothing otherwise.
 ///
-/// The same executable is started again as the subprocess, and `app` runs
-/// there: this process keeps the terminal and the run loop, and forwards every
-/// call to it. The app crosses as bytes, so its type must (de)serialize: derive
-/// both on a struct of signals. Both processes log to one file per run; install
-/// your own panic hook (`color_eyre::install()`, say) before calling this.
-pub async fn run_app<A>(app: A) -> Result<()>
-where
-    A: App + Clone + Serialize + DeserializeOwned + 'static,
-{
+/// ```ignore
+/// termoxide_hot_reload::wasm_app!(Counter::default());
+/// ```
+#[macro_export]
+macro_rules! wasm_app {
+    ($app:expr) => {
+        #[cfg(target_arch = "wasm32")]
+        const _: () = {
+            struct Guest;
+
+            impl $crate::guest::bindings::Guest for Guest {
+                fn handle(
+                    request: ::std::vec::Vec<u8>,
+                ) -> ::std::result::Result<::std::vec::Vec<u8>, ::std::string::String> {
+                    $crate::guest::handle(request, || $app)
+                }
+            }
+
+            $crate::guest::bindings::export_guest!(Guest);
+        };
+    };
+}
+
+/// Runs the app of the calling crate with hot reload: builds it as a wasm
+/// component, runs that in a subprocess, and drives it from this process, which
+/// keeps the terminal and the run loop.
+///
+/// The crate's lib must be a `cdylib` with a `guest` feature that enables this
+/// crate's, and declare its app with [`wasm_app!`]. Both processes log to one
+/// file per run; install your own panic hook (`color_eyre::install()`, say)
+/// before calling this.
+#[cfg(feature = "host")]
+#[macro_export]
+macro_rules! run_app {
+    () => {
+        $crate::run($crate::Package { manifest_dir: env!("CARGO_MANIFEST_DIR") })
+    };
+}
+
+/// What [`run_app!`] expands to.
+#[cfg(feature = "host")]
+#[doc(hidden)]
+pub async fn run(package: Package) -> color_eyre::Result<()> {
+    use std::{env, path::PathBuf};
+
+    use color_eyre::eyre::eyre;
+    use logging::{LOG_ENV, LogFile, Tag};
+    use remote::RemoteApp;
+    use subprocess::{GUEST_ENV, PIPE_ENV, Subprocess};
+
     if let Ok(pipe) = env::var(PIPE_ENV) {
         let log = env::var_os(LOG_ENV).ok_or_else(|| eyre!("{LOG_ENV} is not set"))?;
         logging::install(LogFile::open(PathBuf::from(log))?, Tag::Child)?;
         logging::log_panics(false);
-        return Ok(subprocess::serve(&pipe, app).await?);
+        let guest = PathBuf::from(env::var_os(GUEST_ENV).ok_or_else(|| eyre!("{GUEST_ENV} is not set"))?);
+        // On a thread of its own, outside the app's async runtime: wasmtime
+        // runs the component's stdio on a runtime of its own, and one can't
+        // start inside another.
+        return std::thread::spawn(move || subprocess::serve(&pipe, &guest))
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
     }
+
+    // Before the log and the terminal, so cargo's errors land on the screen.
+    let guest = build::guest(package)?;
 
     let log = LogFile::create()?;
     let log_path = log.path().to_owned();
     logging::install(log, Tag::Host)?;
     logging::log_panics(true);
 
-    let mut subprocess = Subprocess::spawn(&log_path)?;
+    let mut subprocess = Subprocess::spawn(&log_path, &guest)?;
     subprocess.ping()?;
-    // This process never runs `app` itself: the subprocess does.
-    drop(app);
     termoxide::run_with_app(RemoteApp::start(subprocess)?).await
 }
