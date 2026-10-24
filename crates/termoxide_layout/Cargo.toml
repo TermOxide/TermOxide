@@ -4,11 +4,19 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ratatui = { version = "0.26", optional = true, features = ["crossterm"] }
+ratatui = { version = "0.26", optional = true, default-features = false }
 taffy = { version = "0.9.2", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
 
 [features]
 # Planned for Rdmp1 only — features beyond the epic #12 scope live behind this
 # flag. See lib.rs for the exact list.
 future = ["dep:taffy"]
 ratatui = ["dep:ratatui"]
+# Colours as bytes, to cross a process or wasm boundary.
+serde = ["dep:serde"]
+
+[dev-dependencies]
+termoxide_layout = { path = ".", features = ["ratatui", "serde"] }
+ratatui = { version = "0.26", default-features = false }
+postcard = { version = "1", features = ["use-std"] }

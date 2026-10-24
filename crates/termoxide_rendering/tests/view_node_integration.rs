@@ -191,28 +191,6 @@ fn test_view_node_text_content() {
     assert!(node.children.is_empty());
 }
 
-#[test]
-fn test_view_node_raw_content() {
-    let rect = Rect::new(0, 0, 20, 10);
-
-    let node = ViewNode::raw(rect, |buf, rect| {
-        let _ = (buf, rect);
-    });
-
-    assert_eq!(node.area, rect);
-    assert!(node.children.is_empty());
-}
-
-#[test]
-fn test_view_node_raw_with_id() {
-    let rect = Rect::new(5, 5, 30, 10);
-    let id: ComponentId = 99;
-
-    let node = ViewNode::raw(rect, |_buf, _rect| {}).with_id(id);
-
-    assert_eq!(node.id, Some(id));
-}
-
 // ─────────────────────────────────────────────────────────────────────────── //
 //  Children manipulation tests
 // ─────────────────────────────────────────────────────────────────────────── //
@@ -260,9 +238,9 @@ fn test_view_node_with_children_replaces_children() {
 fn test_view_node_mixed_content_types() {
     let text_node = ViewNode::text(Rect::new(0, 0, 40, 5), "Text Area", Style::default()).with_id(1);
 
-    let raw_node = ViewNode::raw(Rect::new(40, 0, 40, 5), |_buf, _rect| {}).with_id(2);
+    let box_node = ViewNode::container(Rect::new(40, 0, 40, 5), vec![]).with_id(2);
 
-    let container = ViewNode::container(Rect::new(0, 0, 80, 10), vec![text_node, raw_node]);
+    let container = ViewNode::container(Rect::new(0, 0, 80, 10), vec![text_node, box_node]);
 
     assert_eq!(container.children.len(), 2);
     assert_eq!(container.children[0].id, Some(1));
