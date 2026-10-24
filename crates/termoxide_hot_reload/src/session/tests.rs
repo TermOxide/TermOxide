@@ -6,20 +6,21 @@ use any_spawner::Executor;
 use ratatui::{layout::Rect, style::Style};
 use serde::{Deserialize, Serialize};
 use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use termoxide_reactive::Signal;
+use termoxide_reactive::{Signal, Unrecorded};
 use termoxide_rendering::view_node::{ViewContent, ViewNode};
 
 use super::*;
 
-/// The view shows `shown`; `hidden` is state the view never reads.
+/// The view shows `shown`; `hidden` is state the view never reads, and isn't
+/// recorded.
 #[derive(Clone, Copy, Serialize, Deserialize)]
 struct Counter {
     shown: Signal<u32>,
-    hidden: Signal<u32>,
+    hidden: Signal<u32, Unrecorded>,
 }
 
 impl Counter {
-    fn new() -> Self { Self { shown: Signal::new(0), hidden: Signal::new(0) } }
+    fn new() -> Self { Self { shown: Signal::new(0), hidden: Signal::new(0).unrecorded() } }
 }
 
 impl App for Counter {
@@ -114,6 +115,7 @@ fn a_change_the_view_reads_is_dirty_and_sends_the_state() {
 
         assert!(done.dirty);
         assert_eq!(done.state, Some(state(1, 0)));
+        assert!(done.recorded);
     });
 }
 
@@ -126,6 +128,7 @@ fn a_change_the_view_doesnt_read_sends_the_state_without_repainting() {
 
         assert!(!done.dirty);
         assert_eq!(done.state, Some(state(0, 1)));
+        assert!(!done.recorded, "only an unrecorded signal changed");
     });
 }
 
@@ -136,7 +139,7 @@ fn an_event_that_changes_nothing_sends_nothing() {
 
         let done = outcome(answer(&mut responder, key('x')).await);
 
-        assert_eq!(done, Outcome { quit: false, dirty: false, state: None });
+        assert_eq!(done, Outcome { quit: false, dirty: false, state: None, recorded: false });
     });
 }
 
@@ -238,6 +241,39 @@ fn a_state_of_the_right_type_that_does_not_decode_is_an_error() {
             panic!("a corrupt state was accepted")
         };
 
-        assert!(matches!(error, IpcError::Decode(_)), "{error}");
+        assert!(matches!(error, IpcError::State(_)), "{error}");
+    });
+}
+
+#[test]
+fn a_state_is_described_as_json_without_starting_the_app() {
+    run(async {
+        let mut responder = Responder::new(Counter::new());
+
+        let described = answer(&mut responder, Request::Describe { state: state(7, 3) }).await;
+
+        let Response::Described { fingerprint, app: Some(json) } = described else {
+            panic!("expected a description, got {described:?}")
+        };
+        assert_eq!(json.split_whitespace().collect::<String>(), r#"{"shown":7,"hidden":3}"#);
+        assert_eq!(fingerprint, schema::fingerprint::<Counter>().ok());
+        assert!(
+            matches!(responder.step(Request::Tick), Err(IpcError::Unexpected)),
+            "the app started"
+        );
+    });
+}
+
+#[test]
+fn a_state_saved_by_another_state_type_is_not_described() {
+    run(async {
+        let mut saved = state(7, 3);
+        saved[0] ^= 1;
+        let mut responder = Responder::new(Counter::new());
+
+        assert!(matches!(
+            answer(&mut responder, Request::Describe { state: saved }).await,
+            Response::Described { fingerprint: Some(_), app: None }
+        ));
     });
 }

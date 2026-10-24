@@ -3,7 +3,7 @@ use std::{cell::Cell, rc::Rc};
 use reactive_graph::effect::RenderEffect;
 use serde::{Serialize, de::DeserializeOwned};
 use termoxide::App;
-use termoxide_reactive::Owner;
+use termoxide_reactive::{Owner, recorded_only};
 
 use crate::{
     ipc::{self, IpcError, Outcome, Request, Response},
@@ -43,6 +43,11 @@ impl<A: App + Clone + Serialize + DeserializeOwned + 'static> Responder<A> {
 
     /// Starts working on `request`.
     pub(crate) fn step(&mut self, request: Request) -> ipc::Result<Step> {
+        if let Request::Describe { state } = request {
+            let fingerprint = state.first_chunk::<8>().map(|saved| u64::from_le_bytes(*saved));
+            let app = describe::<A>(&state, self.fingerprint)?;
+            return Ok(Step::Reply(Response::Described { fingerprint, app }));
+        }
         if let Some(session) = &mut self.session {
             return session.apply(request);
         }
@@ -72,6 +77,8 @@ struct Session<A> {
     dirty: Rc<Cell<bool>>,
     /// The state last sent to the host.
     sent: Vec<u8>,
+    /// Its recorded signals, as [`recorded_only`] encodes them.
+    recorded: Vec<u8>,
     fingerprint: Option<u64>,
     _effect: RenderEffect<()>,
     _owner: Owner,
@@ -102,8 +109,12 @@ impl<A: App + Clone + Serialize + DeserializeOwned + 'static> Session<A> {
         dirty.set(false);
 
         let sent = encode(&app, fingerprint)?;
+        let recorded = recorded_only(|| encode(&app, fingerprint))?;
         let started = Response::Started { mouse_capture: app.mouse_capture(), state: sent.clone(), reset };
-        Ok((Self { app, dirty, sent, fingerprint, _effect: effect, _owner: owner }, started))
+        Ok((
+            Self { app, dirty, sent, recorded, fingerprint, _effect: effect, _owner: owner },
+            started,
+        ))
     }
 
     fn apply(&mut self, request: Request) -> ipc::Result<Step> {
@@ -115,7 +126,9 @@ impl<A: App + Clone + Serialize + DeserializeOwned + 'static> Session<A> {
                 self.app.on_tick();
                 Step::Settle { quit: false }
             },
-            Request::Start { .. } | Request::Load { .. } => return Err(IpcError::Unexpected),
+            Request::Start { .. } | Request::Load { .. } | Request::Describe { .. } => {
+                return Err(IpcError::Unexpected);
+            },
         })
     }
 
@@ -127,7 +140,19 @@ impl<A: App + Clone + Serialize + DeserializeOwned + 'static> Session<A> {
             self.sent.clone_from(&encoded);
             encoded
         });
-        Ok(Response::Done(Outcome { quit, dirty: self.dirty.replace(false), state }))
+        // When nothing changed, no recorded signal did either.
+        let recorded = state.is_some() && {
+            let encoded = recorded_only(|| encode(&self.app, self.fingerprint))?;
+            let changed = encoded != self.recorded;
+            self.recorded = encoded;
+            changed
+        };
+        Ok(Response::Done(Outcome {
+            quit,
+            dirty: self.dirty.replace(false),
+            state,
+            recorded,
+        }))
     }
 }
 
@@ -148,7 +173,17 @@ fn decode<A: DeserializeOwned>(state: &[u8], fingerprint: Option<u64>) -> ipc::R
     if fingerprint.is_some_and(|fingerprint| fingerprint != u64::from_le_bytes(*saved)) {
         return Ok(None);
     }
-    postcard::from_bytes(app).map(Some).map_err(IpcError::Decode)
+    postcard::from_bytes(app).map(Some).map_err(IpcError::State)
+}
+
+/// The app in `state` as pretty-printed JSON, or `None` when another state type
+/// saved it.
+fn describe<A: Serialize + DeserializeOwned>(state: &[u8], fingerprint: Option<u64>) -> ipc::Result<Option<String>> {
+    // Decoding makes signals, which need an owner.
+    let owner = Owner::new();
+    let app = owner.with(|| decode::<A>(state, fingerprint))?;
+    app.map(|app| serde_json::to_string_pretty(&app).map_err(IpcError::Describe))
+        .transpose()
 }
 
 #[cfg(test)]
