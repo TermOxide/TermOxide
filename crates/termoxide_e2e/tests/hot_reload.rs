@@ -65,14 +65,23 @@ impl Fixture {
     }
 
     /// Runs the app, with its logs kept in its own directory.
-    fn run(&self) -> Session {
+    fn run(&self) -> Session { self.run_with(&[]) }
+
+    /// Runs the app with `env` set as well.
+    fn run_with(&self, env: &[(&str, &str)]) -> Session {
         let mut command = CommandBuilder::new(self.build());
+        for (key, value) in env {
+            command.env(key, value);
+        }
         command.cwd(&self.dir);
         command.env("CARGO", env!("CARGO"));
         command.env("CARGO_TARGET_DIR", Self::target_dir());
         command.env("XDG_STATE_HOME", self.dir.join("state"));
         Session::spawn(command)
     }
+
+    /// Where a persistent run keeps the app's state.
+    fn snapshot(&self) -> PathBuf { self.dir.join("state/termoxide").join(&self.name).join("state.bin") }
 
     /// Makes each `(from, to)` replacement in the app's `lib.rs`, then saves it
     /// once, as an editor would.
@@ -250,4 +259,144 @@ fn a_crash_right_after_a_reload_goes_back_to_the_previous_generation() {
     fixture.wait_for_log("going back to the generation before the last reload");
     session.send(b"a");
     session.wait_for_text("presses: 2");
+}
+
+const PERSIST: (&str, &str) = ("TERMOXIDE_HOT_RELOAD_PERSIST", "1");
+
+/// Quits the app with `q` and waits for it to exit.
+fn quit(mut session: Session) {
+    session.send(b"q");
+    assert!(session.wait_for_exit().success());
+}
+
+#[test]
+fn the_state_survives_a_restart_of_the_host() {
+    let fixture = Fixture::copy("persist");
+    let mut session = fixture.run_with(&[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+    session.send(b"aaa");
+    session.wait_for_text("presses: 3");
+    quit(session);
+
+    let session = fixture.run_with(&[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 3");
+    quit(session);
+
+    let session = fixture.run_with(&[PERSIST, ("TERMOXIDE_HOT_RELOAD_FRESH", "1")]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+}
+
+#[test]
+fn a_damaged_snapshot_is_set_aside_and_the_app_starts_afresh() {
+    let fixture = Fixture::copy("damaged");
+    let mut session = fixture.run_with(&[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+    session.send(b"aa");
+    session.wait_for_text("presses: 2");
+    quit(session);
+    // Its header, then one entry holding the fingerprint and a varint that
+    // never ends: the state type matches, the bytes don't decode.
+    let trace = fs::read(fixture.snapshot()).unwrap();
+    let (header, state) = split_trace(&trace);
+    fs::write(fixture.snapshot(), [header, &[0, 9], &state[..8], &[0xFF]].concat()).unwrap();
+
+    let session = fixture.run_with(&[PERSIST]);
+
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+    assert!(fixture.snapshot().with_extension("bin.unreadable").exists());
+}
+
+/// What a trace starts with, as `termoxide_hot_reload` writes it.
+const TRACE_MAGIC: &[u8] = b"termoxide state trace 1
+";
+
+/// A trace's start, through the header naming the app, and the state in its
+/// first entry. Postcard writes the header's path and each entry's
+/// `{ at: u64, state: &[u8] }` as varints and bytes.
+fn split_trace(trace: &[u8]) -> (&[u8], &[u8]) {
+    // A varint's value and where it ends.
+    let varint = |from: usize| {
+        let (mut value, mut at) = (0, from);
+        loop {
+            value |= usize::from(trace[at] & 0x7F) << (7 * (at - from));
+            at += 1;
+            if trace[at - 1] & 0x80 == 0 {
+                return (value, at);
+            }
+        }
+    };
+    let (len, at) = varint(TRACE_MAGIC.len());
+    let header_end = at + len;
+    let (_, at) = varint(header_end);
+    let (len, at) = varint(at);
+    (&trace[..header_end], &trace[at..at + len])
+}
+
+#[test]
+fn crashing_too_often_sets_the_trace_aside_and_the_next_run_starts_afresh() {
+    let fixture = Fixture::copy("crashed");
+    let mut session = fixture.run_with(&[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+    session.send(b"aa");
+    session.wait_for_text("presses: 2");
+
+    session.send(b"pppp");
+    session.wait_for_text("stopped until the next rebuild");
+    fixture.wait_for_log("the state trace is kept");
+    session.send(&[0x03]);
+    assert!(session.wait_for_exit().success());
+
+    assert!(fixture.snapshot().with_extension("bin.crashed").exists());
+    let session = fixture.run_with(&[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+}
+
+/// Builds `termoxide_dump` where the fixtures build, then runs it on `trace`,
+/// so the app's component it builds is the one the fixture's run built.
+fn dump(trace: &Path) -> String {
+    let crates = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let status = Command::new(env!("CARGO"))
+        .args([
+            "build",
+            "--quiet",
+            "--features",
+            "host",
+            "--bin",
+            "termoxide_dump",
+            "--manifest-path",
+        ])
+        .arg(crates.join("termoxide_hot_reload/Cargo.toml"))
+        .env("CARGO_TARGET_DIR", Fixture::target_dir())
+        .status()
+        .unwrap();
+    assert!(status.success(), "building termoxide_dump failed");
+    let output = Command::new(Fixture::target_dir().join("debug/termoxide_dump"))
+        .arg(trace)
+        .env("CARGO_TARGET_DIR", Fixture::target_dir())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    String::from_utf8(output.stdout).unwrap()
+}
+
+#[test]
+fn termoxide_dump_prints_a_trace_as_the_app_decodes_it() {
+    let fixture = Fixture::copy("dump");
+    let mut session = fixture.run_with(&[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+    session.send(b"aa");
+    session.wait_for_text("presses: 2");
+    quit(session);
+
+    let printed = dump(&fixture.snapshot());
+
+    // The start, then one entry per press.
+    assert!(printed.contains(r#""count": 2"#), "{printed}");
+    assert!(
+        printed.ends_with(
+            "3 entries
+"
+        ),
+        "{printed}"
+    );
 }
