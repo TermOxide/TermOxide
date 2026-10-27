@@ -104,7 +104,14 @@ impl Drop for Subprocess {
 pub(crate) fn serve(pipe: &str, guest: &Path) -> Result<()> {
     let mut channel = ipc::connect(pipe, CONNECT_TIMEOUT)?;
     log::info!("connected to the host");
-    let mut generations = Generations { runtime: Runtime::new()?, current: None, next: None, state: Vec::new() };
+    let mut generations = Generations {
+        runtime: Runtime::new()?,
+        current: None,
+        component: None,
+        previous: None,
+        next: None,
+        state: Vec::new(),
+    };
     loop {
         // `recv_timeout` treats a deadline that overflows as no deadline, so this
         // waits for the next request however long it takes.
@@ -123,6 +130,11 @@ pub(crate) fn serve(pipe: &str, guest: &Path) -> Result<()> {
 struct Generations {
     runtime: Runtime,
     current: Option<GuestInstance>,
+    /// What `current` is an instance of, to restart it after a crash.
+    component: Option<Component>,
+    /// The generation before the last reload, to go back to if the new one
+    /// crashes.
+    previous: Option<Component>,
     next: Option<Receiver<Result<Component>>>,
     /// The app's latest state, read from the answers passing through: what a
     /// new generation starts from.
@@ -151,10 +163,17 @@ impl Generations {
             (None, request @ Request::Start { .. }) => {
                 log::info!("loading {}", first.display());
                 let component = self.runtime.compile(first)?;
-                self.current.insert(self.generation(&component)?).handle(&request)?
+                let response = self.current.insert(self.generation(&component)?).handle(&request)?;
+                self.component = Some(component);
+                response
             },
             (None, _) => return Err(eyre!("the host sent a request before starting the app")),
-            (Some(current), request) => current.handle(&request)?,
+            (Some(current), request) => {
+                match current.handle(&request) {
+                    Ok(response) => response,
+                    Err(e) => return self.recover(&e),
+                }
+            },
         };
         match &response {
             Response::Started { state, .. } | Response::Done(Outcome { state: Some(state), .. }) => {
@@ -185,6 +204,7 @@ impl Generations {
             Ok((generation, state)) => {
                 log::info!("reloaded the app");
                 self.current = Some(generation);
+                self.previous = self.component.replace(component.clone());
                 self.state.clone_from(&state);
                 Some(Response::Reloaded { state })
             },
@@ -193,6 +213,26 @@ impl Generations {
                 None
             },
         }
+    }
+
+    /// Replaces the generation that crashed on a request, the request dropped:
+    /// with the one before the last reload if there is one, else with a new
+    /// instance of the same, from the latest state either way. The host counts
+    /// these, and stops the app when they come too often.
+    fn recover(&mut self, error: &color_eyre::Report) -> Result<Response> {
+        log::error!("the app crashed, so its request was dropped: {error:#}");
+        let component = match self.previous.take() {
+            Some(previous) => {
+                log::warn!("going back to the generation before the last reload");
+                previous
+            },
+            None => self.component.clone().ok_or_else(|| eyre!("no generation to restart"))?,
+        };
+        let (generation, state) = self.start(&component)?;
+        self.current = Some(generation);
+        self.component = Some(component);
+        self.state.clone_from(&state);
+        Ok(Response::Recovered { state })
     }
 
     /// A new instance of `component`, once it is known to speak this
