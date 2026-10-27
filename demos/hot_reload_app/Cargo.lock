@@ -80,6 +80,9 @@ name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
+dependencies = [
+ "serde_core",
+]
 
 [[package]]
 name = "bumpalo"
@@ -160,6 +163,7 @@ dependencies = [
  "cfg-if",
  "itoa",
  "ryu",
+ "serde",
  "static_assertions",
 ]
 
@@ -451,6 +455,7 @@ dependencies = [
  "any_spawner",
  "color-eyre",
  "ratatui",
+ "serde",
  "termoxide",
  "termoxide_event",
  "termoxide_hot_reload",
@@ -733,6 +738,7 @@ dependencies = [
  "itertools 0.12.1",
  "lru",
  "paste",
+ "serde",
  "stability",
  "strum",
  "unicode-segmentation",
@@ -1028,6 +1034,7 @@ name = "termoxide_event"
 version = "0.1.0"
 dependencies = [
  "crossterm",
+ "serde",
 ]
 
 [[package]]
@@ -1039,9 +1046,15 @@ dependencies = [
  "interprocess",
  "log",
  "postcard",
+ "ratatui",
+ "reactive_graph",
  "serde",
  "termoxide",
+ "termoxide_event",
+ "termoxide_reactive",
+ "termoxide_rendering",
  "time",
+ "tokio",
 ]
 
 [[package]]
@@ -1049,6 +1062,7 @@ name = "termoxide_layout"
 version = "0.1.0"
 dependencies = [
  "ratatui",
+ "serde",
 ]
 
 [[package]]
@@ -1066,6 +1080,7 @@ version = "0.1.0"
 dependencies = [
  "any_spawner",
  "reactive_graph",
+ "serde",
 ]
 
 [[package]]
@@ -1074,6 +1089,7 @@ version = "0.1.0"
 dependencies = [
  "crossterm",
  "ratatui",
+ "serde",
  "termoxide_event",
  "termoxide_layout",
  "termoxide_reactive",

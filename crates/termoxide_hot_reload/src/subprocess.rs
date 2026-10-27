@@ -6,10 +6,13 @@ use std::{
 };
 
 use log::Level;
+use serde::{Serialize, de::DeserializeOwned};
+use termoxide::App;
 
 use crate::{
     ipc::{self, HostChannel, IpcError, Listener, Request, Response},
     logging::{LOG_ENV, relay_output},
+    session::Session,
 };
 
 /// Set on the subprocess to the name of the pipe it must connect to.
@@ -61,11 +64,17 @@ impl Subprocess {
         }
     }
 
+    /// Sends `request` and waits for the answer.
+    pub(crate) fn request(&mut self, request: &Request) -> ipc::Result<Response> {
+        self.channel.send(request)?;
+        self.channel.recv(RESPONSE_TIMEOUT)
+    }
+
     /// Sends a ping and waits for the pong.
     pub(crate) fn ping(&mut self) -> ipc::Result<()> {
-        self.channel.send(&Request::Ping)?;
-        match self.channel.recv(RESPONSE_TIMEOUT)? {
+        match self.request(&Request::Ping)? {
             Response::Pong => Ok(()),
+            _ => Err(IpcError::Unexpected),
         }
     }
 }
@@ -77,18 +86,41 @@ impl Drop for Subprocess {
     }
 }
 
-/// Runs the subprocess side: connects to the host's `pipe` and answers its
-/// requests until the host goes away.
-pub(crate) fn serve(pipe: &str) -> ipc::Result<()> {
+/// Runs the subprocess side: connects to the host's `pipe` and runs `app` for
+/// it, answering its requests until the host goes away.
+///
+/// `app` is the app as built; the host's [`Request::Start`] says whether to
+/// run it or resume from the state it sends instead.
+pub(crate) async fn serve<A>(pipe: &str, app: A) -> ipc::Result<()>
+where
+    A: App + Clone + Serialize + DeserializeOwned + 'static,
+{
     let mut channel = ipc::connect(pipe, CONNECT_TIMEOUT)?;
     log::info!("connected to the host");
+    let mut fresh = Some(app);
+    let mut session: Option<Session<A>> = None;
     loop {
         // `recv_timeout` treats a deadline that overflows as no deadline, so this
         // waits for the next request however long it takes.
-        match channel.recv(Duration::MAX) {
-            Ok(Request::Ping) => channel.send(&Response::Pong)?,
+        let request = match channel.recv(Duration::MAX) {
+            Ok(request) => request,
             Err(IpcError::Closed) => return Ok(()),
             Err(e) => return Err(e),
-        }
+        };
+        let response = if let Some(session) = session.as_mut() {
+            session.handle(request).await?
+        } else {
+            match request {
+                Request::Ping => Response::Pong,
+                Request::Start { state } => {
+                    let app = fresh.take().ok_or(IpcError::Unexpected)?;
+                    let (started, response) = Session::start(app, state.as_deref())?;
+                    session = Some(started);
+                    response
+                },
+                _ => return Err(IpcError::Unexpected),
+            }
+        };
+        channel.send(&response)?;
     }
 }
