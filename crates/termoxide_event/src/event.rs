@@ -19,6 +19,7 @@ use std::{
 /// key codes are converted into this enum inside [`crate::backend`]; any key
 /// without a matching variant is dropped rather than represented here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum KeyCode {
     /// Backspace key.
     Backspace,
@@ -86,6 +87,7 @@ pub enum KeyCode {
 /// assert!(KeyModifiers::NONE.is_empty());
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct KeyModifiers(u8);
 
 impl KeyModifiers {
@@ -154,6 +156,7 @@ impl fmt::Display for KeyModifiers {
 /// `Ctrl+C` apart from a plain `c` — both share the same
 /// [`KeyCode::Char('c')`](KeyCode::Char).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct KeyEvent {
     /// The key that was pressed.
     pub code: KeyCode,
@@ -171,6 +174,7 @@ impl KeyEvent {
 /// Terminals only ever report these three buttons: an extra side button is
 /// either reported as one of them or not reported at all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MouseButton {
     /// Left mouse button.
     Left,
@@ -193,6 +197,7 @@ pub enum MouseButton {
 /// because that is all the backend knows; it is not evidence that the left
 /// button was the one used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MouseEventKind {
     /// A button was pressed.
     Down(MouseButton),
@@ -223,6 +228,7 @@ pub enum MouseEventKind {
 /// laid out in, so a position can be compared against their areas without any
 /// conversion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MouseEvent {
     /// What the mouse did.
     pub kind: MouseEventKind,
@@ -249,6 +255,7 @@ impl MouseEvent {
 /// This is the single unit of communication flowing from the background
 /// reader thread to the application through the stream's channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Event {
     /// Handshake emitted exactly once, as the very first event, when the
     /// reader thread has started and the channel is live.
