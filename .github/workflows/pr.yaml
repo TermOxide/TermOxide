@@ -121,14 +121,14 @@ jobs:
             toolchain: "stable"
             components: ""
           # What a hot-reloaded app compiles against: no terminal, built for
-          # wasm. The e2e tests and the hot-reload host are native by design.
+          # wasm. The e2e tests are native by design.
           - name: wasm
             command: "build"
             arguments: "--no-default-features --target wasm32-wasip2"
             toolchain: "stable"
             components: ""
             targets: "wasm32-wasip2"
-            skip: "termoxide_e2e termoxide_hot_reload"
+            skip: "termoxide_e2e"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
