@@ -70,8 +70,12 @@ pub fn main() -> Result<()> {
         None => trace.manifest_dir.to_owned(),
     };
     // A `Package` holds what `env!` gives `run_app!`: leaked once, for the
-    // one build this process makes.
-    let guest = build::guest(Package { manifest_dir: Box::leak(manifest_dir.into_boxed_str()) })?;
+    // one build this process makes. The guest follows this tool's profile, as
+    // it follows the app's in a run.
+    let guest = build::guest(Package {
+        manifest_dir: Box::leak(manifest_dir.into_boxed_str()),
+        release: !cfg!(debug_assertions),
+    })?;
 
     let color = io::stdout().is_terminal();
     print(&trace.entries, trace.cut_short, &guest, color, &mut io::stdout().lock())

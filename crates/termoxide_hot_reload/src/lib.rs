@@ -92,10 +92,16 @@ macro_rules! wasm_app {
 #[macro_export]
 macro_rules! run_app {
     () => {
-        $crate::run($crate::Package { manifest_dir: env!("CARGO_MANIFEST_DIR") }, false)
+        $crate::run(
+            $crate::Package { manifest_dir: env!("CARGO_MANIFEST_DIR"), release: !cfg!(debug_assertions) },
+            false,
+        )
     };
     (persistent) => {
-        $crate::run($crate::Package { manifest_dir: env!("CARGO_MANIFEST_DIR") }, true)
+        $crate::run(
+            $crate::Package { manifest_dir: env!("CARGO_MANIFEST_DIR"), release: !cfg!(debug_assertions) },
+            true,
+        )
     };
 }
 

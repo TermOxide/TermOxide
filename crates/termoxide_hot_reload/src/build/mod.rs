@@ -15,6 +15,9 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Copy)]
 pub struct Package {
     pub manifest_dir: &'static str,
+    /// The app's executable is an optimized build, so the guest is one too:
+    /// what `run_app!` sees of the profile, `debug_assertions` being off.
+    pub release: bool,
 }
 
 impl Package {
@@ -94,6 +97,9 @@ fn cargo(package: Package) -> Command {
         .arg(package.manifest())
         .stdin(Stdio::null())
         .stdout(Stdio::piped());
+    if package.release {
+        command.arg("--release");
+    }
     command
 }
 
