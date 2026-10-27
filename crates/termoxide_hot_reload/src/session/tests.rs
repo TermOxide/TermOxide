@@ -74,6 +74,14 @@ async fn answer(responder: &mut Responder<Counter>, request: Request) -> Respons
     }
 }
 
+/// The state of a `Counter` showing `shown` and hiding `hidden`, as the host
+/// keeps it: the type's fingerprint, then the app.
+fn state(shown: u32, hidden: u32) -> Vec<u8> {
+    let mut state = schema::fingerprint::<Counter>().unwrap().to_le_bytes().to_vec();
+    state.extend(postcard::to_allocvec(&(shown, hidden)).unwrap());
+    state
+}
+
 fn outcome(response: Response) -> Outcome {
     match response {
         Response::Done(outcome) => outcome,
@@ -88,11 +96,12 @@ fn start_reports_mouse_capture_and_the_state() {
 
         let started = answer(&mut responder, Request::Start { state: None }).await;
 
-        let Response::Started { mouse_capture, state } = started else {
+        let Response::Started { mouse_capture, state: started, reset } = started else {
             panic!("expected Started")
         };
         assert!(!mouse_capture);
-        assert_eq!(state, postcard::to_allocvec(&(0u32, 0u32)).unwrap());
+        assert_eq!(started, state(0, 0));
+        assert!(!reset);
     });
 }
 
@@ -104,7 +113,7 @@ fn a_change_the_view_reads_is_dirty_and_sends_the_state() {
         let done = outcome(answer(&mut responder, Request::Tick).await);
 
         assert!(done.dirty);
-        assert_eq!(done.state, Some(postcard::to_allocvec(&(1u32, 0u32)).unwrap()));
+        assert_eq!(done.state, Some(state(1, 0)));
     });
 }
 
@@ -116,7 +125,7 @@ fn a_change_the_view_doesnt_read_sends_the_state_without_repainting() {
         let done = outcome(answer(&mut responder, key('h')).await);
 
         assert!(!done.dirty);
-        assert_eq!(done.state, Some(postcard::to_allocvec(&(0u32, 1u32)).unwrap()));
+        assert_eq!(done.state, Some(state(0, 1)));
     });
 }
 
@@ -154,7 +163,7 @@ fn a_quit_event_is_reported() {
 #[test]
 fn a_session_resumes_from_the_hosts_state() {
     run(async {
-        let state = postcard::to_allocvec(&(7u32, 3u32)).unwrap();
+        let state = state(7, 3);
         let mut responder = Responder::new(Counter::new());
         answer(&mut responder, Request::Start { state: Some(state) }).await;
 
@@ -185,5 +194,50 @@ fn only_a_ping_or_a_start_is_answered_before_the_app_starts() {
 
         assert!(matches!(answer(&mut responder, Request::Ping).await, Response::Pong));
         assert!(matches!(responder.step(Request::Tick), Err(IpcError::Unexpected)));
+    });
+}
+
+/// Starts a `Counter` from `saved`, returning whether it reset and the view.
+async fn start_from(saved: Vec<u8>) -> (bool, String) {
+    let mut responder = Responder::new(Counter::new());
+    let Response::Started { reset, .. } = answer(&mut responder, Request::Start { state: Some(saved) }).await else {
+        panic!("expected Started")
+    };
+    let Response::View(view) = answer(&mut responder, Request::BuildView(Rect::new(0, 0, 5, 1))).await else {
+        panic!("expected a view")
+    };
+    let ViewContent::Text { text, .. } = view.content else {
+        panic!("expected text")
+    };
+    (reset, text)
+}
+
+#[test]
+fn a_state_saved_by_another_state_type_starts_the_app_afresh() {
+    run(async {
+        let mut saved = state(7, 3);
+        saved[0] ^= 1;
+
+        assert_eq!(start_from(saved).await, (true, String::from("0")));
+    });
+}
+
+#[test]
+fn a_state_too_short_to_hold_a_fingerprint_starts_the_app_afresh() {
+    run(async { assert_eq!(start_from(vec![1, 2, 3]).await, (true, String::from("0"))) });
+}
+
+#[test]
+fn a_state_of_the_right_type_that_does_not_decode_is_an_error() {
+    run(async {
+        let mut saved = state(7, 3);
+        saved.truncate(9);
+        let mut responder = Responder::new(Counter::new());
+
+        let Err(error) = responder.step(Request::Start { state: Some(saved) }) else {
+            panic!("a corrupt state was accepted")
+        };
+
+        assert!(matches!(error, IpcError::Decode(_)), "{error}");
     });
 }

@@ -28,9 +28,10 @@ pub(crate) enum Request {
 pub(crate) enum Response {
     /// The answer to [`Request::Ping`].
     Pong,
-    /// The answer to [`Request::Start`]: whether the app wants the mouse, and
-    /// its state.
-    Started { mouse_capture: bool, state: Vec<u8> },
+    /// The answer to [`Request::Start`]: whether the app wants the mouse, its
+    /// state, and whether it started afresh because the state it was given was
+    /// saved by another state type.
+    Started { mouse_capture: bool, state: Vec<u8>, reset: bool },
     /// The answer to [`Request::Event`] and [`Request::Tick`].
     Done(Outcome),
     /// The answer to [`Request::BuildView`].

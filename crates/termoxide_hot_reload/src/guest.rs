@@ -13,6 +13,7 @@ use termoxide::App;
 
 use crate::{
     ipc::{IpcError, Request},
+    schema,
     session::{Responder, Step},
 };
 
@@ -37,6 +38,11 @@ thread_local! {
     /// name its type here, hence `Any`.
     static RESPONDER: RefCell<Option<Box<dyn Any>>> = const { RefCell::new(None) };
 }
+
+/// The fingerprint of the protocol this component speaks, or 0 if it can't be
+/// traced, which matches no subprocess.
+#[doc(hidden)]
+pub fn wire_schema() -> u64 { schema::wire().unwrap_or_default() }
 
 /// Answers one encoded request, building the app with `fresh` on the first one.
 #[doc(hidden)]
