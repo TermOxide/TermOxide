@@ -31,3 +31,16 @@ fn a_build_that_finishes_in_time_reports_its_status() {
 
     assert!(!status.success());
 }
+
+#[test]
+fn the_guest_is_built_with_the_hosts_profile() {
+    let args = |release| {
+        cargo(Package { manifest_dir: "/apps/clock", release })
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+    };
+
+    assert!(args(true).contains(&String::from("--release")));
+    assert!(!args(false).contains(&String::from("--release")));
+}
