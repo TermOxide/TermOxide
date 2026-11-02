@@ -9,7 +9,10 @@ use std::{any::Any, fmt, rc::Rc};
 
 use slotmap::SlotMap;
 
-use crate::style::{Dirty, Inherited, Style, resolve};
+use crate::{
+    geometry::CellRect,
+    style::{Dirty, Inherited, Style, resolve},
+};
 
 slotmap::new_key_type! {
     /// A handle to a node of a [`StyleTree`].
@@ -34,6 +37,8 @@ pub struct Node {
     pub subtree_paint_dirty: bool,
     pub parent: Option<NodeId>,
     pub children: Vec<NodeId>,
+    /// The border box, written by whatever lays out the tree.
+    pub rect: Option<CellRect>,
     /// Dropped with the node (ADR D3.3).
     pub style_effect: Option<Box<dyn Any>>,
 }
@@ -97,6 +102,7 @@ impl StyleTree {
             subtree_paint_dirty: false,
             parent,
             children: Vec::new(),
+            rect: None,
             style_effect: None,
         });
         if let Some(parent) = parent {
@@ -151,6 +157,16 @@ impl StyleTree {
             }
         }
         Ok(dirty)
+    }
+
+    /// Records the border box layout computed for `id`.
+    ///
+    /// # Errors
+    ///
+    /// [`TreeError::StaleNode`] if `id` was removed.
+    pub fn set_rect(&mut self, id: NodeId, rect: CellRect) -> Result<(), TreeError> {
+        self.get_mut(id)?.rect = Some(rect);
+        Ok(())
     }
 
     /// Attaches the effect that writes this node's style, dropping the
