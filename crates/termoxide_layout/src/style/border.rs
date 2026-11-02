@@ -19,6 +19,7 @@ impl BorderSides {
     pub const ALL: Self = Self(0b1111);
     pub const BOTTOM: Self = Self(0b0100);
     pub const LEFT: Self = Self(0b1000);
+    pub const NONE: Self = Self(0);
     pub const RIGHT: Self = Self(0b0010);
     pub const TOP: Self = Self(0b0001);
 
