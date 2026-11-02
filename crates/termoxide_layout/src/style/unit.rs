@@ -14,6 +14,15 @@ pub enum Unit {
 }
 
 impl Unit {
+    /// The length in cells. `Percent`, `Fr` and `Auto` give `None`: they stay
+    /// unresolved until layout (ADR D5.2).
+    pub const fn cells(self) -> Option<i16> {
+        match self {
+            Unit::Cells(n) => Some(n),
+            _ => None,
+        }
+    }
+
     /// Clamps a negative length to zero, `NaN` included.
     pub(crate) const fn non_negative(self) -> Self {
         match self {
