@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icon.png" alt="TermOxide" width="128">
+  <img src="assets/icon.svg" alt="TermOxide" width="128">
 </p>
 
 <h1 align="center">TermOxide</h1>
