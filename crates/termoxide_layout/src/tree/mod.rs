@@ -5,8 +5,11 @@
 //! (ADR D4.4). A node's style is rewritten in place, with no compiled
 //! artifact (ADR D10.1).
 
+mod layer;
+
 use std::{any::Any, fmt, rc::Rc};
 
+pub use layer::{Layer, PaintItem};
 use slotmap::SlotMap;
 
 use crate::{
@@ -37,6 +40,9 @@ pub struct Node {
     pub subtree_paint_dirty: bool,
     pub parent: Option<NodeId>,
     pub children: Vec<NodeId>,
+    /// `Some` makes the node a portal root painted in that layer; `None`
+    /// paints in the parent's layer (ADR D6.1, D6.2).
+    pub layer: Option<(Layer, i32)>,
     /// The border box, written by whatever lays out the tree.
     pub rect: Option<CellRect>,
     /// Dropped with the node (ADR D3.3).
@@ -62,6 +68,7 @@ impl std::error::Error for TreeError {}
 #[derive(Debug, Default)]
 pub struct StyleTree {
     nodes: SlotMap<NodeId, Node>,
+    roots: Vec<NodeId>,
     pending: Vec<NodeId>,
 }
 
@@ -102,11 +109,13 @@ impl StyleTree {
             subtree_paint_dirty: false,
             parent,
             children: Vec::new(),
+            layer: None,
             rect: None,
             style_effect: None,
         });
-        if let Some(parent) = parent {
-            self.get_mut(parent)?.children.push(id);
+        match parent {
+            Some(parent) => self.get_mut(parent)?.children.push(id),
+            None => self.roots.push(id),
         }
         Ok(id)
     }
@@ -119,9 +128,12 @@ impl StyleTree {
     /// [`TreeError::StaleNode`] if `id` was already removed.
     pub fn remove(&mut self, id: NodeId) -> Result<(), TreeError> {
         let parent = self.get(id)?.parent;
-        if let Some(parent) = parent.and_then(|p| self.nodes.get_mut(p)) {
-            parent.children.retain(|&child| child != id);
-            parent.layout_dirty = true;
+        match parent.and_then(|p| self.nodes.get_mut(p)) {
+            Some(parent) => {
+                parent.children.retain(|&child| child != id);
+                parent.layout_dirty = true;
+            },
+            None => self.roots.retain(|&root| root != id),
         }
         let mut doomed = vec![id];
         while let Some(next) = doomed.pop() {
@@ -166,6 +178,20 @@ impl StyleTree {
     /// [`TreeError::StaleNode`] if `id` was removed.
     pub fn set_rect(&mut self, id: NodeId, rect: CellRect) -> Result<(), TreeError> {
         self.get_mut(id)?.rect = Some(rect);
+        Ok(())
+    }
+
+    /// Moves `id` and the descendants that follow it into `layer`, or back
+    /// into its parent's layer with `None`. The subtree is not walked; its
+    /// layer is derived at paint (ADR D6.1).
+    ///
+    /// # Errors
+    ///
+    /// [`TreeError::StaleNode`] if `id` was removed.
+    pub fn set_layer(&mut self, id: NodeId, layer: Option<(Layer, i32)>) -> Result<(), TreeError> {
+        let node = self.get_mut(id)?;
+        node.paint_dirty |= node.layer != layer;
+        node.layer = layer;
         Ok(())
     }
 
