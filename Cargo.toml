@@ -17,7 +17,7 @@ default-run = "OxidUi"
 [package.metadata.bundle]
 name = "OxidUi"
 identifier = "com.oxidizetoolkit.oxidui"
-icon = ["assets/icon.png"]
+icon = ["assets/32x32.png", "assets/128x128.png", "assets/128x128@2x.png"]
 version = "1.0.0-alpha"
 copyright = "Copyright (c) 2026 OxidizeToolKit"
 category = "Developer Tool"
