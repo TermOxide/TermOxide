@@ -4,8 +4,9 @@
 **Status:** design complete, the dev loop built — transport and ABI live-tested across four candidates
 (including the naive full-process-restart baseline). Built: the subprocess running the app's component,
 the protocol, the shared log, rebuilding on save, the schema fingerprints, epoch interruption and
-recovery, and persistence with its trace reader. Not yet built: linking natively for release (§8), the
-WASI filesystem and network capabilities (§6), and validating a module before loading it.
+recovery, persistence chosen at run time, linking natively for release with the log file and persistence,
+and the `termoxide` CLI's `run`, `run --release` and `dump` (§§7, 8, 8.1). Not yet built: the WASI
+filesystem and network capabilities (§6), and validating a module before loading it.
 Reload latency is `cargo build`-dominated and not sub-second — do not promise a specific number anywhere
 derived from this document.
 **Companion:** `adr/hot_reload/index.html` — same decisions with reasoning and rejected alternatives. This
@@ -71,8 +72,9 @@ pub trait App {
   signal itself would survive.
 
 Host-side, the whole config surface is the app's crate itself — no per-app function pointers, no per-app
-type parameter. Its `cdylib` declares the app; its executable only calls `run_app!()`, or
-`run_app!(persistent)` (§7), which captures the crate's manifest directory to build the guest from (§2.4):
+type parameter. Its `cdylib` declares the app; its executable, if it has one rather than running through
+`termoxide run` (§8.1), only calls `run_app!()`, or `run_app!(persistent)` (§7), which captures the
+crate's manifest directory to build the guest from (§2.4):
 
 ```rust
 // lib.rs, a `cdylib` + `rlib`
@@ -117,9 +119,9 @@ bytes as an opaque `Vec<u8>` and passes them back in unexamined — host code mu
 parameter for app state. Every call that changes state returns the new bytes to the outer host, and only
 those: the guest compares the encoded app with the last bytes it sent, so any signal counts, not only those
 the view reads. The host
-keeps the latest state, so a respawned subprocess (§4.3) resumes from it. Whether to keep a few earlier
-generations too, to step back from a state that keeps crashing the child, is open until there is data on how
-often that happens; a persistent run sets such a state's trace aside instead (§7).
+keeps the latest state, and only that one, so a respawned subprocess (§4.3) resumes from it. Earlier
+generations, to step back from a state that keeps crashing the child, are left out until there is data on
+how often that happens; a persistent run sets such a state's trace aside instead (§7).
 
 ### 2.3 Wire-schema and state compatibility
 
@@ -385,8 +387,14 @@ termoxide_hot_reload::run_app!(persistent).await
 ```
 
 - Opt-in, layered on the base transport. A reload alone never loses state — persistence exists only for
-  surviving a full restart of the host process itself. `TERMOXIDE_HOT_RELOAD_PERSIST=0` or `1` overrides
-  `run_app!` for one run; `TERMOXIDE_HOT_RELOAD_FRESH=1` starts that run from a clean state.
+  surviving a full restart of the host process itself, and in a release build for keeping the app's state
+  between runs (§8).
+- Whether a run persists is read at run time, first match wins: `TERMOXIDE_PERSIST=0` or `1`, then
+  `persist = true` or `false` in `config.toml` in `termoxide/<app>/` (next to the trace and the logs), then
+  the app's default — `run_app!(persistent)`, or `persistent = true` under `[package.metadata.termoxide]`
+  for an app run through `termoxide run` (§8.1). Someone who downloaded a release build changes it without
+  recompiling. `TERMOXIDE_FRESH=1` starts one run from a clean state; the config file has no such key, which
+  would start every run fresh. The app's argv is never read: it belongs to the app.
 - No new encoding step beyond §2.2: the same opaque bytes already crossing the reload boundary are what
   gets written to disk, fingerprint included (§2.3).
 - A **state trace**, not a single snapshot: `state.bin` in `termoxide/<app>/`, next to the logs (§5) —
@@ -400,41 +408,93 @@ termoxide_hot_reload::run_app!(persistent).await
   app starts afresh. When the app stops for crashing too often (§4.3), its trace is renamed
   `state.bin.crashed`, so the next run doesn't start from the state that crashed it. A trace saved by
   another state type resets the app (§2.3), and the run's own trace replaces it.
-- `termoxide_dump <trace> [--manifest <Cargo.toml>]`, a binary of `termoxide_hot_reload` (`host`
-  feature), prints a trace: only the app's own component can decode its state, so it builds the guest from
-  the manifest directory the header names, then asks it to `Describe` each entry. It prints each entry's
-  time, its state type's fingerprint — highlighted where it changed from the previous entry — and the app as
-  JSON.
+- `termoxide dump [<path>] [--bin <name>] [--crashed | --unreadable] [--manifest <Cargo.toml>]` prints a
+  trace. Only the app's own component can decode its state, so it builds the guest and asks it to
+  `Describe` each entry. It prints each entry's time, its state type's fingerprint — highlighted where it
+  changed from the previous entry — and the app as JSON. `<path>`, `.` by default, is either:
+  - **a trace**, whose header names the manifest directory to build the guest from;
+  - **an app's crate folder**, which is also the manifest. `<app>` is its executable's name, through
+    `cargo metadata`: its only `[[bin]]`, or the package's name when it has none and runs through
+    `termoxide run` (whose runner is named after the package). Several bins need `--bin`. The trace is that
+    app's `state.bin` (§5's directory), or with `--crashed` / `--unreadable` the one set aside; when
+    `state.bin` is missing and one set aside exists, the error names it.
+
+  `--manifest` names the crate when a trace's header points where it no longer is.
 
 ---
 
 ## 8. Release builds
 
-A release binary compiles `logic` natively and links it directly into the host — none of §§3–6 ship: no
-`wasmtime`, no subprocess, no IPC, no fuel/epoch, no `postcard` marshaling. The distinguishing switch is
-target architecture, not build profile — a release-profile `wasm32` build still needs the dev-loop export
-path (optimized `logic`, still run through hot-reload during iteration), so `cfg(debug_assertions)` is the
-wrong gate.
+The build profile is the switch: `cargo run` hot reloads, `cargo run --release` links `logic` natively
+into the host. `run_app!` expands in the app's own crate and branches on `cfg(debug_assertions)`, so a
+custom profile counts as release exactly when it turns them off. A release binary has no `wasmtime` call, no
+subprocess, no IPC, no epoch and no guest build (§§3, 4, 6). It keeps two things:
+
+- **The log file** (§5): the framework's and the app's `log` records go straight to the run's file, tagged
+  as before; with no child, there are no `[framework:child]` lines and no piped stdout/stderr.
+- **Persistence** (§7), when the run persists: the app is encoded with its fingerprint
+  (§2.3) after every recorded change, natively, and appended to the same trace. The bytes are the ones a
+  guest would write, so `termoxide dump` reads a release trace, and a dev run can start from one. A crash
+  ends a release process, so there is no crash loop to set a trace aside (§4.3).
+
+`termoxide_hot_reload` stays a dependency in both profiles: Cargo can't select a dependency by profile, and
+a feature someone has to pass when shipping is what the profile switch avoids. A release build compiles
+`wasmtime` and drops it at link time, as code nothing calls.
 
 ```rust
 // wasm_app!(expr) expands to this, kept or dropped by the compiler, not the macro:
 #[cfg(target_arch = "wasm32")]
 const _: () = { /* the `handle` export, over the app built with `expr` — §2.1 */ };
-// and to nothing natively.
+#[cfg(not(target_arch = "wasm32"))]
+#[doc(hidden)]
+pub fn __termoxide_app() -> impl App { expr } // what a release `run_app!` runs
 ```
 
-Native linking needs no named-symbol export or runtime resolution at all: once `logic` is just another
-crate in the same compilation graph, the host's native entry point is termoxide's own `run_with_app(app)`,
-the loop a native app already runs. There is nothing for the macro's
-native branch to generate beyond what the app's own trait impl already provides.
+The target still picks the export: the `.wasm` is only ever built for `wasm32`. Native linking needs no
+named-symbol export or runtime resolution: once `logic` is just another crate in the same compilation graph,
+a release `run_app!` runs the app from that hidden function through termoxide's own `run_with_app(app)`,
+the loop a native app already runs. Naming the app's lib from `main.rs` takes the crate's name, which only
+a proc macro reads (`CARGO_PKG_NAME`): `run_app!` stays a `macro_rules!` macro, whose `cfg` is read in the
+app's crate, and asks `termoxide_hot_reload_macros` for the lib's path only. A lib its `[lib]` table
+renames isn't found. A release run traces the app after every event and tick that changed a recorded signal.
+
+There is no hot reload of an optimized build: a dev loop on an optimized `logic` would need its own switch,
+and isn't wanted for now.
 
 `logic`'s `[lib] crate-type` must list both `cdylib` (the artifact the dev path loads) and `rlib` (so the
 native host can depend on it as an ordinary crate) — not a new pattern; the hot-lib-reloader draft already
 uses the equivalent dual declaration (`["rlib", "dylib"]`) for the same reason, one level native.
 
 The app author's source is identical in both cases: one `impl App`, one `wasm_app!` call. The `cfg`
-branching is entirely internal to the macro's expansion. The dev side is built; linking natively for release
-is not.
+branching is entirely internal to the macro's expansion. Both sides are built.
+
+### 8.1 `termoxide run`
+
+`termoxide run [<path>] [--release] [--persist | --no-persist] [--fresh]` runs an app from its crate, with no
+`main.rs` in the app:
+
+- It reads `<path>/Cargo.toml` (the current directory by default) through `cargo metadata` and takes the
+  package's lib, which Cargo allows only one of. A lib whose `crate-type` lacks `cdylib` or `rlib`, or with
+  no `guest` feature, is an error naming what's missing. A lib that doesn't call `wasm_app!` has no `handle`
+  export, which the load reports (§2.1) as that.
+- Without `--release`, the CLI is the host: it builds and hot reloads the lib as `run_app!` does.
+- With `--release`, it writes a runner crate to `target/termoxide/runner/<app>/`: a path dependency on the
+  app, `termoxide_hot_reload` from where the app takes it, and a `main` that does what a release `run_app!`
+  does, its binary named after the app's package so the logs and the trace land in the same
+  `termoxide/<app>/` (§5). The runner names the lib, its folder and the app's default from `cargo metadata`,
+  which `run_app!` reads from its own crate, so a lib its `[lib]` table renames is found. It starts from the
+  app's `Cargo.lock`, builds with `cargo build --release` and replaces itself with the binary: `exec` on
+  Unix; on Windows, which has none, it spawns the binary and exits with its exit code. The runner is
+  rewritten on every run and never edited, a file left as it was when unchanged, so Cargo doesn't rebuild
+  it; its binary is what ships.
+- `persistent` under `[package.metadata.termoxide]` is the app's default (§7), which the runner's `main` is
+  generated with. The CLI's flags set `TERMOXIDE_PERSIST` and `TERMOXIDE_FRESH` for the run, so they come
+  first; the CLI owns its argv, where an app's own binary doesn't.
+
+An app may still keep its own `main.rs` calling `run_app!`; that runs the same way. `termoxide dump`
+(§7) is the CLI's other subcommand, and takes the same `<path>`. `termoxide` is the binary of the
+`termoxide_cli` crate, which reads the arguments, so the apps don't depend on what reads them. Both paths
+are built.
 
 ---
 
