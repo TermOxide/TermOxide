@@ -1,0 +1,27 @@
+[package]
+name = "redraw_bench"
+version = "0.1.0"
+edition = "2024"
+description = "Measures what a TermOxide redraw costs: frames per second, 1% low, CPU and memory"
+publish = false
+
+[workspace]
+
+# Cargo only reads profiles from the workspace root, and this directory is its
+# own root: without this copy of the framework's release profile, the numbers
+# would describe a differently optimized binary.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[dependencies]
+any_spawner = { version = "0.3", features = ["tokio"] }
+color-eyre = "0.6"
+ratatui = { version = "0.26", features = ["crossterm"] }
+termoxide = { path = "../../crates/termoxide" }
+termoxide_event = { path = "../../crates/termoxide_event" }
+termoxide_reactive = { path = "../../crates/termoxide_reactive" }
+termoxide_rendering = { path = "../../crates/termoxide_rendering" }
+tokio = { version = "1", features = ["rt", "macros", "time"] }
