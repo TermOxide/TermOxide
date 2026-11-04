@@ -2,7 +2,7 @@
 
 use std::{cell::RefCell, rc::Rc, str::FromStr, time::Instant};
 
-use color_eyre::eyre::{Report, bail};
+use color_eyre::eyre::{Report, eyre};
 use ratatui::{
     layout::Rect,
     style::{Color, Style},
@@ -59,7 +59,7 @@ impl FromStr for Scenario {
             "small" => Ok(Self::Small),
             "full" => Ok(Self::Full),
             "many" => Ok(Self::Many),
-            other => bail!("unknown scenario `{other}`"),
+            other => Err(eyre!("unknown scenario `{other}`")),
         }
     }
 }

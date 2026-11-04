@@ -79,7 +79,7 @@ fn parse_options(mut args: impl Iterator<Item = String>) -> Result<Options> {
     let mode = match args.next().as_deref() {
         Some("live") => Mode::Live,
         Some("cost") => Mode::Cost,
-        _ => bail!(USAGE),
+        _ => return Err(eyre!(USAGE)),
     };
     let scenario: Scenario = args.next().ok_or_else(|| eyre!(USAGE))?.parse()?;
     if mode == Mode::Cost && !scenario.is_saturated() {
@@ -107,7 +107,7 @@ fn parse_options(mut args: impl Iterator<Item = String>) -> Result<Options> {
             "--warmup" => options.warmup = parse_value(&flag, &value)?,
             "--run" => options.run = parse_value(&flag, &value)?,
             "--out" => options.out = PathBuf::from(value),
-            _ => bail!("unknown option {flag}\n{USAGE}"),
+            _ => return Err(eyre!("unknown option {flag}\n{USAGE}")),
         }
     }
 
