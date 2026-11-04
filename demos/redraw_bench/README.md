@@ -21,10 +21,12 @@ Results land in `results/<date>-<commit>/`, which git ignores:
 - `raw/`: the time of every frame, to compute any other statistic later.
 - `machine.txt`: the commit, the hardware, and whether the machine was on battery.
 
-For a single measurement, the terminal must already have the requested size:
+For a single measurement, build the tool, then run it from this folder in a terminal that already has the requested
+size:
 
 ```sh
-redraw_bench live small --cols 80 --rows 24 --seconds 120 --warmup 5 --run 1 --out results/manual
+cargo build --release
+target/release/redraw_bench live small --cols 80 --rows 24 --seconds 120 --warmup 5 --run 1 --out results/manual
 ```
 
 `BENCH_RUNS`, `BENCH_LIVE_SECONDS`, `BENCH_COST_SECONDS` and `BENCH_WARMUP` shorten `run.sh` when checking the tool
