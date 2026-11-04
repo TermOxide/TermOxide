@@ -41,7 +41,8 @@ The loop limits itself to about 60 FPS, which is a frame every 16.7 ms.
 | `full`    | 54.6  | 50.9   | 7.5 %   | 16.1 %    |
 | `many`    | 57.1  | 52.8   | 4.9 %   | 4.5 %     |
 
-CPU is expressed in percent of one core. The longest frame of any run was 20.5 ms.
+CPU is expressed in percent of one core. The longest frame of a `small`, `full` or `many` run was 20.5 ms. `typical`
+redraws every 100 ms on purpose, and its longest frame was 101.6 ms.
 
 ### `cost` mode: the renderer without the frame limit
 
@@ -53,7 +54,12 @@ Time to build and draw one frame, including the write to the terminal.
 | `full`   | 0.128 ms        | about 7 800  | 0.667 ms      | about 1 500 |
 | `many`   | 0.109 ms        | about 9 200  | 0.272 ms      | about 3 700 |
 
-The longest frame of any `cost` run was 4.7 ms. The 1% low of these runs is in `results.csv` and varies between runs.
+The longest frame of any `cost` run was 4.7 ms. The 1% low varies from one run to another, so it is given as the lowest
+and the highest of the 3 runs:
+
+- `small`: 17 600 to 20 700 FPS in 80x24, 4 000 to 4 200 FPS in 200x50.
+- `full`: 5 500 to 6 900 FPS in 80x24, 1 200 to 1 300 FPS in 200x50.
+- `many`: 7 800 to 8 000 FPS in 80x24, 3 000 to 3 300 FPS in 200x50.
 
 ### Memory
 
