@@ -12,6 +12,21 @@ live_seconds=${BENCH_LIVE_SECONDS:-120}
 cost_seconds=${BENCH_COST_SECONDS:-30}
 warmup=${BENCH_WARMUP:-5}
 
+# Check the overrides before any window opens: a bad value would otherwise fail
+# inside a window that closes at once, before anything reaches errors.log.
+check_number() {
+    case $2 in
+        '' | *[!0-9]*) ;;
+        *) [ "$2" -ge "$3" ] && return ;;
+    esac
+    echo "$1 must be a whole number of at least $3, got '$2'" >&2
+    exit 1
+}
+check_number BENCH_RUNS "$runs" 1
+check_number BENCH_LIVE_SECONDS "$live_seconds" 1
+check_number BENCH_COST_SECONDS "$cost_seconds" 1
+check_number BENCH_WARMUP "$warmup" 0
+
 command -v kitty >/dev/null || {
     echo "kitty is required" >&2
     exit 1
@@ -47,6 +62,7 @@ fi
 measure() {
     mode=$1 scenario=$2 cols=$3 rows=$4 seconds=$5 run=$6
     echo "$mode $scenario ${cols}x$rows, run $run/$runs"
+    launched=$((launched + 1))
     kitty --config NONE \
         -o remember_window_size=no \
         -o "initial_window_width=${cols}c" \
@@ -55,6 +71,7 @@ measure() {
         --seconds "$seconds" --warmup "$warmup" --run "$run" --out "$out"
 }
 
+launched=0
 run=1
 while [ "$run" -le "$runs" ]; do
     for size in "80 24" "200 50"; do
@@ -73,6 +90,17 @@ done
 if [ -s "$out/errors.log" ]; then
     echo "some measurements failed, see $out/errors.log:" >&2
     cat "$out/errors.log" >&2
+    exit 1
+fi
+
+# A window can also close without a result or an error, so count the lines.
+recorded=0
+if [ -f "$out/results.csv" ]; then
+    # The first line is the header.
+    recorded=$(($(wc -l <"$out/results.csv") - 1))
+fi
+if [ "$recorded" -ne "$launched" ]; then
+    echo "$launched measurements launched, but $out/results.csv holds $recorded" >&2
     exit 1
 fi
 
