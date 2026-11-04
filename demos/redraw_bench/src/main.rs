@@ -202,7 +202,7 @@ fn run_cost(options: &Options) -> Result<Outcome> {
             renderer.render_frame(&mut root)?;
             let rendered = Instant::now();
 
-            if began.elapsed() >= warmup {
+            if frame_start.duration_since(began) >= warmup {
                 timings.push((built.duration_since(frame_start), rendered.duration_since(built)));
             }
             frame += 1;
