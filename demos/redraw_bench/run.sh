@@ -37,7 +37,9 @@ bench="$here/target/release/redraw_bench"
 
 commit=$(git -C "$here" rev-parse --short HEAD)
 out="$here/results/$(date +%Y-%m-%d_%H%M%S)-$commit"
-mkdir -p "$out"
+mkdir -p "$here/results"
+# No -p: two campaigns started in the same second must not share a folder.
+mkdir "$out"
 
 power=$(cat /sys/class/power_supply/*/status 2>/dev/null | head -n 1 || true)
 governor=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || true)
