@@ -223,7 +223,8 @@ jobs:
         uses: ./.github/actions/rust-cache
         with:
           action: push
-          packages: '["cargo-tarpaulin"]'
+          packages: '["cargo-tarpaulin", "cargo-llvm-cov"]'
+          components: '["llvm-tools-preview"]'
 
       # The push step above warms and saves the cache, but the steps below are
       # what actually consume it. We pull it here, right before it's needed, so
@@ -233,7 +234,8 @@ jobs:
         uses: ./.github/actions/rust-cache
         with:
           action: pull
-          packages: '["cargo-tarpaulin"]'
+          packages: '["cargo-tarpaulin", "cargo-llvm-cov"]'
+          components: '["llvm-tools-preview"]'
 
       - name: Run tests with coverage
         id: tests
@@ -257,6 +259,19 @@ jobs:
           done
           cargo tarpaulin $pkg_args --follow-exec --ignore-tests --exclude-files "*/tests/*" --exclude-files "crates/termoxide_e2e/*" --out Lcov --output-dir ./coverage
 
+      # The hot-reload tests spawn processes, whose coverage tarpaulin doesn't
+      # collect. cargo-llvm-cov instruments the binaries instead, so each process
+      # writes its own, and its report is uploaded beside tarpaulin's.
+      - name: Run the hot-reload tests under cargo-llvm-cov
+        id: llvm-cov
+        if: >-
+          steps.tests.outputs.ran == 'true'
+          && contains(fromJSON(needs.detect.outputs.crates), 'termoxide_hot_reload')
+        run: |
+          ignore='(/tests/|/tests\.rs$)'
+          cargo llvm-cov --no-report -p termoxide_hot_reload --all-features
+          cargo llvm-cov report --lcov --output-path ./coverage/llvm-cov.info --ignore-filename-regex "$ignore"
+
       # Only upload when tarpaulin actually ran: on the no-crates-changed skip
       # path, no fresh lcov.info exists and codecov-action falls back to a
       # stale target/tarpaulin/coverage.json restored from cache, which gets
@@ -268,10 +283,22 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage/lcov.info
 
+      - name: Upload cargo-llvm-cov results to Codecov
+        if: steps.llvm-cov.outcome == 'success'
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/llvm-cov.info
+
       - name: Build section
         if: always()
         run: |
           outcome="${{ steps.tests.outcome }}"
+          # Skipped when no hot-reload crate changed, which doesn't fail the suite.
+          case "${{ steps.llvm-cov.outcome }}" in
+            success|skipped) ;;
+            *) outcome="failure" ;;
+          esac
           icon=$([ "$outcome" = "success" ] && echo "✅" || echo "❌")
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
