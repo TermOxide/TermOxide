@@ -108,6 +108,13 @@ impl Runtime {
 }
 
 impl GuestInstance {
+    /// The fingerprint of the protocol the component was built with.
+    pub(crate) fn wire_schema(&mut self) -> Result<u64> {
+        self.guest
+            .call_wire_schema(&mut self.store)
+            .map_err(|e| eyre!("the guest trapped: {e:#}"))
+    }
+
     /// Hands `request` to the app and returns its answer.
     pub(crate) fn handle(&mut self, request: &Request) -> Result<Response> {
         let request = postcard::to_allocvec(request)?;
