@@ -5,14 +5,31 @@ edition = "2024"
 
 [workspace]
 
+# `cdylib` is the wasm component the guest builds; `rlib` is what the
+# executable links natively.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "hot_reload_app"
+required-features = ["host"]
+
+[features]
+default = ["host"]
+# The executable: it builds the app as a component and runs it in a subprocess.
+host = ["termoxide_hot_reload/host", "dep:any_spawner", "dep:color-eyre", "dep:tokio"]
+# The app as a wasm component.
+guest = ["termoxide_hot_reload/guest"]
+
 [dependencies]
-any_spawner = { version = "0.3", features = ["tokio"] }
-color-eyre = "0.6"
-ratatui = { version = "0.26", features = ["crossterm"] }
+ratatui = { version = "0.26", default-features = false }
 serde = { version = "1", features = ["derive"] }
-termoxide = { path = "../../crates/termoxide" }
-termoxide_event = { path = "../../crates/termoxide_event" }
+termoxide = { path = "../../crates/termoxide", default-features = false }
+termoxide_event = { path = "../../crates/termoxide_event", default-features = false }
 termoxide_hot_reload = { path = "../../crates/termoxide_hot_reload" }
 termoxide_reactive = { path = "../../crates/termoxide_reactive", features = ["serde"] }
-termoxide_rendering = { path = "../../crates/termoxide_rendering" }
-tokio = { version = "1", features = ["rt", "macros"] }
+termoxide_rendering = { path = "../../crates/termoxide_rendering", default-features = false }
+
+any_spawner = { version = "0.3", features = ["tokio"], optional = true }
+color-eyre = { version = "0.6", optional = true }
+tokio = { version = "1", features = ["rt", "macros"], optional = true }

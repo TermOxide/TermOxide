@@ -1,0 +1,8 @@
+package termoxide:hot-reload;
+
+/// An app built as a hot-reload guest.
+world guest {
+  /// Answers one `postcard`-encoded request with an encoded response, or says
+  /// why it couldn't.
+  export handle: func(request: list<u8>) -> result<list<u8>, string>;
+}

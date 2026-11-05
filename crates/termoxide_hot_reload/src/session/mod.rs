@@ -7,9 +7,55 @@ use termoxide_reactive::Owner;
 
 use crate::ipc::{self, IpcError, Outcome, Request, Response};
 
-/// The app as the subprocess runs it, with what it takes to tell the host when
-/// to repaint and when the state changed.
-pub(crate) struct Session<A> {
+/// What answering a request takes next.
+pub(crate) enum Step {
+    /// The answer, ready to send.
+    Reply(Response),
+    /// The app ran an event or a tick: let its render effect run, then ask
+    /// [`Responder::settled`] for the answer.
+    Settle { quit: bool },
+}
+
+/// Answers the host's requests, before and after the app has started.
+///
+/// Letting the app's effects run between [`Step::Settle`] and
+/// [`settled`](Self::settled) is the caller's job: how depends on the executor
+/// it runs on.
+pub(crate) struct Responder<A> {
+    /// The app as built, until [`Request::Start`] says whether to run it.
+    fresh: Option<A>,
+    session: Option<Session<A>>,
+}
+
+impl<A: App + Clone + Serialize + DeserializeOwned + 'static> Responder<A> {
+    pub(crate) fn new(app: A) -> Self { Self { fresh: Some(app), session: None } }
+
+    /// Starts working on `request`.
+    pub(crate) fn step(&mut self, request: Request) -> ipc::Result<Step> {
+        if let Some(session) = &mut self.session {
+            return session.apply(request);
+        }
+        match request {
+            Request::Ping => Ok(Step::Reply(Response::Pong)),
+            Request::Start { state } => {
+                let app = self.fresh.take().ok_or(IpcError::Unexpected)?;
+                let (session, started) = Session::start(app, state.as_deref())?;
+                self.session = Some(session);
+                Ok(Step::Reply(started))
+            },
+            _ => Err(IpcError::Unexpected),
+        }
+    }
+
+    /// The answer to the event or tick that asked to [`Step::Settle`].
+    pub(crate) fn settled(&mut self, quit: bool) -> ipc::Result<Response> {
+        self.session.as_mut().ok_or(IpcError::Unexpected)?.settled(quit)
+    }
+}
+
+/// The app once started, with what it takes to tell the host when to repaint
+/// and when the state changed.
+struct Session<A> {
     app: A,
     /// Set by `_effect` when a signal the view reads changes.
     dirty: Rc<Cell<bool>>,
@@ -21,7 +67,7 @@ pub(crate) struct Session<A> {
 
 impl<A: App + Clone + Serialize + DeserializeOwned + 'static> Session<A> {
     /// Starts the app: `fresh` as built, or decoded from the host's `state`.
-    pub(crate) fn start(fresh: A, state: Option<&[u8]>) -> ipc::Result<(Self, Response)> {
+    fn start(fresh: A, state: Option<&[u8]>) -> ipc::Result<(Self, Response)> {
         let owner = Owner::new();
         owner.set();
 
@@ -46,23 +92,22 @@ impl<A: App + Clone + Serialize + DeserializeOwned + 'static> Session<A> {
         Ok((Self { app, dirty, sent, _effect: effect, _owner: owner }, started))
     }
 
-    /// Runs `request` against the app.
-    pub(crate) async fn handle(&mut self, request: Request) -> ipc::Result<Response> {
-        let quit = match request {
-            Request::Ping => return Ok(Response::Pong),
-            Request::BuildView(viewport) => return Ok(Response::View(self.app.build_view(viewport))),
-            Request::Event(event) => self.app.handle_event(event),
+    fn apply(&mut self, request: Request) -> ipc::Result<Step> {
+        Ok(match request {
+            Request::Ping => Step::Reply(Response::Pong),
+            Request::BuildView(viewport) => Step::Reply(Response::View(self.app.build_view(viewport))),
+            Request::Event(event) => Step::Settle { quit: self.app.handle_event(event) },
             Request::Tick => {
                 self.app.on_tick();
-                false
+                Step::Settle { quit: false }
             },
             Request::Start { .. } => return Err(IpcError::Unexpected),
-        };
+        })
+    }
 
-        // A signal write schedules the render effect rather than running it,
-        // so let it run before reading the flag.
-        tokio::task::yield_now().await;
-
+    /// Reads, once the render effect has run, whether to repaint and whether
+    /// the state changed.
+    fn settled(&mut self, quit: bool) -> ipc::Result<Response> {
         let encoded = encode(&self.app)?;
         let state = (encoded != self.sent).then(|| {
             self.sent.clone_from(&encoded);

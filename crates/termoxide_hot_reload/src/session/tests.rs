@@ -55,6 +55,25 @@ fn run(test: impl Future<Output = ()>) {
     tokio::task::LocalSet::new().block_on(&runtime, test);
 }
 
+/// A responder whose app has started from scratch.
+async fn started() -> Responder<Counter> {
+    let mut responder = Responder::new(Counter::new());
+    answer(&mut responder, Request::Start { state: None }).await;
+    responder
+}
+
+/// Answers `request` the way the subprocess does: letting the render effect
+/// run before settling.
+async fn answer(responder: &mut Responder<Counter>, request: Request) -> Response {
+    match responder.step(request).unwrap() {
+        Step::Reply(response) => response,
+        Step::Settle { quit } => {
+            tokio::task::yield_now().await;
+            responder.settled(quit).unwrap()
+        },
+    }
+}
+
 fn outcome(response: Response) -> Outcome {
     match response {
         Response::Done(outcome) => outcome,
@@ -65,7 +84,9 @@ fn outcome(response: Response) -> Outcome {
 #[test]
 fn start_reports_mouse_capture_and_the_state() {
     run(async {
-        let (_session, started) = Session::start(Counter::new(), None).unwrap();
+        let mut responder = Responder::new(Counter::new());
+
+        let started = answer(&mut responder, Request::Start { state: None }).await;
 
         let Response::Started { mouse_capture, state } = started else {
             panic!("expected Started")
@@ -78,9 +99,9 @@ fn start_reports_mouse_capture_and_the_state() {
 #[test]
 fn a_change_the_view_reads_is_dirty_and_sends_the_state() {
     run(async {
-        let (mut session, _) = Session::start(Counter::new(), None).unwrap();
+        let mut responder = started().await;
 
-        let done = outcome(session.handle(Request::Tick).await.unwrap());
+        let done = outcome(answer(&mut responder, Request::Tick).await);
 
         assert!(done.dirty);
         assert_eq!(done.state, Some(postcard::to_allocvec(&(1u32, 0u32)).unwrap()));
@@ -90,9 +111,9 @@ fn a_change_the_view_reads_is_dirty_and_sends_the_state() {
 #[test]
 fn a_change_the_view_doesnt_read_sends_the_state_without_repainting() {
     run(async {
-        let (mut session, _) = Session::start(Counter::new(), None).unwrap();
+        let mut responder = started().await;
 
-        let done = outcome(session.handle(key('h')).await.unwrap());
+        let done = outcome(answer(&mut responder, key('h')).await);
 
         assert!(!done.dirty);
         assert_eq!(done.state, Some(postcard::to_allocvec(&(0u32, 1u32)).unwrap()));
@@ -102,9 +123,9 @@ fn a_change_the_view_doesnt_read_sends_the_state_without_repainting() {
 #[test]
 fn an_event_that_changes_nothing_sends_nothing() {
     run(async {
-        let (mut session, _) = Session::start(Counter::new(), None).unwrap();
+        let mut responder = started().await;
 
-        let done = outcome(session.handle(key('x')).await.unwrap());
+        let done = outcome(answer(&mut responder, key('x')).await);
 
         assert_eq!(done, Outcome { quit: false, dirty: false, state: None });
     });
@@ -113,20 +134,20 @@ fn an_event_that_changes_nothing_sends_nothing() {
 #[test]
 fn the_state_is_only_sent_again_once_it_changes_again() {
     run(async {
-        let (mut session, _) = Session::start(Counter::new(), None).unwrap();
+        let mut responder = started().await;
 
-        assert!(outcome(session.handle(Request::Tick).await.unwrap()).state.is_some());
-        assert_eq!(outcome(session.handle(key('x')).await.unwrap()).state, None);
-        assert!(outcome(session.handle(Request::Tick).await.unwrap()).state.is_some());
+        assert!(outcome(answer(&mut responder, Request::Tick).await).state.is_some());
+        assert_eq!(outcome(answer(&mut responder, key('x')).await).state, None);
+        assert!(outcome(answer(&mut responder, Request::Tick).await).state.is_some());
     });
 }
 
 #[test]
 fn a_quit_event_is_reported() {
     run(async {
-        let (mut session, _) = Session::start(Counter::new(), None).unwrap();
+        let mut responder = started().await;
 
-        assert!(outcome(session.handle(key('q')).await.unwrap()).quit);
+        assert!(outcome(answer(&mut responder, key('q')).await).quit);
     });
 }
 
@@ -134,9 +155,10 @@ fn a_quit_event_is_reported() {
 fn a_session_resumes_from_the_hosts_state() {
     run(async {
         let state = postcard::to_allocvec(&(7u32, 3u32)).unwrap();
-        let (mut session, _) = Session::start(Counter::new(), Some(&state)).unwrap();
+        let mut responder = Responder::new(Counter::new());
+        answer(&mut responder, Request::Start { state: Some(state) }).await;
 
-        let Response::View(view) = session.handle(Request::BuildView(Rect::new(0, 0, 5, 1))).await.unwrap() else {
+        let Response::View(view) = answer(&mut responder, Request::BuildView(Rect::new(0, 0, 5, 1))).await else {
             panic!("expected a view")
         };
         assert!(matches!(view.content, ViewContent::Text { ref text, .. } if text == "7"));
@@ -146,10 +168,22 @@ fn a_session_resumes_from_the_hosts_state() {
 #[test]
 fn a_second_start_is_refused() {
     run(async {
-        let (mut session, _) = Session::start(Counter::new(), None).unwrap();
+        let mut responder = started().await;
 
-        let error = session.handle(Request::Start { state: None }).await.unwrap_err();
+        let Err(error) = responder.step(Request::Start { state: None }) else {
+            panic!("a second start was accepted")
+        };
 
         assert!(matches!(error, IpcError::Unexpected), "{error}");
+    });
+}
+
+#[test]
+fn only_a_ping_or_a_start_is_answered_before_the_app_starts() {
+    run(async {
+        let mut responder = Responder::new(Counter::new());
+
+        assert!(matches!(answer(&mut responder, Request::Ping).await, Response::Pong));
+        assert!(matches!(responder.step(Request::Tick), Err(IpcError::Unexpected)));
     });
 }
