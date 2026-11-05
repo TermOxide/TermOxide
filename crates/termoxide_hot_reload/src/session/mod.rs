@@ -101,7 +101,7 @@ impl<A: App + Clone + Serialize + DeserializeOwned + 'static> Session<A> {
                 self.app.on_tick();
                 Step::Settle { quit: false }
             },
-            Request::Start { .. } => return Err(IpcError::Unexpected),
+            Request::Start { .. } | Request::Load { .. } => return Err(IpcError::Unexpected),
         })
     }
 

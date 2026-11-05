@@ -1,5 +1,9 @@
-//! Runs the `probe` binary in a pseudo-terminal and reads its screen through a
-//! terminal emulator. Checks poll until they hold, failing after [`deadline`].
+//! Runs a binary, the `probe` by default, in a pseudo-terminal and reads its
+//! screen through a terminal emulator. Checks poll until they hold, failing
+//! after [`deadline`].
+
+// Each test binary uses its own part of this module.
+#![allow(dead_code)]
 
 use std::{
     io::{Read, Write},
@@ -19,6 +23,10 @@ fn deadline() -> Duration {
         .and_then(|secs| secs.parse().ok());
     Duration::from_secs(secs.unwrap_or(2))
 }
+
+/// For what waits on a cargo build: 5 minutes, or more when [`deadline`] is
+/// raised for a traced run.
+pub fn build_deadline() -> Duration { Duration::from_secs(300).max(deadline() * 5) }
 
 /// Wide enough that no line of a panic report wraps.
 pub const ROWS: u16 = 24;
@@ -42,18 +50,22 @@ impl Session {
     /// The backtrace variables are removed unless `env` sets them, since some
     /// environments export them globally.
     pub fn start_with(env: &[(&str, &str)]) -> Self {
-        let pair = native_pty_system().openpty(pty_size(ROWS, COLS)).expect("open a pty");
-
         let mut command = CommandBuilder::new(env!("CARGO_BIN_EXE_probe"));
         command.cwd(env!("CARGO_MANIFEST_DIR"));
-        command.env("TERM", "xterm-256color");
         command.env_remove("RUST_BACKTRACE");
         command.env_remove("RUST_LIB_BACKTRACE");
         for (key, value) in env {
             command.env(key, value);
         }
+        Self::spawn(command)
+    }
 
-        let child = pair.slave.spawn_command(command).expect("spawn the probe");
+    /// Runs `command` in a fresh pseudo-terminal.
+    pub fn spawn(mut command: CommandBuilder) -> Self {
+        let pair = native_pty_system().openpty(pty_size(ROWS, COLS)).expect("open a pty");
+        command.env("TERM", "xterm-256color");
+
+        let child = pair.slave.spawn_command(command).expect("spawn the app");
         // Otherwise the reader never sees end of file.
         drop(pair.slave);
 
@@ -81,8 +93,12 @@ impl Session {
 
     pub fn contents(&self) -> String { self.parser.lock().unwrap().screen().contents() }
 
-    pub fn wait_until(&self, what: &str, mut holds: impl FnMut(&vt100::Screen) -> bool) {
-        let deadline = Instant::now() + deadline();
+    pub fn wait_until(&self, what: &str, holds: impl FnMut(&vt100::Screen) -> bool) {
+        self.wait_until_within(deadline(), what, holds);
+    }
+
+    pub fn wait_until_within(&self, within: Duration, what: &str, mut holds: impl FnMut(&vt100::Screen) -> bool) {
+        let deadline = Instant::now() + within;
         loop {
             {
                 let parser = self.parser.lock().unwrap();
@@ -97,8 +113,10 @@ impl Session {
         }
     }
 
-    pub fn wait_for_text(&self, text: &str) {
-        self.wait_until(&format!("{text:?}"), |screen| screen.contents().contains(text));
+    pub fn wait_for_text(&self, text: &str) { self.wait_for_text_within(deadline(), text); }
+
+    pub fn wait_for_text_within(&self, within: Duration, text: &str) {
+        self.wait_until_within(within, &format!("{text:?}"), |screen| screen.contents().contains(text));
     }
 
     pub fn wait_for_startup(&self) {
