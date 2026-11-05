@@ -96,3 +96,20 @@ impl<T: fmt::Display + 'static> fmt::Display for Signal<T> {
         write!(f, "{}", *val)
     }
 }
+
+/// A signal serializes as its current value, without subscribing anything.
+#[cfg(feature = "serde")]
+impl<T: serde::Serialize + 'static> serde::Serialize for Signal<T> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.read_untracked().serialize(serializer)
+    }
+}
+
+/// A signal deserializes as a new signal, owned by the current owner, holding
+/// the value: subscribers of the serialized signal don't come along.
+#[cfg(feature = "serde")]
+impl<'de, T: serde::Deserialize<'de> + 'static> serde::Deserialize<'de> for Signal<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        T::deserialize(deserializer).map(Self::new)
+    }
+}
