@@ -7,6 +7,7 @@ use futures::{
     executor::{LocalPool, LocalSpawner},
     task::LocalSpawnExt,
 };
+use log::{Level, LevelFilter, Log, Metadata, Record};
 use serde::{Serialize, de::DeserializeOwned};
 use termoxide::App;
 
@@ -43,7 +44,11 @@ pub fn handle<A>(request: Vec<u8>, fresh: impl FnOnce() -> A) -> Result<Vec<u8>,
 where
     A: App + Clone + Serialize + DeserializeOwned + 'static,
 {
-    // Already set from the second request on.
+    // Both already set from the second request on. The logger comes first, so
+    // the app can log as soon as it is built.
+    if log::set_logger(&GuestLogger).is_ok() {
+        log::set_max_level(LevelFilter::Debug);
+    }
     let _ = Executor::init_local_custom_executor(LocalExecutor::new());
 
     RESPONDER.with_borrow_mut(|slot| {
@@ -63,6 +68,30 @@ where
         };
         postcard::to_allocvec(&response).map_err(|e| IpcError::Encode(e).to_string())
     })
+}
+
+/// The guest's `log` backend: hands every record to the host, which writes it to
+/// the run's log file tagged as the app's.
+struct GuestLogger;
+
+impl Log for GuestLogger {
+    fn enabled(&self, metadata: &Metadata<'_>) -> bool { metadata.level() <= LevelFilter::Debug }
+
+    fn log(&self, record: &Record<'_>) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
+        let level = match record.level() {
+            Level::Error => bindings::Level::Error,
+            Level::Warn => bindings::Level::Warn,
+            Level::Info => bindings::Level::Info,
+            Level::Debug => bindings::Level::Debug,
+            Level::Trace => bindings::Level::Trace,
+        };
+        bindings::log(level, &record.args().to_string());
+    }
+
+    fn flush(&self) {}
 }
 
 /// Runs the reactive runtime's tasks inside the guest, which has one thread and

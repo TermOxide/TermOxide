@@ -2,6 +2,18 @@ package termoxide:hot-reload;
 
 /// An app built as a hot-reload guest.
 world guest {
+  /// How serious a log record is, as the `log` crate ranks it.
+  enum level {
+    error,
+    warn,
+    info,
+    debug,
+    trace,
+  }
+
+  /// Writes one of the app's log records to the run's log file.
+  import log: func(level: level, message: string);
+
   /// Answers one `postcard`-encoded request with an encoded response, or says
   /// why it couldn't.
   export handle: func(request: list<u8>) -> result<list<u8>, string>;

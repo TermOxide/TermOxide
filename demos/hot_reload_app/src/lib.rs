@@ -26,7 +26,11 @@ impl App for Counter {
     fn on_tick(&self) { self.ticks.update(|ticks| *ticks += 1); }
 
     fn handle_event(&self, event: Event) -> bool {
-        matches!(event, Event::KeyPress(key) if key.code == KeyCode::Char('q'))
+        let quit = matches!(event, Event::KeyPress(key) if key.code == KeyCode::Char('q'));
+        if quit {
+            log::info!("quitting after {} ticks", self.ticks.get_untracked());
+        }
+        quit
     }
 
     fn build_view(&self, viewport: Rect) -> ViewNode {
