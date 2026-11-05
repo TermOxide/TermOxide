@@ -1,10 +1,16 @@
 use std::{
     env,
+    path::Path,
     process::{Child, Command, Stdio},
     time::Duration,
 };
 
-use crate::ipc::{self, HostChannel, IpcError, Listener, Request, Response};
+use log::Level;
+
+use crate::{
+    ipc::{self, HostChannel, IpcError, Listener, Request, Response},
+    logging::{LOG_ENV, relay_output},
+};
 
 /// Set on the subprocess to the name of the pipe it must connect to.
 pub(crate) const PIPE_ENV: &str = "TERMOXIDE_HOT_RELOAD_PIPE";
@@ -21,22 +27,32 @@ pub(crate) struct Subprocess {
 }
 
 impl Subprocess {
-    /// Spawns this same executable as the subprocess and waits for it to
-    /// connect.
+    /// Spawns this same executable as the subprocess, logging to the file at
+    /// `log`, and waits for it to connect.
     ///
-    /// Its stdin, stdout and stderr are null, so it can neither draw over the
-    /// host's terminal nor read its keys.
-    pub(crate) fn spawn() -> ipc::Result<Self> {
+    /// Its stdin is null, so it can't read the host's keys; its stdout and
+    /// stderr are relayed into the log rather than drawn over the terminal.
+    pub(crate) fn spawn(log: &Path) -> ipc::Result<Self> {
         let listener = Listener::bind()?;
         let mut child = Command::new(env::current_exe()?)
             .env(PIPE_ENV, listener.name())
+            .env(LOG_ENV, log)
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()?;
+        if let Some(stdout) = child.stdout.take() {
+            relay_output(stdout, Level::Info);
+        }
+        if let Some(stderr) = child.stderr.take() {
+            relay_output(stderr, Level::Debug);
+        }
 
         match listener.accept(CONNECT_TIMEOUT) {
-            Ok(channel) => Ok(Self { child, channel }),
+            Ok(channel) => {
+                log::info!("subprocess {} connected", child.id());
+                Ok(Self { child, channel })
+            },
             Err(e) => {
                 let _ = child.kill();
                 let _ = child.wait();
@@ -65,6 +81,7 @@ impl Drop for Subprocess {
 /// requests until the host goes away.
 pub(crate) fn serve(pipe: &str) -> ipc::Result<()> {
     let mut channel = ipc::connect(pipe, CONNECT_TIMEOUT)?;
+    log::info!("connected to the host");
     loop {
         // `recv_timeout` treats a deadline that overflows as no deadline, so this
         // waits for the next request however long it takes.
