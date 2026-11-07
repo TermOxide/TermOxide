@@ -1,0 +1,124 @@
+name: Publish crates to crates.io
+
+on:
+  workflow_call:
+    inputs:
+      crates:
+        description: "Space-separated crate names to publish"
+        required: true
+        type: string
+      ref:
+        description: "Commit to publish from (the version bump commit)"
+        required: true
+        type: string
+      dry_run:
+        description: "Package and build the crates without uploading them"
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      CARGO_REGISTRY_TOKEN:
+        required: false
+
+  workflow_dispatch:
+    inputs:
+      crates:
+        description: "Comma-separated crate names to publish. Leave empty for every publishable crate."
+        required: false
+        type: string
+      ref:
+        description: "Branch, tag or commit to publish from"
+        required: false
+        type: string
+      dry_run:
+        description: "Dry run only: package and build, don't upload"
+        required: false
+        type: boolean
+        default: true
+
+# Never run two publishes at once: crates.io rejects a version that is already
+# being uploaded, and the dependency order must hold across runs.
+concurrency:
+  group: crates-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+
+      - name: Setup Rust & cache
+        uses: ./.github/actions/rust-cache
+        with:
+          action: push
+
+      - name: Resolve crates to publish
+        id: resolve
+        shell: bash
+        env:
+          REQUESTED: ${{ inputs.crates }}
+        run: |
+          metadata=$(cargo metadata --no-deps --format-version 1)
+
+          # `publish = false` shows up as an empty registry list.
+          publishable=$(echo "$metadata" | jq -r '.packages[] | select(.publish != []) | .name')
+
+          requested=$(echo "$REQUESTED" | tr -s ', ' '\n' | grep . || true)
+          if [[ -z "$requested" ]]; then
+            requested="$publishable"
+          fi
+
+          args=""
+          for crate in $requested; do
+            if ! grep -qx "$crate" <<<"$publishable"; then
+              echo "::notice::${crate} is not publishable (publish = false or not in the workspace), skipping"
+              continue
+            fi
+
+            version=$(echo "$metadata" | jq -r --arg name "$crate" '.packages[] | select(.name == $name) | .version')
+
+            # Lets a retry pick up where a partly failed publish stopped.
+            status=$(curl -s -o /dev/null -w '%{http_code}' \
+              -A "TermOxide-ci (https://github.com/${GITHUB_REPOSITORY})" \
+              "https://crates.io/api/v1/crates/${crate}/${version}")
+            if [[ "$status" == "200" ]]; then
+              echo "::notice::${crate}@${version} is already on crates.io, skipping"
+              continue
+            fi
+
+            echo "Will publish ${crate}@${version}"
+            args+=" -p ${crate}"
+          done
+
+          echo "args=${args# }" >> "$GITHUB_OUTPUT"
+
+      # Cargo orders the packages by their dependencies, and packages each one
+      # against the not-yet-published versions of the others.
+      - name: Dry run
+        if: steps.resolve.outputs.args != ''
+        env:
+          ARGS: ${{ steps.resolve.outputs.args }}
+        run: |
+          read -ra args <<<"$ARGS"
+          cargo publish --locked --dry-run "${args[@]}"
+
+      - name: Publish
+        if: steps.resolve.outputs.args != '' && !inputs.dry_run
+        env:
+          ARGS: ${{ steps.resolve.outputs.args }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [[ -z "$CARGO_REGISTRY_TOKEN" ]]; then
+            echo "::error::CARGO_REGISTRY_TOKEN is not set, so nothing can be uploaded"
+            exit 1
+          fi
+          read -ra args <<<"$ARGS"
+          cargo publish --locked "${args[@]}"
