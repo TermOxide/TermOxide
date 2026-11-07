@@ -3,7 +3,7 @@ name: Bump workspace crate versions
 on:
   pull_request:
     types: [closed]
-    branches: [master, main]
+    branches: [main]
 
   workflow_dispatch:
     inputs:
@@ -16,6 +16,18 @@ on:
         description: "Comma-separated crate names to force bump (e.g. crate1,crate2). Leave empty to auto-detect."
         required: false
         type: string
+      dry_run:
+        description: "Publish in dry-run mode: package and build the bumped crates, don't upload"
+        required: false
+        type: boolean
+        default: false
+
+# Each run bumps from the tip of the branch, so two overlapping runs would
+# bump and tag the same changes.
+concurrency:
+  group: crates-bumper
+  cancel-in-progress: false
+  queue: max
 
 jobs:
   setup-bumper:
@@ -42,6 +54,9 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
     needs: setup-bumper
+    outputs:
+      crates: ${{ steps.push.outputs.crates }}
+      sha: ${{ steps.push.outputs.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -94,6 +109,29 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "release_type=$RELEASE_TYPE" >> "$GITHUB_OUTPUT"
 
+      # The bump starts from the tip of the branch: a merge that landed after
+      # this PR's would be released under this PR's label.
+      - name: Check the branch tip is this PR's merge
+        if: steps.release.outputs.skip != 'true' && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if ! git merge-base --is-ancestor "$MERGE_SHA" HEAD; then
+            echo "::error::#${PR_NUMBER}'s merge commit ${MERGE_SHA} is not on $(git branch --show-current)"
+            exit 1
+          fi
+
+          # Only earlier runs' bump commits may sit on top of the merge.
+          later=$(git log --format='%H %an %s' "${MERGE_SHA}..HEAD" \
+            | grep -v ' github-actions chore: bump workspace crate versions \[skip ci\]$' || true)
+          if [[ -n "$later" ]]; then
+            echo "::error::Commits merged after #${PR_NUMBER} would be released under its label. Bump them with a manual dispatch instead:"
+            echo "$later"
+            exit 1
+          fi
+
       - name: Resolve force pattern
         id: force
         if: steps.release.outputs.skip != 'true'
@@ -142,10 +180,19 @@ jobs:
           # --allow-branch, --no-git-push and --no-*-tags are all incompatible with --no-git-commit
           # since they are only relevant when letting cargo-workspaces handle git operations.
           # We handle git ourselves to support commit conventions and individual tagging.
+          read -ra force_args <<<"$FORCE_ARG"
+
+          # Without a release tag, cargo-workspaces sees every crate as changed
+          # and the publish job would upload all of them.
+          if [[ ${#force_args[@]} -eq 0 && -z "$(git tag --list '*@*')" ]]; then
+            echo "::error::No crate@version tag found. Tag each crate at its current version on this branch before the first release."
+            exit 1
+          fi
+
           cargo workspaces version \
             --no-git-commit \
             --yes \
-            $FORCE_ARG \
+            "${force_args[@]}" \
             "$RELEASE_TYPE"
 
       - name: Resolve bumped crates
@@ -170,6 +217,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Commit, tag & push
+        id: push
         if: steps.release.outputs.skip != 'true'
         shell: bash
         env:
@@ -200,14 +248,36 @@ jobs:
 
           # Tag each bumped crate (format: crate-name@x.y.z)
           # Matches cargo-workspaces default individual tag format (%n@%v)
-          echo "$BUMPED_CRATES" | while read -r crate; do
+          tags=()
+          while read -r crate; do
             [[ -z "$crate" ]] && continue # Skip empty lines
             version=$(cargo metadata --no-deps --format-version 1 \
               | jq -r --arg name "$crate" \
                 '.packages[] | select(.name == $name) | .version')
             echo "Tagging ${crate}@${version}"
             git tag "${crate}@${version}"
-          done
+            tags+=("refs/tags/${crate}@${version}")
+          done <<<"$BUMPED_CRATES"
 
-          git push
-          git push origin --tags
+          # A bump commit pushed without its tags would be bumped again on a
+          # rerun, since the version diff starts from the last tag.
+          git push --atomic origin HEAD "${tags[@]}"
+
+          echo "crates=$(echo "$BUMPED_CRATES" | xargs)" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # Tags pushed with GITHUB_TOKEN don't trigger other workflows, so the publish
+  # is chained here instead of listening for the tags.
+  publish:
+    name: Publish to crates.io
+    needs: run-bumper
+    if: needs.run-bumper.outputs.crates != ''
+    permissions:
+      contents: read
+    uses: ./.github/workflows/crates-publish.yaml
+    with:
+      crates: ${{ needs.run-bumper.outputs.crates }}
+      ref: ${{ needs.run-bumper.outputs.sha }}
+      dry_run: ${{ inputs.dry_run == true }}
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
