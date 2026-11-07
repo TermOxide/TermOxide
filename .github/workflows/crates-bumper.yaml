@@ -3,7 +3,7 @@ name: Bump workspace crate versions
 on:
   pull_request:
     types: [closed]
-    branches: [master, main]
+    branches: [main]
 
   workflow_dispatch:
     inputs:
@@ -16,6 +16,11 @@ on:
         description: "Comma-separated crate names to force bump (e.g. crate1,crate2). Leave empty to auto-detect."
         required: false
         type: string
+      dry_run:
+        description: "Publish in dry-run mode: package and build the bumped crates, don't upload"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   setup-bumper:
@@ -42,6 +47,9 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
     needs: setup-bumper
+    outputs:
+      crates: ${{ steps.push.outputs.crates }}
+      sha: ${{ steps.push.outputs.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -142,10 +150,11 @@ jobs:
           # --allow-branch, --no-git-push and --no-*-tags are all incompatible with --no-git-commit
           # since they are only relevant when letting cargo-workspaces handle git operations.
           # We handle git ourselves to support commit conventions and individual tagging.
+          read -ra force_args <<<"$FORCE_ARG"
           cargo workspaces version \
             --no-git-commit \
             --yes \
-            $FORCE_ARG \
+            "${force_args[@]}" \
             "$RELEASE_TYPE"
 
       - name: Resolve bumped crates
@@ -170,6 +179,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Commit, tag & push
+        id: push
         if: steps.release.outputs.skip != 'true'
         shell: bash
         env:
@@ -211,3 +221,22 @@ jobs:
 
           git push
           git push origin --tags
+
+          echo "crates=$(echo "$BUMPED_CRATES" | xargs)" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # Tags pushed with GITHUB_TOKEN don't trigger other workflows, so the publish
+  # is chained here instead of listening for the tags.
+  publish:
+    name: Publish to crates.io
+    needs: run-bumper
+    if: needs.run-bumper.outputs.crates != ''
+    permissions:
+      contents: read
+    uses: ./.github/workflows/crates-publish.yaml
+    with:
+      crates: ${{ needs.run-bumper.outputs.crates }}
+      ref: ${{ needs.run-bumper.outputs.sha }}
+      dry_run: ${{ inputs.dry_run == true }}
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
