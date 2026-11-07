@@ -1,9 +1,10 @@
 [package]
 name = "termoxide_e2e"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "End-to-end tests driving a TermOxide application through a real pseudo-terminal"
-license = "BSD-2-Clause"
 publish = false
 
 [[bin]]
