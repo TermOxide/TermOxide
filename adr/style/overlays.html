@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Overlays and layering — Styling ADR</title>
+<link rel="stylesheet" href="style.css"></head>
+<body><div class="wrap">
+<nav class="top"><a href="index.html">← All decisions</a><span>6 / 10</span></nav>
+<p class="eyebrow">Domain 6</p>
+<h1>Overlays and layering</h1>
+<p class="lede">What replaces <code>overflow: visible</code> once it is gone — dropdowns, tooltips and modals have to escape their parent somehow.</p>
+<div class="toolbar">
+  <button data-expand="open">Expand all reasoning</button>
+  <button data-expand="closed">Collapse all</button>
+</div>
+<article class="d" id="d6-1"><div class="d-h"><span class="d-id">D6.1</span><h3>A <code>Layer</code> portal primitive, not <code>overflow: visible</code></h3><span class="chip s-accepted">accepted</span></div><p class="d-dec">A portal lifts a subtree out of the normal tree and paints it into a separate layer with its own root rectangle. Clipping remains absolute within each layer.</p><details><summary>Alternatives considered</summary><ul><li><strong>Re-admit <code>overflow: visible</code></strong> for overlay cases only.</li></ul></details><details><summary>Reasoning</summary><p>Removing <code>visible</code> (<a href="layout.html#d5-7">D5.7</a>) left dropdowns, tooltips and modals with no way to escape their parent — a hole that had to be filled deliberately rather than by reintroducing the mechanism just rejected.</p><p>With portals, no one ever has to reason about whether a given node escapes its ancestor's clip. It either is in this layer or it is not.</p></details></article><article class="d" id="d6-2"><div class="d-h"><span class="d-id">D6.2</span><h3>Ordered layers, not <code>z-index</code></h3><span class="chip s-reserved">reserved</span></div><p class="d-dec">Layer ordering is a stable sort key. v1 ships a single overlay layer above the base; the key is designed as <code>(Layer, i32)</code> so finer ordering can be added without redesign.</p><details><summary>Alternatives considered</summary><ul><li><strong>Full CSS <code>z-index</code></strong> with stacking contexts.</li><li><strong>A fixed enum</strong> — Base, Overlay, Modal, Tooltip — with no numeric component.</li></ul></details><details><summary>Reasoning</summary><p>CSS <code>z-index</code> requires stacking contexts, and stacking contexts interacting with <code>opacity</code>, <code>transform</code> and <code>position</code> to trap children are one of the genuinely notorious complexity sinks in the whole specification.</p><p>A <code>(Layer, i32)</code> sort key is the safe generalisation: it grows to arbitrary ordering without ever growing into stacking-context semantics. <em>That</em> is what is reserved for later — not CSS <code>z-index</code> itself, which cannot be added on top of this without becoming the thing it replaced.</p></details></article><article class="d" id="d6-3"><div class="d-h"><span class="d-id">D6.3</span><h3>The layout driver is two-pass from day one</h3><span class="chip s-accepted">accepted</span></div><p class="d-dec">Solve the base layer, collect portal anchors, then solve each overlay layer against its anchor rectangle, then paint layers in order. v1 ships centred modals, which need no anchor.</p><details><summary>Alternatives considered</summary><ul><li><strong>Single-pass v1</strong>, rewriting the driver when anchored overlays arrive.</li></ul></details><details><summary>Reasoning</summary><p>An anchored dropdown must know its trigger's resolved rectangle, which does not exist until the base pass finishes. Building the second pass later is a rewrite of the driver rather than an addition to it — the same category of retrofit cost as clip-at-paint or the measure signature.</p></details><details><summary>Consequences</summary><p>Centred modals work in a single pass, so v1 can ship the capability without ever exercising the second one. The cost is paid once, in structure.</p></details></article>
+<nav class="bottom"><a href="layout.html">&larr; Layout model, units and the box model</a><a href="colour.html">Colour and capability degradation &rarr;</a></nav>
+</div><script>
+document.querySelectorAll('[data-expand]').forEach(function(b){
+  b.addEventListener('click', function(){
+    var open = b.dataset.expand === 'open';
+    document.querySelectorAll('details').forEach(function(d){ d.open = open; });
+  });
+});
+</script></body></html>
