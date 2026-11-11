@@ -24,7 +24,7 @@ macro_rules! normalized {
     };
 }
 
-macro_rules! for_each_property {
+macro_rules! define_style {
     ($($(#[$meta:meta])* $field:ident / $id:ident: $ty:ty = $class:ident $(, $norm:path)?;)*) => {
         /// A partial style: every property is a [`Property`], `Unset` unless
         /// written (ADR D2.2).
@@ -94,48 +94,60 @@ macro_rules! for_each_property {
 
 const fn non_negative(factor: f32) -> f32 { factor.max(0.0) }
 
-for_each_property! {
-    fg / Fg: Color = Paint;
-    bg / Bg: Color = Paint;
-    bold / Bold: bool = Paint;
-    dim / Dim: bool = Paint;
-    italic / Italic: bool = Paint;
-    underline / Underline: bool = Paint;
-    strikethrough / Strikethrough: bool = Paint;
-    reverse / Reverse: bool = Paint;
-    border_style / BorderStyle: BorderStyle = Paint;
-    text_overflow / TextOverflow: TextOverflow = Paint;
+/// Hands the property table to `$callback`, so every per-property item is
+/// generated from one list (ADR D2.1).
+macro_rules! for_each_property {
+    ($callback:ident) => {
+        $callback! {
+            fg / Fg: Color = Paint;
+            bg / Bg: Color = Paint;
+            bold / Bold: bool = Paint;
+            dim / Dim: bool = Paint;
+            italic / Italic: bool = Paint;
+            underline / Underline: bool = Paint;
+            strikethrough / Strikethrough: bool = Paint;
+            reverse / Reverse: bool = Paint;
+            border_style / BorderStyle: BorderStyle = Paint;
+            text_overflow / TextOverflow: TextOverflow = Paint;
 
-    display / Display: Display = Layout;
-    /// Border-box: includes padding and border (ADR D5.5).
-    width / Width: Unit = Layout, Unit::non_negative;
-    /// Border-box: includes padding and border (ADR D5.5).
-    height / Height: Unit = Layout, Unit::non_negative;
-    min_width / MinWidth: Unit = Layout, Unit::non_negative;
-    max_width / MaxWidth: Unit = Layout, Unit::non_negative;
-    min_height / MinHeight: Unit = Layout, Unit::non_negative;
-    max_height / MaxHeight: Unit = Layout, Unit::non_negative;
-    flex_basis / FlexBasis: Unit = Layout, Unit::non_negative;
-    flex_direction / FlexDirection: FlexDirection = Layout;
-    flex_grow / FlexGrow: f32 = Layout, non_negative;
-    flex_shrink / FlexShrink: f32 = Layout, non_negative;
-    align_items / AlignItems: Align = Layout;
-    align_self / AlignSelf: Align = Layout;
-    justify_content / JustifyContent: Justify = Layout;
-    gap / Gap: Unit = Layout, Unit::non_negative;
-    position / Position: Position = Layout;
-    inset_top / InsetTop: Unit = Layout;
-    inset_right / InsetRight: Unit = Layout;
-    inset_bottom / InsetBottom: Unit = Layout;
-    inset_left / InsetLeft: Unit = Layout;
-    text_wrap / TextWrap: TextWrap = Layout;
+            display / Display: Display = Layout;
+            /// Border-box: includes padding and border (ADR D5.5).
+            width / Width: Unit = Layout, Unit::non_negative;
+            /// Border-box: includes padding and border (ADR D5.5).
+            height / Height: Unit = Layout, Unit::non_negative;
+            min_width / MinWidth: Unit = Layout, Unit::non_negative;
+            max_width / MaxWidth: Unit = Layout, Unit::non_negative;
+            min_height / MinHeight: Unit = Layout, Unit::non_negative;
+            max_height / MaxHeight: Unit = Layout, Unit::non_negative;
+            flex_basis / FlexBasis: Unit = Layout, Unit::non_negative;
+            flex_direction / FlexDirection: FlexDirection = Layout;
+            flex_grow / FlexGrow: f32 = Layout, non_negative;
+            flex_shrink / FlexShrink: f32 = Layout, non_negative;
+            align_items / AlignItems: Align = Layout;
+            align_self / AlignSelf: Align = Layout;
+            justify_content / JustifyContent: Justify = Layout;
+            gap / Gap: Unit = Layout, Unit::non_negative;
+            position / Position: Position = Layout;
+            inset_top / InsetTop: Unit = Layout;
+            inset_right / InsetRight: Unit = Layout;
+            inset_bottom / InsetBottom: Unit = Layout;
+            inset_left / InsetLeft: Unit = Layout;
+            text_wrap / TextWrap: TextWrap = Layout;
 
-    padding_top / PaddingTop: Unit = Both, Unit::non_negative;
-    padding_right / PaddingRight: Unit = Both, Unit::non_negative;
-    padding_bottom / PaddingBottom: Unit = Both, Unit::non_negative;
-    padding_left / PaddingLeft: Unit = Both, Unit::non_negative;
-    border_sides / BorderSides: BorderSides = Both;
+            padding_top / PaddingTop: Unit = Both, Unit::non_negative;
+            padding_right / PaddingRight: Unit = Both, Unit::non_negative;
+            padding_bottom / PaddingBottom: Unit = Both, Unit::non_negative;
+            padding_left / PaddingLeft: Unit = Both, Unit::non_negative;
+            border_sides / BorderSides: BorderSides = Both;
+        }
+    };
 }
+
+for_each_property!(define_style);
+
+mod inherit;
+
+pub use inherit::{Inherited, resolve};
 
 impl Style {
     /// Sets the four paddings to `cells`.
