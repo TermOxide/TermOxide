@@ -32,7 +32,7 @@ fn a_build_that_finishes_in_time_reports_its_status() {
     assert!(!status.success());
 }
 
-const APP: Package = Package { manifest_dir: "/apps/clock" };
+const APP: Package = Package { manifest_dir: "/apps/clock", app: None };
 
 /// A build's exit status with `code`.
 #[cfg(unix)]

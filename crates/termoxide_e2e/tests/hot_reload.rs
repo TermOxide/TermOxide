@@ -12,6 +12,7 @@ mod common;
 
 use std::{
     env,
+    ffi::OsStr,
     fs,
     path::{Path, PathBuf},
     process::Command,
@@ -60,22 +61,7 @@ impl Fixture {
 
     /// Builds the app's executable, the hot-reload host.
     fn build(&self) -> PathBuf {
-        let mut command = Command::new(env!("CARGO"));
-        command
-            .args(["build", "--quiet", "--manifest-path"])
-            .arg(self.dir.join("Cargo.toml"))
-            .env("CARGO_TARGET_DIR", Self::target_dir())
-            // Each fixture links its own copy of the app, most of it debug info:
-            // with it, a dozen fill a CI runner's disk.
-            .env("CARGO_PROFILE_DEV_DEBUG", "false")
-            .env("CARGO_PROFILE_DEV_STRIP", "debuginfo");
-        // `cargo llvm-cov` only instruments its own workspace, and the fixture
-        // is a workspace of its own.
-        if env::var_os("CARGO_LLVM_COV").is_some() {
-            command.env("RUSTFLAGS", "-C instrument-coverage");
-        }
-        let status = command.status().unwrap();
-        assert!(status.success(), "building {} failed", self.name);
+        cargo_build(&self.dir.join("Cargo.toml"));
         Self::target_dir().join("debug").join(&self.name)
     }
 
@@ -83,8 +69,19 @@ impl Fixture {
     fn run(&self) -> Session { self.run_with(&[]) }
 
     /// Runs the app with `env` set as well.
-    fn run_with(&self, env: &[(&str, &str)]) -> Session {
-        let mut command = CommandBuilder::new(self.build());
+    fn run_with(&self, env: &[(&str, &str)]) -> Session { self.spawn(CommandBuilder::new(self.build()), env) }
+
+    /// Runs `termoxide` with `args` in the app's crate folder, `env` set as
+    /// well.
+    fn run_termoxide(&self, args: &[&str], env: &[(&str, &str)]) -> Session {
+        let mut command = CommandBuilder::new(termoxide());
+        command.args(args);
+        self.spawn(command, env)
+    }
+
+    /// Spawns `command` in the app's crate folder, with `env` set and the
+    /// app's logs kept in its own directory.
+    fn spawn(&self, mut command: CommandBuilder, env: &[(&str, &str)]) -> Session {
         for key in COVERAGE_BUILD_ENV {
             command.env_remove(key);
         }
@@ -131,6 +128,32 @@ impl Fixture {
             thread::sleep(Duration::from_millis(100));
         }
     }
+}
+
+/// Builds the crate of `manifest` where every fixture builds.
+fn cargo_build(manifest: &Path) {
+    let mut command = Command::new(env!("CARGO"));
+    command
+        .args(["build", "--quiet", "--manifest-path"])
+        .arg(manifest)
+        .env("CARGO_TARGET_DIR", Fixture::target_dir())
+        // Each fixture links its own copy of the app, most of it debug info:
+        // with it, a dozen fill a CI runner's disk.
+        .env("CARGO_PROFILE_DEV_DEBUG", "false")
+        .env("CARGO_PROFILE_DEV_STRIP", "debuginfo");
+    // `cargo llvm-cov` only instruments what it builds itself.
+    if env::var_os("CARGO_LLVM_COV").is_some() {
+        command.env("RUSTFLAGS", "-C instrument-coverage");
+    }
+    let status = command.status().unwrap();
+    assert!(status.success(), "building {} failed", manifest.display());
+}
+
+/// Builds the `termoxide` command where the fixtures build, so the components
+/// it builds are the ones the fixtures' runs built.
+fn termoxide() -> PathBuf {
+    cargo_build(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../termoxide_cli/Cargo.toml"));
+    Fixture::target_dir().join("debug/termoxide")
 }
 
 /// Runs `fixture` and presses `a` `presses` times.
@@ -368,32 +391,18 @@ fn crashing_too_often_sets_the_trace_aside_and_the_next_run_starts_afresh() {
     session.wait_for_text_within(build_deadline(), "presses: 0");
 }
 
-/// Builds `termoxide_dump` where the fixtures build, then runs it on `trace`,
-/// so the app's component it builds is the one the fixture's run built.
-fn dump(trace: &Path) -> String {
-    let crates = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let status = Command::new(env!("CARGO"))
-        .args([
-            "build",
-            "--quiet",
-            "--features",
-            "host",
-            "--bin",
-            "termoxide_dump",
-            "--manifest-path",
-        ])
-        .arg(crates.join("termoxide_hot_reload/Cargo.toml"))
-        .env("CARGO_TARGET_DIR", Fixture::target_dir())
-        .status()
-        .unwrap();
-    assert!(status.success(), "building termoxide_dump failed");
-    let mut command = Command::new(Fixture::target_dir().join("debug/termoxide_dump"));
+/// Runs `termoxide dump` with `args` in `fixture`'s crate folder.
+fn dump(fixture: &Fixture, args: &[&OsStr]) -> String {
+    let mut command = Command::new(termoxide());
     for key in COVERAGE_BUILD_ENV {
         command.env_remove(key);
     }
     let output = command
-        .arg(trace)
+        .arg("dump")
+        .args(args)
+        .current_dir(&fixture.dir)
         .env("CARGO_TARGET_DIR", Fixture::target_dir())
+        .env("XDG_STATE_HOME", fixture.dir.join("state"))
         .output()
         .unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
@@ -409,15 +418,33 @@ fn termoxide_dump_prints_a_trace_as_the_app_decodes_it() {
     session.wait_for_text("presses: 2");
     quit(session);
 
-    let printed = dump(&fixture.snapshot());
+    let printed = dump(&fixture, &[fixture.snapshot().as_os_str()]);
 
     // The start, then one entry per press.
     assert!(printed.contains(r#""count": 2"#), "{printed}");
-    assert!(
-        printed.ends_with(
-            "3 entries
-"
-        ),
-        "{printed}"
-    );
+    assert!(printed.ends_with("3 entries\n"), "{printed}");
+    // The app's crate folder leads to the same trace.
+    assert_eq!(dump(&fixture, &[]), printed);
+}
+
+#[test]
+fn termoxide_run_hot_reloads_the_app_of_a_crate_folder() {
+    let fixture = Fixture::copy("cli");
+    let mut session = fixture.run_termoxide(&["run", "--persist"], &[]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+    session.send(b"aa");
+    session.wait_for_text("presses: 2");
+
+    fixture.edit(&[("\"presses: {}\"", "\"edited: {}\"")]);
+    session.wait_for_text_within(build_deadline(), "edited: 2");
+    quit(session);
+
+    // Logged and traced under the package's name, as a release runner would.
+    fixture.wait_for_log("keeping the app's state in");
+    let session = fixture.run_termoxide(&["run"], &[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "edited: 2");
+    quit(session);
+
+    let session = fixture.run_termoxide(&["run", "--fresh"], &[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "edited: 0");
 }

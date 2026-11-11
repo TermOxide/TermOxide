@@ -59,11 +59,10 @@ fn a_file_name_has_no_colon() {
 
 #[test]
 fn the_log_directory_is_per_app() {
-    let dir = log_dir().unwrap();
+    let dir = log_dir("clock").unwrap();
     let parts: Vec<_> = dir.components().rev().take(3).map(|part| part.as_os_str().to_owned()).collect();
 
-    assert_eq!(parts[0], "logs");
-    assert_eq!(parts[2], "termoxide");
+    assert_eq!(parts, ["logs", "clock", "termoxide"]);
 }
 
 #[test]

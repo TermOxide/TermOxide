@@ -19,9 +19,9 @@ pub(crate) struct LogFile {
 }
 
 impl LogFile {
-    /// Creates this run's log file in the per-user log directory, named after
-    /// the current time.
-    pub(crate) fn create() -> io::Result<Self> { Self::create_in(&log_dir()?) }
+    /// Creates this run's log file in `app`'s per-user log directory, named
+    /// after the current time.
+    pub(crate) fn create(app: &str) -> io::Result<Self> { Self::create_in(&log_dir(app)?) }
 
     /// Creates this run's log file in `dir`, so tests don't touch the user's
     /// directories.

@@ -15,10 +15,18 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Copy)]
 pub struct Package {
     pub manifest_dir: &'static str,
+    /// The app's name, where it isn't the executable's: `termoxide run` hosts
+    /// any app.
+    pub app: Option<&'static str>,
 }
 
 impl Package {
     pub(crate) fn manifest(self) -> PathBuf { Path::new(self.manifest_dir).join("Cargo.toml") }
+
+    /// What names the directory of the app's logs and state.
+    pub(crate) fn app_name(self) -> std::io::Result<String> {
+        self.app.map_or_else(crate::logging::exe_name, |app| Ok(app.to_owned()))
+    }
 }
 
 /// The target the guest is built for.

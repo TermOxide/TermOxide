@@ -1,7 +1,7 @@
 //! The app's state saved on disk, so it survives a restart of the host itself:
 //! a trace of the bytes the host keeps for a lost subprocess, fingerprint
 //! included, one entry per recorded change. A trace saved by another state type
-//! is caught like any other state, and `termoxide_dump` prints one back.
+//! is caught like any other state, and `termoxide dump` prints one back.
 
 use std::{
     cell::RefCell,
@@ -36,6 +36,9 @@ pub(crate) fn is_fresh(setting: Option<&str>) -> bool { matches!(setting, Some("
 /// What a trace starts with, readable in a text viewer, so a file that isn't
 /// one, or is one of another layout, is told apart. Bumped with the layout.
 const MAGIC: &[u8] = b"termoxide state trace 1\n";
+
+/// The trace's file, in the app's directory.
+pub(crate) const FILE: &str = "state.bin";
 
 /// What follows [`MAGIC`]: whose trace it is.
 #[derive(Serialize, Deserialize)]
@@ -88,7 +91,7 @@ impl Snapshot {
     /// `state.bin` in `dir`, the app's directory, next to its logs, for the
     /// app whose crate is at `manifest_dir`.
     pub(crate) fn in_dir(dir: &Path, manifest_dir: &'static str) -> Self {
-        Self { path: dir.join("state.bin"), manifest_dir, trace: RefCell::new(None) }
+        Self { path: dir.join(FILE), manifest_dir, trace: RefCell::new(None) }
     }
 
     pub(crate) fn path(&self) -> &Path { &self.path }
@@ -98,10 +101,7 @@ impl Snapshot {
     /// complete entry, is an [`InvalidData`](io::ErrorKind::InvalidData) error.
     pub(crate) fn load(&self, fresh: bool) -> io::Result<Option<Vec<u8>>> {
         if fresh {
-            log::info!(
-                "starting from a clean state as {FRESH_ENV} asks: {} is ignored",
-                self.path.display()
-            );
+            log::info!("starting from a clean state as asked: {} is ignored", self.path.display());
             return Ok(None);
         }
         let trace = match fs::read(&self.path) {
@@ -148,21 +148,29 @@ impl Snapshot {
     pub(crate) fn set_aside(&self, why: Aside) -> io::Result<PathBuf> {
         // Windows doesn't rename a file that is open.
         self.trace.borrow_mut().take();
-        let aside = self.path.with_extension(match why {
-            Aside::Unreadable => "bin.unreadable",
-            Aside::Crashed => "bin.crashed",
-        });
+        let aside = self.path.with_extension(why.extension());
         fs::rename(&self.path, &aside)?;
         Ok(aside)
     }
 }
 
 /// Why a trace is set aside.
-pub(crate) enum Aside {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Aside {
     /// Its last state doesn't decode.
     Unreadable,
     /// The app kept crashing from its latest state.
     Crashed,
+}
+
+impl Aside {
+    /// What the trace is renamed to [`FILE`] with.
+    pub(crate) fn extension(self) -> &'static str {
+        match self {
+            Self::Unreadable => "bin.unreadable",
+            Self::Crashed => "bin.crashed",
+        }
+    }
 }
 
 #[cfg(test)]
