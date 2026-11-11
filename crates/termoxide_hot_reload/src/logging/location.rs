@@ -15,7 +15,7 @@ pub(crate) const STATE_DIR_ENV: &str = "TERMOXIDE_STATE_DIR";
 /// - Windows: `%LOCALAPPDATA%\termoxide\<app>`
 /// - Linux: `$XDG_STATE_HOME/termoxide/<app>`, by default under `~/.local/state`
 /// - macOS: `~/Library/Application Support/termoxide/<app>`
-pub(crate) fn app_dir() -> io::Result<PathBuf> { Ok(root(env::var_os(STATE_DIR_ENV))?.join(app_name()?)) }
+pub(crate) fn app_dir(app: &str) -> io::Result<PathBuf> { Ok(root(env::var_os(STATE_DIR_ENV))?.join(app)) }
 
 pub(super) fn root(set: Option<OsString>) -> io::Result<PathBuf> {
     if let Some(dir) = set.filter(|dir| !dir.is_empty()) {
@@ -28,10 +28,10 @@ pub(super) fn root(set: Option<OsString>) -> io::Result<PathBuf> {
 }
 
 /// `logs` in [`app_dir`].
-pub(super) fn log_dir() -> io::Result<PathBuf> { Ok(app_dir()?.join("logs")) }
+pub(super) fn log_dir(app: &str) -> io::Result<PathBuf> { Ok(app_dir(app)?.join("logs")) }
 
 /// The executable's file stem, standing in for the app's name.
-fn app_name() -> io::Result<String> {
+pub(crate) fn exe_name() -> io::Result<String> {
     let exe = env::current_exe()?;
     let stem = exe
         .file_stem()
