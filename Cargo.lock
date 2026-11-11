@@ -1308,6 +1308,7 @@ dependencies = [
  "ratatui",
  "serde",
  "serde-reflection",
+ "slotmap",
  "taffy",
 ]
 
