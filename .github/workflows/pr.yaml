@@ -121,14 +121,15 @@ jobs:
             toolchain: "stable"
             components: ""
           # What a hot-reloaded app compiles against: no terminal, built for
-          # wasm. The e2e tests are native by design.
+          # wasm. The e2e tests and the CLI, which hosts the apps, are native
+          # by design.
           - name: wasm
             command: "build"
             arguments: "--no-default-features --target wasm32-wasip2"
             toolchain: "stable"
             components: ""
             targets: "wasm32-wasip2"
-            skip: "termoxide_e2e"
+            skip: "termoxide_e2e termoxide_cli"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -287,15 +288,20 @@ jobs:
         if: >-
           steps.tests.outputs.ran == 'true'
           && (contains(fromJSON(needs.detect.outputs.crates), 'termoxide_hot_reload')
+          || contains(fromJSON(needs.detect.outputs.crates), 'termoxide_cli')
           || contains(fromJSON(needs.detect.outputs.crates), 'termoxide_e2e'))
         run: |
           ignore='(/tests/|/tests\.rs$)'
           cargo llvm-cov --no-report -p termoxide_hot_reload --all-features
-          cargo llvm-cov --no-report -p termoxide_e2e --test hot_reload
+          # The `termoxide_` tests build the CLI, wasmtime included: alongside the
+          # others, it starves the apps they start past their deadline.
+          cargo llvm-cov --no-report -p termoxide_e2e --test hot_reload -- termoxide_
+          cargo llvm-cov --no-report -p termoxide_e2e --test hot_reload -- --skip termoxide_
           cargo llvm-cov report --lcov --output-path ./coverage/llvm-cov.info --ignore-filename-regex "$ignore"
-          # The report reads only this workspace's binaries: the e2e fixtures are
-          # apps of their own, so llvm-cov reads theirs directly.
-          objects=$(find target/llvm-cov-target/tmp/reload-target/debug -maxdepth 1 -type f -executable -name 'reload_app_*' | sed 's/^/-object=/')
+          # The report reads only the binaries cargo-llvm-cov built: the e2e tests
+          # build the fixture apps and `termoxide` themselves, so llvm-cov reads
+          # theirs directly.
+          objects=$(find target/llvm-cov-target/tmp/reload-target/debug -maxdepth 1 -type f -executable \( -name 'reload_app_*' -o -name termoxide \) | sed 's/^/-object=/')
           llvm_cov="$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin/llvm-cov"
           # cargo-llvm-cov names the merged profile after the workspace's directory.
           profdata=$(find target/llvm-cov-target -maxdepth 1 -name '*.profdata')
