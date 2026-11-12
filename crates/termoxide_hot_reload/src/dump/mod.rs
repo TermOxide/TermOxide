@@ -1,10 +1,8 @@
-//! `termoxide_dump`: prints a state trace a persistent run left, each entry
+//! `termoxide dump`: prints a state trace a persistent run left, each entry
 //! with when it was recorded, as the app that wrote it reads it. Only the app's
-//! own component can decode its state, so this builds it from the crate the
-//! trace's header names.
+//! own component can decode its state, so this builds it from the app's crate.
 
 use std::{
-    ffi::OsString,
     fs,
     io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
@@ -17,61 +15,90 @@ use crate::{
     build::{self, Package},
     component::Runtime,
     ipc::{Request, Response},
+    logging,
+    metadata::AppCrate,
     schema,
-    snapshot::{self, Entry},
+    snapshot::{self, Aside, Entry},
 };
-
-const USAGE: &str = "usage: termoxide_dump <trace> [--manifest <path to the app's Cargo.toml>]";
 
 /// ANSI bold yellow, for a state type that changed since the previous entry.
 const CHANGED: &str = "\x1b[1;33m";
 /// ANSI back to the terminal's own style.
 const RESET: &str = "\x1b[0m";
 
-/// What to dump.
-#[derive(Debug, PartialEq, Eq)]
-struct Args {
-    trace: PathBuf,
-    /// The app's crate, when it isn't where the trace says: it moved.
-    manifest_dir: Option<PathBuf>,
+/// What `termoxide dump` prints.
+#[derive(Debug)]
+pub struct Dump {
+    /// A trace, or the crate folder of the app whose trace it is.
+    pub path: PathBuf,
+    /// Which binary of the app's crate wrote the trace.
+    pub bin: Option<String>,
+    /// The trace set aside, rather than the one the next run starts from.
+    pub aside: Option<Aside>,
+    /// The app's crate, its folder or its manifest, when it isn't where the
+    /// trace says: it moved.
+    pub manifest: Option<PathBuf>,
 }
 
-impl Args {
-    /// Reads the arguments after the program's name.
-    fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Self> {
-        let mut args = args.into_iter();
-        let (mut trace, mut manifest_dir) = (None, None);
-        while let Some(arg) = args.next() {
-            if arg == "--manifest" {
-                let manifest = PathBuf::from(args.next().ok_or_else(|| eyre!("--manifest needs a path\n{USAGE}"))?);
-                // Either the manifest or the directory holding it.
-                manifest_dir = Some(match manifest.file_name() {
-                    Some(name) if name == "Cargo.toml" => manifest.parent().map(Path::to_owned).unwrap_or_default(),
-                    _ => manifest,
-                });
-            } else if trace.is_none() {
-                trace = Some(PathBuf::from(arg));
-            } else {
-                return Err(eyre!("unexpected argument {}\n{USAGE}", arg.to_string_lossy()));
+impl Dump {
+    /// The trace to print, and the crate folder it was found through.
+    fn trace(&self) -> Result<(PathBuf, Option<PathBuf>)> {
+        if !self.path.is_dir() {
+            if self.bin.is_some() || self.aside.is_some() {
+                return Err(eyre!(
+                    "--bin, --crashed and --unreadable pick the trace of an app's crate folder, and {} is a file",
+                    self.path.display()
+                ));
             }
+            return Ok((self.path.clone(), None));
         }
-        Ok(Self { trace: trace.ok_or_else(|| eyre!(USAGE))?, manifest_dir })
+        let app = AppCrate::read(&self.path)?;
+        let current = logging::app_dir(&app.app_name(self.bin.as_deref())?)?.join(snapshot::FILE);
+        let trace = self
+            .aside
+            .map_or_else(|| current.clone(), |why| current.with_extension(why.extension()));
+        if !trace.exists() {
+            let set_aside = [Aside::Crashed, Aside::Unreadable]
+                .map(|why| current.with_extension(why.extension()))
+                .into_iter()
+                .find(|aside| aside.exists());
+            return Err(match (self.aside, set_aside) {
+                (None, Some(aside)) => {
+                    eyre!(
+                        "{} has no trace, but one was set aside as {}: pass --crashed or --unreadable",
+                        app.name,
+                        aside.display()
+                    )
+                },
+                _ => eyre!("{} has no trace at {}", app.name, trace.display()),
+            });
+        }
+        Ok((trace, Some(app.dir().to_owned())))
     }
 }
 
-/// What the `termoxide_dump` binary runs.
-pub fn main() -> Result<()> {
-    let args = Args::parse(std::env::args_os().skip(1))?;
-    let bytes = fs::read(&args.trace)?;
-    let trace = snapshot::parse(&bytes).ok_or_else(|| eyre!("{} isn't a state trace", args.trace.display()))?;
+/// The crate folder of `manifest`, given as the folder or its `Cargo.toml`.
+fn manifest_dir(manifest: &Path) -> PathBuf {
+    match manifest.file_name() {
+        Some(name) if name == "Cargo.toml" => manifest.parent().map(Path::to_owned).unwrap_or_default(),
+        _ => manifest.to_owned(),
+    }
+}
 
-    let manifest_dir = match args.manifest_dir {
+/// Prints the trace `dump` names.
+pub(crate) fn print_trace(dump: &Dump) -> Result<()> {
+    let (path, crate_dir) = dump.trace()?;
+    let bytes = fs::read(&path)?;
+    let trace = snapshot::parse(&bytes).ok_or_else(|| eyre!("{} isn't a state trace", path.display()))?;
+
+    let manifest_dir = match dump.manifest.as_deref().map(manifest_dir).or(crate_dir) {
         Some(dir) => dir.to_string_lossy().into_owned(),
         None => trace.manifest_dir.to_owned(),
     };
     // A `Package` holds what `env!` gives `run_app!`: leaked once, for the
     // one build this process makes.
-    let guest = build::guest(Package { manifest_dir: Box::leak(manifest_dir.into_boxed_str()) })?;
+    let package = Package { manifest_dir: Box::leak(manifest_dir.into_boxed_str()), app: None };
+    let guest = build::guest(package)?;
 
     let color = io::stdout().is_terminal();
     print(&trace.entries, trace.cut_short, &guest, color, &mut io::stdout().lock())

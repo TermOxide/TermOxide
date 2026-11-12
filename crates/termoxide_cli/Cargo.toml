@@ -1,0 +1,21 @@
+[package]
+name = "termoxide_cli"
+version = "0.1.0"
+edition = "2024"
+description = "The termoxide command: runs a TermOxide app from its crate, with hot reload"
+license = "BSD-2-Clause"
+
+[[bin]]
+name = "termoxide"
+path = "src/main.rs"
+
+[dependencies]
+termoxide_hot_reload = { version = "0.1.0", path = "../termoxide_hot_reload", features = ["host"] }
+
+any_spawner = { version = "0.3", features = ["tokio"] }
+clap = { version = "4.5", features = ["derive"] }
+color-eyre = "0.6"
+tokio = { version = "1", features = ["rt", "macros"] }
+
+[lints]
+workspace = true

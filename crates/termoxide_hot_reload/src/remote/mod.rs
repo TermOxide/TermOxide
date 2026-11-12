@@ -243,7 +243,7 @@ impl RemoteApp {
             match snapshot.set_aside(Aside::Crashed) {
                 Ok(aside) => {
                     log::warn!(
-                        "the state trace is kept as {}, readable with termoxide_dump, and the next run starts afresh",
+                        "the state trace is kept as {}, readable with `termoxide dump`, and the next run starts afresh",
                         aside.display()
                     );
                 },

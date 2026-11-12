@@ -16,16 +16,20 @@ extern crate self as termoxide_hot_reload;
 #[cfg(feature = "host")]
 mod build;
 #[cfg(feature = "host")]
+#[doc(hidden)]
+pub mod cli;
+#[cfg(feature = "host")]
 mod component;
 #[cfg(feature = "host")]
-#[doc(hidden)]
-pub mod dump;
+mod dump;
 #[cfg(feature = "guest")]
 #[doc(hidden)]
 pub mod guest;
 mod ipc;
 #[cfg(feature = "host")]
 mod logging;
+#[cfg(feature = "host")]
+mod metadata;
 #[cfg(feature = "host")]
 mod remote;
 mod schema;
@@ -86,16 +90,16 @@ macro_rules! wasm_app {
 /// and the next run starts from its last entry. `TERMOXIDE_PERSIST=0`
 /// or `1` overrides that for one run, and `TERMOXIDE_FRESH=1` starts
 /// that run from a clean state. When the app stops for crashing too often, the
-/// trace is kept as `state.bin.crashed`. `termoxide_dump <trace>` prints a
-/// trace's entries.
+/// trace is kept as `state.bin.crashed`. `termoxide dump` prints a trace's
+/// entries.
 #[cfg(feature = "host")]
 #[macro_export]
 macro_rules! run_app {
     () => {
-        $crate::run($crate::Package { manifest_dir: env!("CARGO_MANIFEST_DIR") }, false)
+        $crate::run($crate::Package { manifest_dir: env!("CARGO_MANIFEST_DIR"), app: None }, false)
     };
     (persistent) => {
-        $crate::run($crate::Package { manifest_dir: env!("CARGO_MANIFEST_DIR") }, true)
+        $crate::run($crate::Package { manifest_dir: env!("CARGO_MANIFEST_DIR"), app: None }, true)
     };
 }
 
@@ -103,43 +107,68 @@ macro_rules! run_app {
 #[cfg(feature = "host")]
 #[doc(hidden)]
 pub async fn run(package: Package, persistent: bool) -> color_eyre::Result<()> {
+    use std::env;
+
+    use snapshot::{FRESH_ENV, PERSIST_ENV};
+
+    if is_child() {
+        return serve();
+    }
+    let persists = snapshot::persists(env::var(PERSIST_ENV).ok().as_deref(), persistent);
+    let fresh = snapshot::is_fresh(env::var(FRESH_ENV).ok().as_deref());
+    host(package, persists, fresh).await
+}
+
+/// Whether this process is the subprocess a host spawned, from its own
+/// executable, to run the app's component.
+#[cfg(feature = "host")]
+fn is_child() -> bool { std::env::var_os(subprocess::PIPE_ENV).is_some() }
+
+/// Runs the app's component for the host that spawned this process.
+#[cfg(feature = "host")]
+fn serve() -> color_eyre::Result<()> {
     use std::{env, path::PathBuf};
 
     use color_eyre::eyre::eyre;
     use logging::{LOG_ENV, LogFile, Tag};
-    use remote::RemoteApp;
-    use snapshot::{FRESH_ENV, PERSIST_ENV, Snapshot};
     use subprocess::{GUEST_ENV, PIPE_ENV};
 
-    if let Ok(pipe) = env::var(PIPE_ENV) {
-        let log = env::var_os(LOG_ENV).ok_or_else(|| eyre!("{LOG_ENV} is not set"))?;
-        logging::install(LogFile::open(PathBuf::from(log))?, Tag::Child)?;
-        logging::log_panics(false);
-        let guest = PathBuf::from(env::var_os(GUEST_ENV).ok_or_else(|| eyre!("{GUEST_ENV} is not set"))?);
-        // On a thread of its own, outside the app's async runtime: wasmtime
-        // runs the component's stdio on a runtime of its own, and one can't
-        // start inside another.
-        return std::thread::spawn(move || subprocess::serve(&pipe, &guest))
-            .join()
-            .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
-    }
+    let pipe = env::var(PIPE_ENV)?;
+    let log = env::var_os(LOG_ENV).ok_or_else(|| eyre!("{LOG_ENV} is not set"))?;
+    logging::install(LogFile::open(PathBuf::from(log))?, Tag::Child)?;
+    logging::log_panics(false);
+    let guest = PathBuf::from(env::var_os(GUEST_ENV).ok_or_else(|| eyre!("{GUEST_ENV} is not set"))?);
+    // On a thread of its own, outside the app's async runtime: wasmtime
+    // runs the component's stdio on a runtime of its own, and one can't
+    // start inside another.
+    std::thread::spawn(move || subprocess::serve(&pipe, &guest))
+        .join()
+        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+}
+
+/// Builds the app of `package`, then runs and hot reloads it, keeping its
+/// state across runs when it `persists`, from a clean one when `fresh`.
+#[cfg(feature = "host")]
+async fn host(package: Package, persists: bool, fresh: bool) -> color_eyre::Result<()> {
+    use logging::{LogFile, Tag};
+    use remote::RemoteApp;
+    use snapshot::Snapshot;
 
     // Before the log and the terminal, so cargo's errors land on the screen.
     let guest = build::guest(package)?;
     let rebuilds = watch::Rebuilds::start(package)?;
 
-    let log = LogFile::create()?;
+    let app = package.app_name()?;
+    let log = LogFile::create(&app)?;
     let log_path = log.path().to_owned();
     logging::install(log, Tag::Host)?;
     logging::log_panics(true);
 
-    let persists = snapshot::persists(env::var(PERSIST_ENV).ok().as_deref(), persistent);
     let snapshot = persists
-        .then(|| logging::app_dir().map(|dir| Snapshot::in_dir(&dir, package.manifest_dir)))
+        .then(|| logging::app_dir(&app).map(|dir| Snapshot::in_dir(&dir, package.manifest_dir)))
         .transpose()?;
     if let Some(snapshot) = &snapshot {
         log::info!("keeping the app's state in {}", snapshot.path().display());
     }
-    let fresh = snapshot::is_fresh(env::var(FRESH_ENV).ok().as_deref());
     termoxide::run_with_app(RemoteApp::start(rebuilds, guest, log_path, snapshot, fresh)?).await
 }

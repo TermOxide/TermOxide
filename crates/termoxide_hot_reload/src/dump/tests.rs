@@ -2,32 +2,21 @@
 
 use super::*;
 
-fn parse(args: &[&str]) -> Result<Args> { Args::parse(args.iter().map(OsString::from)) }
-
-#[test]
-fn the_trace_is_enough() {
-    assert_eq!(parse(&["state.bin"]).unwrap(), Args {
-        trace: PathBuf::from("state.bin"),
-        manifest_dir: None
-    });
-}
+fn trace_at(path: &Path) -> Dump { Dump { path: path.to_owned(), bin: None, aside: None, manifest: None } }
 
 #[test]
 fn the_manifest_can_be_given_as_the_file_or_its_directory() {
-    let expected = Args {
-        trace: PathBuf::from("state.bin"),
-        manifest_dir: Some(PathBuf::from("apps/clock")),
-    };
-
-    assert_eq!(parse(&["state.bin", "--manifest", "apps/clock/Cargo.toml"]).unwrap(), expected);
-    assert_eq!(parse(&["--manifest", "apps/clock", "state.bin"]).unwrap(), expected);
+    assert_eq!(manifest_dir(Path::new("apps/clock/Cargo.toml")), Path::new("apps/clock"));
+    assert_eq!(manifest_dir(Path::new("apps/clock")), Path::new("apps/clock"));
 }
 
 #[test]
-fn a_missing_trace_or_a_second_one_is_refused() {
-    assert!(parse(&[]).is_err());
-    assert!(parse(&["a.bin", "b.bin"]).is_err());
-    assert!(parse(&["a.bin", "--manifest"]).is_err());
+fn a_trace_file_has_no_binary_or_set_aside_trace_to_pick() {
+    let file = std::env::current_exe().unwrap();
+    let dump = Dump { aside: Some(Aside::Unreadable), ..trace_at(&file) };
+
+    assert!(dump.trace().is_err());
+    assert_eq!(trace_at(&file).trace().unwrap(), (file, None));
 }
 
 #[test]
