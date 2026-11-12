@@ -15,6 +15,7 @@ use std::{
 use log::{Level, Metadata, Record};
 
 use super::{
+    app::take_lines,
     location::{file_name, log_dir},
     logger::{format_line, is_written, now},
     *,
@@ -117,7 +118,7 @@ fn a_record_is_tagged_with_the_side_that_logged_it() {
     let dir = TempDir::new();
     let host = logger::Logger { file: LogFile::create_in(&dir.0).unwrap(), tag: Tag::Host };
 
-    for target in ["termoxide_hot_reload::remote", logger::CHILD_TARGET] {
+    for target in ["termoxide_hot_reload::remote", logger::CHILD_TARGET, APP_TARGET] {
         log::Log::log(
             &host,
             &Record::builder()
@@ -130,7 +131,7 @@ fn a_record_is_tagged_with_the_side_that_logged_it() {
 
     let contents = fs::read_to_string(host.file.path()).unwrap();
     let tags: Vec<_> = contents.lines().map(|line| line.split_whitespace().nth(2).unwrap()).collect();
-    assert_eq!(tags, ["[framework:host]", "[framework:child]"]);
+    assert_eq!(tags, ["[framework:host]", "[framework:child]", "[app]"]);
 }
 
 /// Set on the writer processes: the log file to append to.
@@ -220,4 +221,21 @@ fn framework_records_are_written_from_debug_and_other_crates_from_warn() {
     assert!(!written("cranelift_codegen::timing", Level::Debug));
     assert!(!written("wasmtime::runtime", Level::Info));
     assert!(written("wasmtime::runtime", Level::Warn));
+}
+
+#[test]
+fn an_app_line_written_in_pieces_is_taken_once_whole() {
+    let mut pending = Vec::new();
+
+    assert!(take_lines(&mut pending, b"hel").is_empty());
+    assert_eq!(take_lines(&mut pending, b"lo\nwor"), ["hello"]);
+    assert_eq!(take_lines(&mut pending, b"ld\n\n!"), ["world", ""]);
+    assert_eq!(pending, b"!");
+}
+
+#[test]
+fn app_records_count_as_the_frameworks() {
+    let metadata = Metadata::builder().target(APP_TARGET).level(Level::Debug).build();
+
+    assert!(is_written(&metadata));
 }

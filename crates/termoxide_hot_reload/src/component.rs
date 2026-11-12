@@ -4,11 +4,14 @@ use color_eyre::{Result, eyre::eyre};
 use wasmtime::{
     Engine,
     Store,
-    component::{Component, Linker, ResourceTable},
+    component::{Component, HasSelf, Linker, ResourceTable},
 };
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
-use crate::ipc::{Request, Response};
+use crate::{
+    ipc::{Request, Response},
+    logging::{APP_TARGET, AppOutput},
+};
 
 wasmtime::component::bindgen!({ world: "guest", path: "wit" });
 
@@ -18,8 +21,8 @@ pub(crate) struct GuestInstance {
     guest: Guest,
 }
 
-/// What the component's WASI imports run against. Its stdio is not wired: an
-/// app logs through the framework's logger instead.
+/// What the component's imports run against: its log records and its stdout and
+/// stderr all go to the log file, as the app's lines.
 struct State {
     ctx: WasiCtx,
     table: ResourceTable,
@@ -29,6 +32,19 @@ impl WasiView for State {
     fn ctx(&mut self) -> WasiCtxView<'_> { WasiCtxView { ctx: &mut self.ctx, table: &mut self.table } }
 }
 
+impl GuestImports for State {
+    fn log(&mut self, level: Level, message: String) {
+        let level = match level {
+            Level::Error => log::Level::Error,
+            Level::Warn => log::Level::Warn,
+            Level::Info => log::Level::Info,
+            Level::Debug => log::Level::Debug,
+            Level::Trace => log::Level::Trace,
+        };
+        log::log!(target: APP_TARGET, level, "{message}");
+    }
+}
+
 impl GuestInstance {
     /// Compiles and instantiates the component at `path`.
     pub(crate) fn load(path: &Path) -> Result<Self> {
@@ -36,7 +52,13 @@ impl GuestInstance {
         let component = Component::from_file(&engine, path).map_err(|e| eyre!("loading {}: {e:#}", path.display()))?;
         let mut linker = Linker::new(&engine);
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker).map_err(|e| eyre!("{e:#}"))?;
-        let mut store = Store::new(&engine, State { ctx: WasiCtx::builder().build(), table: ResourceTable::new() });
+        Guest::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state).map_err(|e| eyre!("{e:#}"))?;
+        // Stdout at `info` and stderr at `debug`, as the subprocess's own.
+        let ctx = WasiCtx::builder()
+            .stdout(AppOutput::new(log::Level::Info))
+            .stderr(AppOutput::new(log::Level::Debug))
+            .build();
+        let mut store = Store::new(&engine, State { ctx, table: ResourceTable::new() });
         let guest = Guest::instantiate(&mut store, &component, &linker).map_err(|e| eyre!("{e:#}"))?;
         Ok(Self { store, guest })
     }

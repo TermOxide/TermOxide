@@ -8,6 +8,8 @@ use super::file::LogFile;
 /// Target of the records the host logs on the child's behalf, so they are
 /// tagged as the child's rather than the host's.
 pub(crate) const CHILD_TARGET: &str = "termoxide::child";
+/// Target of the app's records and output, so they are tagged as the app's.
+pub(crate) const APP_TARGET: &str = "termoxide::app";
 
 /// The most detailed level written for the framework's own records: the
 /// child's relayed stderr is `debug`.
@@ -21,10 +23,6 @@ const DEPENDENCY_LEVEL: LevelFilter = LevelFilter::Warn;
 pub(crate) enum Tag {
     Host,
     Child,
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "for the wasm guest's lines, once there is a guest")
-    )]
     App,
 }
 
@@ -52,7 +50,11 @@ impl Log for Logger {
         if !self.enabled(record.metadata()) {
             return;
         }
-        let tag = if record.target() == CHILD_TARGET { Tag::Child } else { self.tag };
+        let tag = match record.target() {
+            CHILD_TARGET => Tag::Child,
+            APP_TARGET => Tag::App,
+            _ => self.tag,
+        };
         // Nowhere left to report a failure to log.
         let _ = self.file.write_line(&format_line(record, tag));
     }
