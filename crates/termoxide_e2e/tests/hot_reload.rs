@@ -61,8 +61,14 @@ impl Fixture {
 
     /// Builds the app's executable, the hot-reload host.
     fn build(&self) -> PathBuf {
-        cargo_build(&self.dir.join("Cargo.toml"));
+        cargo_build(&self.dir.join("Cargo.toml"), &[]);
         Self::target_dir().join("debug").join(&self.name)
+    }
+
+    /// Builds the app's executable for release, the app linked into it.
+    fn build_release(&self) -> PathBuf {
+        cargo_build(&self.dir.join("Cargo.toml"), &["--release"]);
+        Self::target_dir().join("release").join(&self.name)
     }
 
     /// Runs the app, with its logs kept in its own directory.
@@ -131,11 +137,12 @@ impl Fixture {
 }
 
 /// Builds the crate of `manifest` where every fixture builds.
-fn cargo_build(manifest: &Path) {
+fn cargo_build(manifest: &Path, args: &[&str]) {
     let mut command = Command::new(env!("CARGO"));
     command
         .args(["build", "--quiet", "--manifest-path"])
         .arg(manifest)
+        .args(args)
         .env("CARGO_TARGET_DIR", Fixture::target_dir())
         // Each fixture links its own copy of the app, most of it debug info:
         // with it, a dozen fill a CI runner's disk.
@@ -152,7 +159,7 @@ fn cargo_build(manifest: &Path) {
 /// Builds the `termoxide` command where the fixtures build, so the components
 /// it builds are the ones the fixtures' runs built.
 fn termoxide() -> PathBuf {
-    cargo_build(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../termoxide_cli/Cargo.toml"));
+    cargo_build(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../termoxide_cli/Cargo.toml"), &[]);
     Fixture::target_dir().join("debug/termoxide")
 }
 
@@ -345,6 +352,26 @@ fn the_config_makes_every_run_persist_unless_the_environment_says_otherwise() {
 
     let session = fixture.run_with(&[("TERMOXIDE_PERSIST", "0")]);
     session.wait_for_text_within(build_deadline(), "presses: 0");
+}
+
+#[test]
+fn release_runs_the_app_linked_in_with_a_trace_a_dev_run_starts_from() {
+    let fixture = Fixture::copy("release");
+    let release = fixture.build_release();
+    let mut session = fixture.spawn(CommandBuilder::new(&release), &[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+    session.send(b"aa");
+    session.wait_for_text("presses: 2");
+    quit(session);
+
+    let session = fixture.spawn(CommandBuilder::new(&release), &[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 2");
+    quit(session);
+    let log = fixture.wait_for_log("keeping the app's state");
+    assert!(!log.contains("subprocess"), "{log}");
+
+    let session = fixture.run_with(&[PERSIST]);
+    session.wait_for_text_within(build_deadline(), "presses: 2");
 }
 
 #[test]

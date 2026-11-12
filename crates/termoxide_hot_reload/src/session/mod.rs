@@ -8,6 +8,7 @@ use termoxide_reactive::{Owner, recorded_only};
 use crate::{
     ipc::{self, IpcError, Outcome, Request, Response},
     schema,
+    state::{decode, encode},
 };
 
 /// What answering a request takes next.
@@ -154,26 +155,6 @@ impl<A: App + Clone + Serialize + DeserializeOwned + 'static> Session<A> {
             recorded,
         }))
     }
-}
-
-/// The app's state as the host keeps it: the fingerprint of its type, then the
-/// app.
-fn encode<A: Serialize>(app: &A, fingerprint: Option<u64>) -> ipc::Result<Vec<u8>> {
-    let mut state = fingerprint.unwrap_or_default().to_le_bytes().to_vec();
-    state.extend(postcard::to_allocvec(app).map_err(IpcError::Encode)?);
-    Ok(state)
-}
-
-/// The app in `state`, or `None` when another state type saved it. A state
-/// that matches the type yet doesn't decode is an error, not a reset.
-fn decode<A: DeserializeOwned>(state: &[u8], fingerprint: Option<u64>) -> ipc::Result<Option<A>> {
-    let Some((saved, app)) = state.split_first_chunk::<8>() else {
-        return Ok(None);
-    };
-    if fingerprint.is_some_and(|fingerprint| fingerprint != u64::from_le_bytes(*saved)) {
-        return Ok(None);
-    }
-    postcard::from_bytes(app).map(Some).map_err(IpcError::State)
 }
 
 /// The app in `state` as pretty-printed JSON, or `None` when another state type

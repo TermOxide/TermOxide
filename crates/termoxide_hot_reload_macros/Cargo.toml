@@ -1,0 +1,12 @@
+[package]
+name = "termoxide_hot_reload_macros"
+version = "0.1.0"
+edition = "2024"
+description = "The macros termoxide_hot_reload can't write with macro_rules!"
+license = "BSD-2-Clause"
+
+[lib]
+proc-macro = true
+
+[lints]
+workspace = true

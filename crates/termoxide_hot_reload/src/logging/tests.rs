@@ -115,7 +115,7 @@ fn relaying_ends_with_its_output() {
 #[test]
 fn a_record_is_tagged_with_the_side_that_logged_it() {
     let dir = TempDir::new();
-    let host = logger::Logger { file: LogFile::create_in(&dir.0).unwrap(), tag: Tag::Host };
+    let host = logger::Logger { file: LogFile::create_in(&dir.0).unwrap(), tag: Tag::Host, app: None };
 
     for target in ["termoxide_hot_reload::remote", logger::CHILD_TARGET, APP_TARGET] {
         log::Log::log(
@@ -237,4 +237,26 @@ fn app_records_count_as_the_frameworks() {
     let metadata = Metadata::builder().target(APP_TARGET).level(Level::Debug).build();
 
     assert!(is_written(&metadata));
+}
+
+#[test]
+fn in_a_release_run_the_app_libs_records_are_the_apps() {
+    let dir = TempDir::new();
+    let logger = logger::Logger { file: LogFile::create_in(&dir.0).unwrap(), tag: Tag::Host, app: Some("clock") };
+
+    for target in ["clock", "clock::view", "clockwork", "termoxide_hot_reload::native"] {
+        log::Log::log(
+            &logger,
+            &Record::builder()
+                .args(format_args!("hello"))
+                .level(Level::Debug)
+                .target(target)
+                .build(),
+        );
+    }
+
+    let contents = fs::read_to_string(logger.file.path()).unwrap();
+    let tags: Vec<_> = contents.lines().map(|line| line.split_whitespace().nth(2).unwrap()).collect();
+    // `clockwork`, another crate, logs only from `warn` up.
+    assert_eq!(tags, ["[app]", "[app]", "[framework:host]"]);
 }

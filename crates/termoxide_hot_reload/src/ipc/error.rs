@@ -25,8 +25,8 @@ pub(crate) enum IpcError {
     /// A frame arrived intact but its payload is not a valid message.
     Decode(postcard::Error),
     /// The app's state matches its type's fingerprint, yet doesn't decode: it
-    /// was damaged. Only the guest decodes the state.
-    #[cfg(feature = "guest")]
+    /// was damaged. A guest decodes it, or a release run.
+    #[cfg(any(feature = "host", feature = "guest"))]
     State(postcard::Error),
     /// The app's state decoded, yet can't be written out as text.
     #[cfg(feature = "guest")]
@@ -50,7 +50,7 @@ impl fmt::Display for IpcError {
             IpcError::Io(e) => write!(f, "I/O error: {e}"),
             IpcError::Encode(e) => write!(f, "could not encode IPC message: {e}"),
             IpcError::Decode(e) => write!(f, "malformed IPC message: {e}"),
-            #[cfg(feature = "guest")]
+            #[cfg(any(feature = "host", feature = "guest"))]
             IpcError::State(e) => write!(f, "the app's state doesn't decode: {e}"),
             #[cfg(feature = "guest")]
             IpcError::Describe(e) => write!(f, "the app's state can't be written as JSON: {e}"),
@@ -67,7 +67,7 @@ impl Error for IpcError {
             #[cfg(feature = "host")]
             IpcError::Io(e) => Some(e),
             IpcError::Encode(e) | IpcError::Decode(e) => Some(e),
-            #[cfg(feature = "guest")]
+            #[cfg(any(feature = "host", feature = "guest"))]
             IpcError::State(e) => Some(e),
             #[cfg(feature = "guest")]
             IpcError::Describe(e) => Some(e),
