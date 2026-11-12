@@ -35,6 +35,12 @@ struct Run {
     #[arg(default_value = ".")]
     path: PathBuf,
 
+    /// Build the app optimized, linked into an executable of its own with no
+    /// hot reload, and run that. It is built from a crate written in the app's
+    /// `target/termoxide/runner/`.
+    #[arg(long)]
+    release: bool,
+
     /// Keep the app's state across runs.
     #[arg(long, conflicts_with = "no_persist")]
     persist: bool,
@@ -110,6 +116,9 @@ async fn main() -> Result<()> {
     match Termoxide::parse().command {
         Command::Run(run) => {
             let persist = run.persist();
+            if run.release {
+                return cli::run_release(&run.path, persist, run.fresh);
+            }
             tokio::task::LocalSet::new()
                 .run_until(cli::run(&run.path, persist, run.fresh))
                 .await
