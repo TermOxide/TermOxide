@@ -33,12 +33,16 @@ mod logging;
 #[cfg(feature = "host")]
 mod metadata;
 #[cfg(feature = "host")]
+mod native;
+#[cfg(feature = "host")]
 mod remote;
 mod schema;
 #[cfg(feature = "guest")]
 mod session;
 #[cfg(feature = "host")]
 mod snapshot;
+#[cfg(any(feature = "host", feature = "guest"))]
+mod state;
 #[cfg(feature = "host")]
 mod subprocess;
 #[cfg(feature = "host")]
@@ -47,9 +51,18 @@ mod watch;
 #[cfg(feature = "host")]
 #[doc(hidden)]
 pub use build::Package;
+#[doc(hidden)]
+pub use termoxide_hot_reload_macros::app_lib as __app_lib;
+
+/// What an app must be for its state to cross to the host and to its trace.
+#[doc(hidden)]
+pub trait HotApp: termoxide::App + Clone + serde::Serialize + serde::de::DeserializeOwned + 'static {}
+
+impl<A: termoxide::App + Clone + serde::Serialize + serde::de::DeserializeOwned + 'static> HotApp for A {}
 
 /// Exports `app`, the app as first built, as the hot-reload guest when the
-/// crate is compiled for wasm; expands to nothing otherwise.
+/// crate is compiled for wasm; natively, it is what a release build of the
+/// app's executable runs.
 ///
 /// ```ignore
 /// termoxide_hot_reload::wasm_app!(Counter::default());
@@ -73,6 +86,10 @@ macro_rules! wasm_app {
 
             $crate::guest::bindings::export_guest!(Guest);
         };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        #[doc(hidden)]
+        pub fn __termoxide_app() -> impl $crate::HotApp { $app }
     };
 }
 
@@ -82,10 +99,12 @@ macro_rules! wasm_app {
 /// changes, the app is rebuilt in the background and swapped in, keeping its
 /// state.
 ///
-/// The crate's lib must be a `cdylib` with a `guest` feature that enables this
-/// crate's, and declare its app with [`wasm_app!`]. Both processes log to one
-/// file per run; install your own panic hook (`color_eyre::install()`, say)
-/// before calling this.
+/// The crate's lib must be both a `cdylib` and an `rlib`, with a `guest`
+/// feature that enables this crate's, and declare its app with [`wasm_app!`].
+/// Both processes log to one file per run; install your own panic hook
+/// (`color_eyre::install()`, say) before calling this. Whether the app
+/// captures the mouse is read when it first starts: a reload that changes
+/// `mouse_capture` takes a restart.
 ///
 /// `run_app!(persistent)` also keeps the app's state across runs: each run
 /// traces every change of a recorded signal to `state.bin`, next to the logs,
@@ -95,18 +114,41 @@ macro_rules! wasm_app {
 /// run from a clean state. When the app stops for crashing too often, the
 /// trace is kept as `state.bin.crashed`. `termoxide dump` prints a trace's
 /// entries.
+///
+/// A release build, any profile without debug assertions, runs the app's lib
+/// linked into the executable instead: no wasm, no subprocess, no hot reload.
+/// It keeps the log file and the trace, which `termoxide dump` reads, and a
+/// dev run can start from. Its log has the records of the app's dependencies
+/// from `warn` only, tagged as the framework's, where a dev run logs them
+/// from `debug`, tagged as the app's.
 #[cfg(feature = "host")]
 #[macro_export]
 macro_rules! run_app {
     () => {
-        $crate::run($crate::Package { manifest_dir: env!("CARGO_MANIFEST_DIR"), app: None }, false)
+        $crate::__run_app!(false)
     };
     (persistent) => {
-        $crate::run($crate::Package { manifest_dir: env!("CARGO_MANIFEST_DIR"), app: None }, true)
+        $crate::__run_app!(true)
     };
 }
 
-/// What [`run_app!`] expands to.
+/// [`run_app!`], `persistent` or not. The profile is the app's, as the `cfg`
+/// is read where this expands.
+#[cfg(feature = "host")]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __run_app {
+    ($persistent:literal) => {{
+        let package = $crate::Package { manifest_dir: env!("CARGO_MANIFEST_DIR"), app: None };
+        #[cfg(debug_assertions)]
+        let run = $crate::run(package, $persistent);
+        #[cfg(not(debug_assertions))]
+        let run = $crate::run_native($crate::__app_lib!(), package, $persistent);
+        run
+    }};
+}
+
+/// What a dev build's [`run_app!`] runs.
 #[cfg(feature = "host")]
 #[doc(hidden)]
 pub async fn run(package: Package, persistent: bool) -> color_eyre::Result<()> {
@@ -116,6 +158,52 @@ pub async fn run(package: Package, persistent: bool) -> color_eyre::Result<()> {
     let persists = persists(&package.app_name()?, persistent)?;
     let fresh = snapshot::is_fresh(std::env::var(snapshot::FRESH_ENV).ok().as_deref());
     host(package, persists, fresh).await
+}
+
+/// What a release build's [`run_app!`] runs: the app `build` makes, from the
+/// lib named `lib`.
+#[cfg(feature = "host")]
+#[doc(hidden)]
+pub async fn run_native<A: HotApp>(
+    (build, lib): (impl FnOnce() -> A, &'static str),
+    package: Package,
+    persistent: bool,
+) -> color_eyre::Result<()> {
+    use logging::LogFile;
+
+    let app = package.app_name()?;
+    let persists = persists(&app, persistent)?;
+    let fresh = snapshot::is_fresh(std::env::var(snapshot::FRESH_ENV).ok().as_deref());
+    logging::install_native(LogFile::create(&app)?, lib)?;
+    logging::log_panics(true);
+
+    // Building or decoding the app makes signals, which need an owner.
+    let owner = termoxide_reactive::Owner::new();
+    owner.set();
+    let Some(snapshot) = claim_trace(&app, package, persists)? else {
+        return termoxide::run_with_app(build()).await;
+    };
+    termoxide::run_with_app(native::Persisting::start(build, snapshot, fresh)?).await
+}
+
+/// Where a run of `app` that `persists` traces its state, unless another run
+/// of the app already traces there.
+#[cfg(feature = "host")]
+fn claim_trace(app: &str, package: Package, persists: bool) -> color_eyre::Result<Option<snapshot::Snapshot>> {
+    if !persists {
+        return Ok(None);
+    }
+    let snapshot = snapshot::Snapshot::in_dir(&logging::app_dir(app)?, package.manifest_dir);
+    if snapshot.claim()? {
+        log::info!("keeping the app's state in {}", snapshot.path().display());
+        Ok(Some(snapshot))
+    } else {
+        log::warn!(
+            "another run of the app keeps its state in {}, so this one's isn't kept",
+            snapshot.path().display()
+        );
+        Ok(None)
+    }
 }
 
 /// Whether a run of `app` persists: the environment, then the app's config,
@@ -160,7 +248,6 @@ fn serve() -> color_eyre::Result<()> {
 async fn host(package: Package, persists: bool, fresh: bool) -> color_eyre::Result<()> {
     use logging::{LogFile, Tag};
     use remote::RemoteApp;
-    use snapshot::Snapshot;
 
     // Watching first, so an edit saved during the first build makes another.
     let rebuilds = watch::Rebuilds::start(package)?;
@@ -173,22 +260,6 @@ async fn host(package: Package, persists: bool, fresh: bool) -> color_eyre::Resu
     logging::install(log, Tag::Host)?;
     logging::log_panics(true);
 
-    let snapshot = persists
-        .then(|| logging::app_dir(&app).map(|dir| Snapshot::in_dir(&dir, package.manifest_dir)))
-        .transpose()?;
-    let snapshot = match snapshot {
-        Some(snapshot) if snapshot.claim()? => {
-            log::info!("keeping the app's state in {}", snapshot.path().display());
-            Some(snapshot)
-        },
-        Some(snapshot) => {
-            log::warn!(
-                "another run of the app keeps its state in {}, so this one's isn't kept",
-                snapshot.path().display()
-            );
-            None
-        },
-        None => None,
-    };
+    let snapshot = claim_trace(&app, package, persists)?;
     termoxide::run_with_app(RemoteApp::start(rebuilds, guest, log_path, snapshot, fresh)?).await
 }

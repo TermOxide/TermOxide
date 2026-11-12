@@ -12,6 +12,7 @@ ratatui = { version = "0.26", default-features = false }
 serde = { version = "1.0.229", features = ["derive"] }
 termoxide = { version = "1.0.0-alpha", path = "../termoxide", default-features = false }
 termoxide_event = { version = "0.1.0", path = "../termoxide_event", default-features = false, features = ["serde"] }
+termoxide_hot_reload_macros = { version = "0.1.0", path = "../termoxide_hot_reload_macros" }
 termoxide_reactive = { version = "0.1.0", path = "../termoxide_reactive", features = ["serde"] }
 termoxide_rendering = { version = "0.1.0", path = "../termoxide_rendering", default-features = false, features = ["serde"] }
 
