@@ -495,3 +495,26 @@ fn termoxide_run_hot_reloads_the_app_of_a_crate_folder() {
     let session = fixture.run_termoxide(&["run", "--fresh"], &[PERSIST]);
     session.wait_for_text_within(build_deadline(), "edited: 0");
 }
+
+#[test]
+fn termoxide_run_release_runs_the_app_of_a_crate_folder_linked_in() {
+    // The runner builds no guest, so it is instrumented as the fixtures are.
+    let coverage = env::var_os("CARGO_LLVM_COV").map(|_| ("RUSTFLAGS", "-C instrument-coverage"));
+    let env: Vec<_> = coverage.into_iter().collect();
+    let fixture = Fixture::copy("cli_release");
+    let mut session = fixture.run_termoxide(&["run", "--release", "--persist"], &env);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+    session.send(b"aa");
+    session.wait_for_text("presses: 2");
+    quit(session);
+    let log = fixture.wait_for_log("keeping the app's state in");
+    assert!(!log.contains("subprocess"), "{log}");
+
+    let session = fixture.run_termoxide(&["run", "--release", "--persist"], &env);
+    session.wait_for_text_within(build_deadline(), "presses: 2");
+    quit(session);
+
+    let env: Vec<_> = env.into_iter().chain([PERSIST]).collect();
+    let session = fixture.run_termoxide(&["run", "--release", "--fresh"], &env);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+}

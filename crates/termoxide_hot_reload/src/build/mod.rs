@@ -127,12 +127,13 @@ fn component(package: Package, status: ExitStatus, stdout: &[u8]) -> Result<Path
 
 /// The parts of a line of cargo's JSON output this needs.
 #[derive(Deserialize)]
-struct Message {
-    reason: String,
+pub(crate) struct Message {
+    pub(crate) reason: String,
     #[serde(default)]
     target: Target,
     #[serde(default)]
     filenames: Vec<PathBuf>,
+    pub(crate) executable: Option<PathBuf>,
 }
 
 #[derive(Default, Deserialize)]

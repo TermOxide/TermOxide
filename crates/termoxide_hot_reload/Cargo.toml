@@ -24,7 +24,8 @@ log = { version = "0.4", features = ["std"], optional = true }
 notify = { version = "8", optional = true }
 serde_json = { version = "1", optional = true }
 time = { version = "0.3.55", features = ["formatting", "local-offset", "macros"], optional = true }
-# `AsyncWrite`, what wasmtime writes the app's stdout and stderr through.
+# `AsyncWrite`, what wasmtime writes the app's stdout and stderr through, and
+# the runtime of a `termoxide run --release` runner.
 tokio = { version = "1", optional = true }
 toml = { version = "1", default-features = false, features = ["parse", "serde", "std"], optional = true }
 wasmtime = { version = "49", optional = true }
@@ -39,6 +40,8 @@ wit-bindgen = { version = "0.63", optional = true }
 # The native executable: the process that owns the terminal, and the subprocess
 # it spawns to run the app's component.
 host = [
+    "any_spawner/tokio",
+    "dep:any_spawner",
     "dep:color-eyre",
     "dep:dirs",
     "dep:interprocess",
@@ -48,6 +51,7 @@ host = [
     "dep:time",
     "dep:tokio",
     "dep:toml",
+    "tokio/rt",
     "dep:wasmtime",
     "dep:wasmtime-wasi",
     "termoxide/terminal",

@@ -1,6 +1,6 @@
 //! What the `termoxide` command does. `termoxide_cli` reads its arguments.
 
-use std::{env, path::Path};
+use std::{env, path::Path, process::Command};
 
 use color_eyre::Result;
 
@@ -8,7 +8,8 @@ use crate::{
     build::Package,
     dump,
     metadata::AppCrate,
-    snapshot::{self, FRESH_ENV},
+    runner,
+    snapshot::{self, FRESH_ENV, PERSIST_ENV},
 };
 pub use crate::{dump::Dump, snapshot::Aside};
 
@@ -34,6 +35,37 @@ pub async fn run(path: &Path, persist: Option<bool>, fresh: bool) -> Result<()> 
         app: Some(Box::leak(app.name.into_boxed_str())),
     };
     crate::host(package, persists, fresh).await
+}
+
+/// Builds the app of the crate at `path` for release, linked into an
+/// executable of its own, and runs that in place of this process. `persist`
+/// and `fresh` are as [`run`]'s.
+pub fn run_release(path: &Path, persist: Option<bool>, fresh: bool) -> Result<()> {
+    let app = AppCrate::read(path)?;
+    app.check_runnable()?;
+    let mut command = Command::new(runner::build(&app)?);
+    if let Some(persist) = persist {
+        command.env(PERSIST_ENV, if persist { "1" } else { "0" });
+    }
+    if fresh {
+        command.env(FRESH_ENV, "1");
+    }
+    exec(command)
+}
+
+#[cfg(unix)]
+fn exec(mut command: Command) -> Result<()> {
+    use std::os::unix::process::CommandExt;
+
+    Err(command.exec().into())
+}
+
+/// Windows can't replace a process, so this one waits for the app's and exits
+/// as it did.
+#[cfg(not(unix))]
+fn exec(mut command: Command) -> Result<()> {
+    let status = command.status()?;
+    std::process::exit(status.code().unwrap_or(1))
 }
 
 /// Prints the state trace `dump` names.
