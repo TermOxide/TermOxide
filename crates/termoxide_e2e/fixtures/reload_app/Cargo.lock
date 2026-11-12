@@ -2208,6 +2208,7 @@ dependencies = [
  "termoxide_rendering",
  "time",
  "tokio",
+ "toml",
  "wasmtime",
  "wasmtime-wasi",
  "wit-bindgen",

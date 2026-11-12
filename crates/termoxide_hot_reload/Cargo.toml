@@ -25,6 +25,7 @@ serde_json = { version = "1", optional = true }
 time = { version = "0.3.55", features = ["formatting", "local-offset", "macros"], optional = true }
 # `AsyncWrite`, what wasmtime writes the app's stdout and stderr through.
 tokio = { version = "1", optional = true }
+toml = { version = "1", default-features = false, features = ["parse", "serde", "std"], optional = true }
 wasmtime = { version = "49", optional = true }
 wasmtime-wasi = { version = "49", optional = true }
 
@@ -45,6 +46,7 @@ host = [
     "dep:serde_json",
     "dep:time",
     "dep:tokio",
+    "dep:toml",
     "dep:wasmtime",
     "dep:wasmtime-wasi",
     "termoxide/terminal",

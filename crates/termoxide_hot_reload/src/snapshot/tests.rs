@@ -161,12 +161,14 @@ fn an_unreadable_trace_is_set_aside_under_its_own_name() {
 }
 
 #[test]
-fn the_environment_overrides_the_choice_in_run_app() {
-    assert!(persists(None, true));
-    assert!(!persists(None, false));
-    assert!(persists(Some("1"), false));
-    assert!(!persists(Some("false"), true));
-    assert!(persists(Some("anything else"), true));
+fn the_environment_comes_before_the_config_which_comes_before_the_app() {
+    assert!(persists(None, None, true));
+    assert!(!persists(None, None, false));
+    assert!(persists(None, Some(true), false));
+    assert!(!persists(None, Some(false), true));
+    assert!(persists(Some("1"), Some(false), false));
+    assert!(!persists(Some("false"), Some(true), true));
+    assert!(persists(Some("anything else"), None, true));
 }
 
 #[test]

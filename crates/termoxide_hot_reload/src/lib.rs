@@ -21,6 +21,8 @@ pub mod cli;
 #[cfg(feature = "host")]
 mod component;
 #[cfg(feature = "host")]
+mod config;
+#[cfg(feature = "host")]
 mod dump;
 #[cfg(feature = "guest")]
 #[doc(hidden)]
@@ -87,9 +89,10 @@ macro_rules! wasm_app {
 ///
 /// `run_app!(persistent)` also keeps the app's state across runs: each run
 /// traces every change of a recorded signal to `state.bin`, next to the logs,
-/// and the next run starts from its last entry. `TERMOXIDE_PERSIST=0`
-/// or `1` overrides that for one run, and `TERMOXIDE_FRESH=1` starts
-/// that run from a clean state. When the app stops for crashing too often, the
+/// and the next run starts from its last entry. `persist = true` or `false` in
+/// `config.toml`, next to the logs, overrides that for every run, and
+/// `TERMOXIDE_PERSIST=0` or `1` for one run. `TERMOXIDE_FRESH=1` starts that
+/// run from a clean state. When the app stops for crashing too often, the
 /// trace is kept as `state.bin.crashed`. `termoxide dump` prints a trace's
 /// entries.
 #[cfg(feature = "host")]
@@ -107,16 +110,21 @@ macro_rules! run_app {
 #[cfg(feature = "host")]
 #[doc(hidden)]
 pub async fn run(package: Package, persistent: bool) -> color_eyre::Result<()> {
-    use std::env;
-
-    use snapshot::{FRESH_ENV, PERSIST_ENV};
-
     if is_child() {
         return serve();
     }
-    let persists = snapshot::persists(env::var(PERSIST_ENV).ok().as_deref(), persistent);
-    let fresh = snapshot::is_fresh(env::var(FRESH_ENV).ok().as_deref());
+    let persists = persists(&package.app_name()?, persistent)?;
+    let fresh = snapshot::is_fresh(std::env::var(snapshot::FRESH_ENV).ok().as_deref());
     host(package, persists, fresh).await
+}
+
+/// Whether a run of `app` persists: the environment, then the app's config,
+/// then `persistent`, its default.
+#[cfg(feature = "host")]
+fn persists(app: &str, persistent: bool) -> color_eyre::Result<bool> {
+    let config = config::Config::read(&logging::app_dir(app)?)?;
+    let setting = std::env::var(snapshot::PERSIST_ENV).ok();
+    Ok(snapshot::persists(setting.as_deref(), config.persist, persistent))
 }
 
 /// Whether this process is the subprocess a host spawned, from its own
