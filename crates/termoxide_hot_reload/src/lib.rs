@@ -36,6 +36,8 @@ mod metadata;
 mod native;
 #[cfg(feature = "host")]
 mod remote;
+#[cfg(feature = "host")]
+mod runner;
 mod schema;
 #[cfg(feature = "guest")]
 mod session;
@@ -203,6 +205,30 @@ fn claim_trace(app: &str, package: Package, persists: bool) -> color_eyre::Resul
             snapshot.path().display()
         );
         Ok(None)
+    }
+}
+
+/// What the runner `termoxide run --release` builds runs: [`run_native`], on a
+/// runtime of its own.
+#[cfg(feature = "host")]
+#[doc(hidden)]
+pub fn run_release<A: HotApp>(
+    app: (impl FnOnce() -> A, &'static str),
+    package: Package,
+    persistent: bool,
+) -> std::process::ExitCode {
+    let run = || -> color_eyre::Result<()> {
+        color_eyre::install()?;
+        any_spawner::Executor::init_tokio()?;
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+        runtime.block_on(tokio::task::LocalSet::new().run_until(run_native(app, package, persistent)))
+    };
+    match run() {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("Error: {e:?}");
+            std::process::ExitCode::FAILURE
+        },
     }
 }
 
