@@ -2204,6 +2204,7 @@ dependencies = [
  "serde_json",
  "termoxide",
  "termoxide_event",
+ "termoxide_hot_reload_macros",
  "termoxide_reactive",
  "termoxide_rendering",
  "time",
@@ -2213,6 +2214,10 @@ dependencies = [
  "wasmtime-wasi",
  "wit-bindgen",
 ]
+
+[[package]]
+name = "termoxide_hot_reload_macros"
+version = "0.1.0"
 
 [[package]]
 name = "termoxide_layout"

@@ -2638,6 +2638,7 @@ dependencies = [
  "termoxide",
  "termoxide_event",
  "termoxide_hot_reload",
+ "termoxide_hot_reload_macros",
  "termoxide_reactive",
  "termoxide_rendering",
  "time",
@@ -2647,6 +2648,10 @@ dependencies = [
  "wasmtime-wasi",
  "wit-bindgen 0.63.0",
 ]
+
+[[package]]
+name = "termoxide_hot_reload_macros"
+version = "0.1.0"
 
 [[package]]
 name = "termoxide_layout"
