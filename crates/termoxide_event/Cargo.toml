@@ -6,9 +6,20 @@ description = "Event system for TermOxide"
 license = "BSD-2-Clause"
 
 [dependencies]
-crossterm = "0.27"
+crossterm = { version = "0.27", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+
+[features]
+default = ["terminal"]
+# The reader thread on the real terminal. Without it, only the event types
+# remain, which is what an app built for wasm needs.
+terminal = ["dep:crossterm"]
+# Events as bytes, to cross a process or wasm boundary.
+serde = ["dep:serde"]
 
 [dev-dependencies]
+termoxide_event = { path = ".", features = ["serde"] }
+postcard = { version = "1", features = ["use-std"] }
 serial_test = "3"
 
 [lints]

@@ -35,9 +35,6 @@
 //! - **Spatial metadata**: every node carries the terminal area ([`Rect`]) assigned to it by the layout engine so that
 //!   the [`EventRouter`][crate::event_router::EventRouter] can perform O(nodes) hit-testing without re-running layout.
 //!
-//! - **Type-erased content**: [`ViewContent::Raw`] lets any component supply an arbitrary draw closure, which keeps
-//!   this crate decoupled from the full set of ratatui built-in widgets.
-//!
 //! ## Example
 //!
 //! ```rust
@@ -55,7 +52,7 @@
 //! assert_eq!(root.children.len(), 1);
 //! ```
 
-use ratatui::{buffer::Buffer, layout::Rect, style::Style};
+use ratatui::{layout::Rect, style::Style};
 
 // ───────────────────────────────────────────────────────────────────────────
 // //  ComponentId
@@ -74,9 +71,6 @@ use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 /// `0` is reserved and used as the sentinel "no component" value.
 pub type ComponentId = u64;
 
-/// Closure used by [`ViewContent::Raw`].
-pub type RawDrawFn = dyn Fn(&mut Buffer, Rect) + Send;
-
 // ───────────────────────────────────────────────────────────────────────────
 // //  ViewContent
 // ───────────────────────────────────────────────────────────────────────────
@@ -86,6 +80,8 @@ pub type RawDrawFn = dyn Fn(&mut Buffer, Rect) + Send;
 ///
 /// Each variant maps to a distinct rendering strategy inside
 /// [`Renderer::draw_node`][crate::renderer::Renderer].
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ViewContent {
     // ── Structural
     // ────────────────────────────────────────────────────────── //
@@ -99,6 +95,7 @@ pub enum ViewContent {
     Container {
         /// Ratatui style painted across [`ViewNode::area`] before children are
         /// drawn on top.
+        #[cfg_attr(feature = "serde", serde(with = "crate::wire::style"))]
         style: Style,
     },
 
@@ -113,49 +110,9 @@ pub enum ViewContent {
         /// The string to render, already resolved (no reactive binding here).
         text: String,
         /// Ratatui style (foreground, background, modifiers).
+        #[cfg_attr(feature = "serde", serde(with = "crate::wire::style"))]
         style: Style,
     },
-
-    // ── Escape hatch
-    // ──────────────────────────────────────────────────────── //
-    /// Arbitrary draw closure.
-    ///
-    /// Components that need access to the full ratatui `Buffer` API (borders,
-    /// charts, gauges, …) can wrap their `Widget::render` call in a `Raw`
-    /// closure.  The closure receives the exact area assigned to this node by
-    /// the layout engine.
-    ///
-    /// # Thread safety
-    ///
-    /// The closure must be `Send` because the render loop may be driven from
-    /// a dedicated thread.  In practice this means captures should either be
-    /// `Copy` or wrapped in `Arc`.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use ratatui::{
-    ///     layout::Rect,
-    ///     widgets::{Block, Borders, Widget},
-    /// };
-    /// use termoxide_rendering::view_node::{ViewContent, ViewNode};
-    ///
-    /// let area = Rect::new(0, 0, 40, 10);
-    /// let node = ViewNode::raw(area, |buf, rect| {
-    ///     Block::default().borders(Borders::ALL).render(rect, buf);
-    /// });
-    /// ```
-    Raw(Box<RawDrawFn>),
-}
-
-impl std::fmt::Debug for ViewContent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Container { .. } => write!(f, "Container"),
-            Self::Text { text, .. } => f.debug_struct("Text").field("text", text).finish(),
-            Self::Raw(_) => write!(f, "Raw(<fn>)"),
-        }
-    }
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -189,6 +146,7 @@ impl std::fmt::Debug for ViewContent {
 /// | `children`    | Component      | Renderer (recursive traversal)   |
 /// | `dirty`       | Reactive layer | RenderLoop (skip-if-clean)       |
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ViewNode {
     /// Optional component identity.
     ///
@@ -279,16 +237,6 @@ impl ViewNode {
             content: ViewContent::Text { text: text.into(), style },
             children: Vec::new(),
         }
-    }
-
-    /// Create a node whose content is rendered by a closure.
-    ///
-    /// See [`ViewContent::Raw`] for details and a full example.
-    pub fn raw<F>(area: Rect, f: F) -> Self
-    where
-        F: Fn(&mut Buffer, Rect) + Send + 'static,
-    {
-        Self { id: None, area, content: ViewContent::Raw(Box::new(f)), children: Vec::new() }
     }
 
     // ── Builder methods ──────────────────────────────────────────────────────
