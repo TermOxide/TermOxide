@@ -14,19 +14,19 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 /// Turns persistence on (`1`, `true`) or off (`0`, `false`) for one run,
-/// whatever `run_app!` says.
+/// whatever the config or the app says.
 pub(crate) const PERSIST_ENV: &str = "TERMOXIDE_PERSIST";
 /// Set to `1` or `true` to start from a clean state for one run: the trace is
 /// ignored, then replaced by the run's own.
 pub(crate) const FRESH_ENV: &str = "TERMOXIDE_FRESH";
 
-/// Whether a run persists: `persistent`, as `run_app!` was called, unless
-/// [`PERSIST_ENV`] is set to `setting`.
-pub(crate) fn persists(setting: Option<&str>, persistent: bool) -> bool {
+/// Whether a run persists: [`PERSIST_ENV`] set to `setting`, then `config`,
+/// then the app's default, `persistent`.
+pub(crate) fn persists(setting: Option<&str>, config: Option<bool>, persistent: bool) -> bool {
     match setting {
         Some("1" | "true") => true,
         Some("0" | "false") => false,
-        _ => persistent,
+        _ => config.unwrap_or(persistent),
     }
 }
 

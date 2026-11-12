@@ -328,6 +328,26 @@ fn the_state_survives_a_restart_of_the_host() {
 }
 
 #[test]
+fn the_config_makes_every_run_persist_unless_the_environment_says_otherwise() {
+    let fixture = Fixture::copy("config");
+    let dir = fixture.snapshot().parent().unwrap().to_owned();
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("config.toml"), "persist = true\n").unwrap();
+    let mut session = fixture.run();
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+    session.send(b"aa");
+    session.wait_for_text("presses: 2");
+    quit(session);
+
+    let session = fixture.run();
+    session.wait_for_text_within(build_deadline(), "presses: 2");
+    quit(session);
+
+    let session = fixture.run_with(&[("TERMOXIDE_PERSIST", "0")]);
+    session.wait_for_text_within(build_deadline(), "presses: 0");
+}
+
+#[test]
 fn a_damaged_snapshot_is_set_aside_and_the_app_starts_afresh() {
     let fixture = Fixture::copy("damaged");
     let mut session = fixture.run_with(&[PERSIST]);

@@ -26,8 +26,9 @@ enum Command {
 /// with `wasm_app!`. The crate needs no `main.rs`.
 ///
 /// Whether the app keeps its state across runs is, in order: `--persist` or
-/// `--no-persist`, then `TERMOXIDE_PERSIST=1` or `0`, then `persistent` under
-/// `[package.metadata.termoxide]`.
+/// `--no-persist`, then `TERMOXIDE_PERSIST=1` or `0`, then `persist = true` or
+/// `false` in the app's `config.toml`, next to its logs, then `persistent`
+/// under `[package.metadata.termoxide]`.
 #[derive(Args)]
 struct Run {
     /// The app's crate folder.
