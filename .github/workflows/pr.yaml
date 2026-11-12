@@ -289,19 +289,21 @@ jobs:
           steps.tests.outputs.ran == 'true'
           && (contains(fromJSON(needs.detect.outputs.crates), 'termoxide_hot_reload')
           || contains(fromJSON(needs.detect.outputs.crates), 'termoxide_cli')
+          || contains(fromJSON(needs.detect.outputs.crates), 'termoxide_hot_reload_macros')
           || contains(fromJSON(needs.detect.outputs.crates), 'termoxide_e2e'))
         run: |
           ignore='(/tests/|/tests\.rs$)'
           cargo llvm-cov --no-report -p termoxide_hot_reload --all-features
-          # The `termoxide_` tests build the CLI, wasmtime included: alongside the
-          # others, it starves the apps they start past their deadline.
-          cargo llvm-cov --no-report -p termoxide_e2e --test hot_reload -- termoxide_
-          cargo llvm-cov --no-report -p termoxide_e2e --test hot_reload -- --skip termoxide_
+          # The `termoxide_` and `release_` tests build the CLI or a release app,
+          # wasmtime included: alongside the others, it starves the apps they
+          # start past their deadline.
+          cargo llvm-cov --no-report -p termoxide_e2e --test hot_reload -- termoxide_ release_
+          cargo llvm-cov --no-report -p termoxide_e2e --test hot_reload -- --skip termoxide_ --skip release_
           cargo llvm-cov report --lcov --output-path ./coverage/llvm-cov.info --ignore-filename-regex "$ignore"
           # The report reads only the binaries cargo-llvm-cov built: the e2e tests
           # build the fixture apps and `termoxide` themselves, so llvm-cov reads
           # theirs directly.
-          objects=$(find target/llvm-cov-target/tmp/reload-target/debug -maxdepth 1 -type f -executable \( -name 'reload_app_*' -o -name termoxide \) | sed 's/^/-object=/')
+          objects=$(find target/llvm-cov-target/tmp/reload-target/debug target/llvm-cov-target/tmp/reload-target/release -maxdepth 1 -type f -executable \( -name 'reload_app_*' -o -name termoxide \) | sed 's/^/-object=/')
           llvm_cov="$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin/llvm-cov"
           # cargo-llvm-cov names the merged profile after the workspace's directory.
           profdata=$(find target/llvm-cov-target -maxdepth 1 -name '*.profdata')

@@ -41,10 +41,14 @@ pub(super) struct Logger {
     pub(super) file: LogFile,
     /// The tag of this process's own records.
     pub(super) tag: Tag,
+    /// In a release run, the app's lib, whose records are the app's.
+    pub(super) app: Option<&'static str>,
 }
 
 impl Log for Logger {
-    fn enabled(&self, metadata: &Metadata<'_>) -> bool { is_written(metadata) }
+    fn enabled(&self, metadata: &Metadata<'_>) -> bool {
+        is_written(metadata) || (self.is_app(metadata.target()) && metadata.level() <= LEVEL)
+    }
 
     fn log(&self, record: &Record<'_>) {
         if !self.enabled(record.metadata()) {
@@ -53,6 +57,7 @@ impl Log for Logger {
         let tag = match record.target() {
             CHILD_TARGET => Tag::Child,
             APP_TARGET => Tag::App,
+            target if self.is_app(target) => Tag::App,
             _ => self.tag,
         };
         // Nowhere left to report a failure to log.
@@ -61,6 +66,17 @@ impl Log for Logger {
 
     /// Every line is written as it comes, so there is nothing to flush.
     fn flush(&self) {}
+}
+
+impl Logger {
+    /// Whether `target`, a module path, is in the app's lib.
+    fn is_app(&self, target: &str) -> bool {
+        self.app.is_some_and(|lib| {
+            target
+                .strip_prefix(lib)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with("::"))
+        })
+    }
 }
 
 /// Whether a record is written: the framework's own up to `debug`, other
@@ -77,7 +93,17 @@ pub(super) fn is_written(metadata: &Metadata<'_>) -> bool {
 /// Makes the logger this process's `log` backend, tagging its own records
 /// with `tag`.
 pub(crate) fn install(file: LogFile, tag: Tag) -> Result<(), SetLoggerError> {
-    log::set_boxed_logger(Box::new(Logger { file, tag }))?;
+    install_logger(Logger { file, tag, app: None })
+}
+
+/// Makes the logger the `log` backend of a release run, whose app is linked
+/// in: the records of `lib`, the app's lib, are tagged as the app's.
+pub(crate) fn install_native(file: LogFile, lib: &'static str) -> Result<(), SetLoggerError> {
+    install_logger(Logger { file, tag: Tag::Host, app: Some(lib) })
+}
+
+fn install_logger(logger: Logger) -> Result<(), SetLoggerError> {
+    log::set_boxed_logger(Box::new(logger))?;
     log::set_max_level(LEVEL);
     Ok(())
 }
