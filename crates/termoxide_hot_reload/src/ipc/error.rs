@@ -21,6 +21,8 @@ pub(crate) enum IpcError {
     /// A payload is longer than the allowed maximum, whether about to be sent
     /// or announced by a received frame.
     PayloadTooLarge { len: usize, max: usize },
+    /// A valid message arrived where the protocol expects another one.
+    Unexpected,
 }
 
 impl fmt::Display for IpcError {
@@ -32,6 +34,7 @@ impl fmt::Display for IpcError {
             IpcError::Encode(e) => write!(f, "could not encode IPC message: {e}"),
             IpcError::Decode(e) => write!(f, "malformed IPC message: {e}"),
             IpcError::PayloadTooLarge { len, max } => write!(f, "IPC payload too large: {len} > {max}"),
+            IpcError::Unexpected => write!(f, "unexpected IPC message"),
         }
     }
 }
@@ -41,7 +44,7 @@ impl Error for IpcError {
         match self {
             IpcError::Io(e) => Some(e),
             IpcError::Encode(e) | IpcError::Decode(e) => Some(e),
-            IpcError::Timeout | IpcError::Closed | IpcError::PayloadTooLarge { .. } => None,
+            IpcError::Timeout | IpcError::Closed | IpcError::PayloadTooLarge { .. } | IpcError::Unexpected => None,
         }
     }
 }

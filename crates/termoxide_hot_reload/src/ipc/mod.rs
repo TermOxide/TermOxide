@@ -8,7 +8,7 @@ mod transport;
 pub(crate) use channel::ChildChannel;
 pub(crate) use channel::HostChannel;
 pub(crate) use error::{IpcError, Result};
-pub(crate) use message::{Request, Response};
+pub(crate) use message::{Outcome, Request, Response};
 pub(crate) use transport::{Listener, connect};
 
 #[cfg(test)]

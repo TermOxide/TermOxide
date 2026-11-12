@@ -1,27 +1,35 @@
 use std::{env, path::PathBuf};
 
 use color_eyre::{Result, eyre::eyre};
+use serde::{Serialize, de::DeserializeOwned};
 use termoxide::App;
 
 mod ipc;
 mod logging;
+mod remote;
+mod session;
 mod subprocess;
 
 use logging::{LOG_ENV, LogFile, Tag};
+use remote::RemoteApp;
 use subprocess::{PIPE_ENV, Subprocess};
 
-/// Runs `app` with a hot-reload subprocess next to it.
+/// Runs `app` in a hot-reload subprocess, driven from this process.
 ///
-/// The same executable is started again as the subprocess; there, this
-/// function serves the host's requests instead of running `app`. Both log to
-/// one file per run; install your own panic hook (`color_eyre::install()`, say)
-/// before calling this.
-pub async fn run_app<A: App + Clone + 'static>(app: A) -> Result<()> {
+/// The same executable is started again as the subprocess, and `app` runs
+/// there: this process keeps the terminal and the run loop, and forwards every
+/// call to it. The app crosses as bytes, so its type must (de)serialize: derive
+/// both on a struct of signals. Both processes log to one file per run; install
+/// your own panic hook (`color_eyre::install()`, say) before calling this.
+pub async fn run_app<A>(app: A) -> Result<()>
+where
+    A: App + Clone + Serialize + DeserializeOwned + 'static,
+{
     if let Ok(pipe) = env::var(PIPE_ENV) {
         let log = env::var_os(LOG_ENV).ok_or_else(|| eyre!("{LOG_ENV} is not set"))?;
         logging::install(LogFile::open(PathBuf::from(log))?, Tag::Child)?;
         logging::log_panics(false);
-        return Ok(subprocess::serve(&pipe)?);
+        return Ok(subprocess::serve(&pipe, app).await?);
     }
 
     let log = LogFile::create()?;
@@ -31,5 +39,7 @@ pub async fn run_app<A: App + Clone + 'static>(app: A) -> Result<()> {
 
     let mut subprocess = Subprocess::spawn(&log_path)?;
     subprocess.ping()?;
-    termoxide::run_with_app(app).await
+    // This process never runs `app` itself: the subprocess does.
+    drop(app);
+    termoxide::run_with_app(RemoteApp::start(subprocess)?).await
 }
