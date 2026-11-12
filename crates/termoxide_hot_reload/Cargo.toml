@@ -5,6 +5,11 @@ edition = "2024"
 description = "Hot reload for TermOxide apps during development"
 license = "BSD-2-Clause"
 
+# Prints a state trace a persistent run left, as the app reads it.
+[[bin]]
+name = "termoxide_dump"
+required-features = ["host"]
+
 # Shared by both sides: the messages and what they carry.
 [dependencies]
 postcard = { version = "1.1.3", features = ["use-std"] }
@@ -50,7 +55,7 @@ host = [
     "termoxide/terminal",
 ]
 # The app as a wasm component: what runs it and answers the host's requests.
-guest = ["dep:any_spawner", "dep:futures", "dep:log", "dep:reactive_graph", "dep:wit-bindgen"]
+guest = ["dep:any_spawner", "dep:futures", "dep:log", "dep:reactive_graph", "dep:serde_json", "dep:wit-bindgen"]
 
 [dev-dependencies]
 termoxide_hot_reload = { path = ".", features = ["host", "guest"] }
