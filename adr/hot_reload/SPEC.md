@@ -127,10 +127,13 @@ how often that happens; a persistent run sets such a state's trace aside instead
 
 Two separate fingerprints, checked at two separate points. Neither is covered by §2.1.
 
-A fingerprint is traced from the types, never bumped by hand: `serde-reflection` traces a type's shape as
-`serde` sees it in a binary format, and a 64-bit FNV-1a hash of that trace is the fingerprint (not `std`'s
-hasher, whose algorithm may change between Rust releases). The tracer's registry is taken unchecked: nested
-enums only get their variants' names and order resolved, which is all a fingerprint needs.
+A fingerprint is traced from the types, never bumped by hand. A deserializer of our own builds a value of
+the type again and again, each pass taking every enum it meets one variant further, until every variant of
+every enum has been through. What it wrote down, each struct's fields and each enum's variants in order, is
+hashed with 64-bit FNV-1a (not `std`'s hasher, whose algorithm may change between Rust releases).
+`serde-reflection` was dropped for this: it only completes the enum it is asked for, so an enum nested in
+the state kept its first variant alone. A type the tracer can't build a value of, one that validates what it
+decodes, has no fingerprint: a warning is logged and its check is skipped.
 
 - **Wire schema** — the fingerprint of the protocol's `Request` and `Response` (§3), which contain every
   framework type that crosses: the event types, `ViewNode`, `Color`, the style. The guest exports it as
@@ -193,12 +196,13 @@ IPC channel: one request enum, one reply enum
   | Request | Reply |
   |---|---|
   | `Ping` | `Pong` |
-  | `Start { state }`, the host's state if it has one | `Started { mouse_capture, state, reset }` |
+  | `Start { state }`, the host's state if it has one | `Started { mouse_capture, state, reset }`; `Undecodable(why)` when the state matches the app's type yet doesn't decode, the app not started |
   | `Event`, `Tick` | `Done(Outcome { quit, dirty, state, recorded })`; at the tick a new generation takes over, `Reloaded { state }` |
   | `BuildView(Rect)` | `View(ViewNode)` |
   | `Load { guest }`, a rebuilt component (§4.4) | `Loading`; never reaches the component |
   | `Describe { state }`, for reading a trace (§7) | `Described { fingerprint, app }`: the app as JSON |
   | any request the app crashed on (§4.3) | `Recovered { state }` |
+  | any request whose answer is over a frame's 16 MiB | `TooLarge`: the answer is dropped, and the subprocess keeps running |
 
   An outcome carries the state bytes only when they changed (§2.2), and `recorded` when a recorded signal
   did (§7).
@@ -234,15 +238,16 @@ Epoch interruption, not fuel: the budget is wall-clock time, what the frame-call
 is about, where fuel counts instructions and costs a check on every one. Cranelift inserts the check at
 every loop backedge and function entry — a bare `loop {}` traps on budget exhaustion with no cooperation
 required from the guest's own code. Not configured in `Engine::default()`; must be set explicitly. The
-budget is far above any legitimate frame call, even in a debug build, and under the host's one-second
-reply timeout (§4.2), so a runaway call is caught in the subprocess, which recovers (§4.3), rather than
-losing the whole subprocess. The store's initial deadline is 0, so instantiating without setting one traps
+budget is far above any legitimate frame call, even in a debug build, and well under the host's
+three-second reply timeout (§4.2), so a runaway call is caught in the subprocess, which recovers (§4.3),
+rather than losing the whole subprocess. The margin is for the recovery itself, and for a reload: each
+instantiates a generation, checks it and starts it, every step within a budget of its own. The store's initial deadline is 0, so instantiating without setting one traps
 at once.
 
 ### 4.2 Around the subprocess round-trip
 
 A flat timeout on "did the subprocess respond to this request," independent of §4.1, also covering the
-child connecting to the IPC pipe (§3), which has no built-in timeout: 5 s to connect, 1 s per request, 60 s
+child connecting to the IPC pipe (§3), which has no built-in timeout: 5 s to connect, 3 s per request, 60 s
 for `Start`, which compiles the component — catches a hang in
 the harness code or in `wasmtime` instantiation itself, neither of which a guest-call-scoped fuel/epoch
 budget can see. No heartbeat mechanism: a heartbeat only proves the responding thread is alive, not that
@@ -253,8 +258,9 @@ bound) — do not build one.
 
 A guest call that traps (a panic, the §4.1 budget) never propagates. The subprocess drops the request,
 starts a new generation from the latest state and answers `Recovered { state }`: from the component before
-the last reload if the trap follows one, since the new code is the likely cause, else from a new instance of
-the same component. The drafts' `drive()` loops used `?` and exited the host process on a trap.
+the last reload while the new one has answered fewer than 5 key presses or clicks, since the new code is
+then the likely cause, else from a new instance of the same component. Ticks, view requests and mouse moves
+don't count: they would let the previous component go within a second without having proved anything. The drafts' `drive()` loops used `?` and exited the host process on a trap.
 
 A lost subprocess (the pipe closed, a §4.2 timeout, a malformed message, or the child exiting) is a
 different case: the whole child is gone, previous generation included. Kill it if still alive, reap it,
@@ -281,7 +287,9 @@ std::thread::spawn(move || {
 });
 ```
 
-A `notify` watcher on the app's `src/` and its manifest triggers a rebuild. Only edits count (a file
+A `notify` watcher on the app's `src/` and its manifest triggers a rebuild. It starts before the first
+build, so an edit saved during it makes another, and it watches the crate's resolved path, which is where
+macOS reports changes. Only edits count (a file
 created, removed, renamed or written): building reads every source, so counting reads or metadata changes
 would rebuild forever. Changes are batched until the sources stay quiet for 200 ms. The rebuild must run
 `cargo build` on its own background thread, never inline in the
@@ -295,15 +303,17 @@ own, simpler mechanism: isolate the wait, not bound it.
 process itself would still be running, unbounded, on that background thread. Two more pieces bound it:
 
 - **A kill timeout** of 10 minutes — minutes, not milliseconds, since a real build can legitimately take a
-  long time. On expiry, the child process is killed outright and the failure reported through the shared
-  log (§5), handled like an ordinary failed build: the running generation stays.
+  long time. On expiry, the build is killed outright and the failure reported through the shared
+  log (§5), handled like an ordinary failed build: the running generation stays. On Unix a rebuild runs in a
+  process group of its own, killed whole, since killing cargo alone leaves its compilers running; on Windows
+  only cargo is killed. The host quitting kills a rebuild in flight the same way.
 - **A single-in-flight guard** — one rebuild thread. A file save arriving while a rebuild is running makes
   one more build after it, never a second, overlapping `cargo build` competing for the same target
   directory and lock.
 
 Cargo's output goes to the log, the terminal being the host's. A built component reaches the subprocess
 as `Load`; it compiles there beside the running generation and takes over at the next tick, from the
-latest state.
+latest state. One built while a subprocess is starting is kept, and handed over once it runs.
 
 Do not state a reload-latency number anywhere derived from this spec. Compile time dominates, is not
 sub-second even in the best case, and is currently unbounded in the worst case — background-threading the
@@ -329,7 +339,8 @@ Four destinations. Confusing any two of them is the bug class this section exist
   falling back to `dirs::data_local_dir()`: `%LOCALAPPDATA%\termoxide\<app>\logs\` on Windows,
   `$XDG_STATE_HOME/termoxide/<app>/logs/` on Linux (default under `~/.local/state/`),
   `~/Library/Application Support/termoxide/<app>/logs/` on macOS; `<app>` is the executable's file stem.
-  The host passes the path to the child at spawn.
+  `TERMOXIDE_STATE_DIR` replaces that directory on every platform, giving `<dir>/<app>/logs/`.
+  The host passes the path to the child at spawn. A run deletes the oldest files of the directory beyond 20.
 - Framework code logs through the `log` facade (`log::info!` etc.); the backend formats each tagged line and
   commits it under the lock below. It writes the framework's records from `debug` and other crates' only
   from `warn`: `wasmtime`'s compiler alone logs about a hundred thousand `debug` lines per component.
@@ -403,23 +414,30 @@ termoxide_hot_reload::run_app!(persistent).await
   `{ at, state }` (milliseconds since the Unix epoch, the state bytes) per change of a recorded signal (§2).
   Each run starts a new trace with the state the app started from, written beside the old one and renamed
   over it, then appends; the next run starts from the last entry. An entry cut short by a host killed while
-  writing it is skipped.
+  writing it is skipped. A state the last entry already holds adds none, so a reload or a restart that
+  changed nothing leaves no entry.
+- One run of an app traces at a time: it holds a lock on `state.lock`, beside the trace, until it exits. A
+  second run would replace the first one's trace under it, so it warns and keeps nothing.
 - A trace that isn't one, or whose last state fails to decode, is renamed `state.bin.unreadable` and the
-  app starts afresh. When the app stops for crashing too often (§4.3), its trace is renamed
+  app starts afresh. Only that: a run that fails to start for another reason, a timeout say, ends with its
+  error and leaves the trace alone. When the app stops for crashing too often (§4.3), its trace is renamed
   `state.bin.crashed`, so the next run doesn't start from the state that crashed it. A trace saved by
   another state type resets the app (§2.3), and the run's own trace replaces it.
 - `termoxide dump [<path>] [--bin <name>] [--crashed | --unreadable] [--manifest <Cargo.toml>]` prints a
   trace. Only the app's own component can decode its state, so it builds the guest and asks it to
   `Describe` each entry. It prints each entry's time, its state type's fingerprint — highlighted where it
   changed from the previous entry — and the app as JSON. `<path>`, `.` by default, is either:
-  - **a trace**, whose header names the manifest directory to build the guest from;
+  - **a trace**, whose header names the manifest directory to build the guest from. Building runs that
+    crate's build script, and a trace can come from anyone, so `dump` asks first, and refuses where there is
+    no terminal to ask on;
   - **an app's crate folder**, which is also the manifest. `<app>` is its executable's name, through
     `cargo metadata`: its only `[[bin]]`, or the package's name when it has none and runs through
     `termoxide run` (whose runner is named after the package). Several bins need `--bin`. The trace is that
     app's `state.bin` (§5's directory), or with `--crashed` / `--unreadable` the one set aside; when
     `state.bin` is missing and one set aside exists, the error names it.
 
-  `--manifest` names the crate when a trace's header points where it no longer is.
+  `--manifest` names the crate to build for a trace file, with nothing asked: when its header points where
+  the crate no longer is, or where there is no one to answer.
 
 ---
 
@@ -431,7 +449,9 @@ custom profile counts as release exactly when it turns them off. A release binar
 subprocess, no IPC, no epoch and no guest build (§§3, 4, 6). It keeps two things:
 
 - **The log file** (§5): the framework's and the app's `log` records go straight to the run's file, tagged
-  as before; with no child, there are no `[framework:child]` lines and no piped stdout/stderr.
+  as before; with no child, there are no `[framework:child]` lines and no piped stdout/stderr. Only the
+  app's own lib is tagged `[app]` there: the records of its dependencies are written from `warn` and tagged
+  as the framework's, where a dev run logs them from `debug` as the app's.
 - **Persistence** (§7), when the run persists: the app is encoded with its fingerprint
   (§2.3) after every recorded change, natively, and appended to the same trace. The bytes are the ones a
   guest would write, so `termoxide dump` reads a release trace, and a dev run can start from one. A crash
@@ -482,7 +502,9 @@ branching is entirely internal to the macro's expansion. Both sides are built.
   app, `termoxide_hot_reload` from where the app takes it, and a `main` that does what a release `run_app!`
   does, its binary named after the app's package so the logs and the trace land in the same
   `termoxide/<app>/` (§5). The runner names the lib, its folder and the app's default from `cargo metadata`,
-  which `run_app!` reads from its own crate, so a lib its `[lib]` table renames is found. It starts from the
+  which `run_app!` reads from its own crate, so a lib its `[lib]` table renames is found. The runner is a
+  workspace of its own, so its manifest takes the `[profile]` and `[patch]` tables of the app's workspace
+  root, which Cargo reads nowhere else, with the patches' paths made absolute. It starts from the
   app's `Cargo.lock`, builds with `cargo build --release` and replaces itself with the binary: `exec` on
   Unix; on Windows, which has none, it spawns the binary and exits with its exit code. The runner is
   rewritten on every run and never edited, a file left as it was when unchanged, so Cargo doesn't rebuild
