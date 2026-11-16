@@ -138,9 +138,20 @@ pub async fn run(package: Package, persistent: bool) -> color_eyre::Result<()> {
     let snapshot = persists
         .then(|| logging::app_dir().map(|dir| Snapshot::in_dir(&dir, package.manifest_dir)))
         .transpose()?;
-    if let Some(snapshot) = &snapshot {
-        log::info!("keeping the app's state in {}", snapshot.path().display());
-    }
+    let snapshot = match snapshot {
+        Some(snapshot) if snapshot.claim()? => {
+            log::info!("keeping the app's state in {}", snapshot.path().display());
+            Some(snapshot)
+        },
+        Some(snapshot) => {
+            log::warn!(
+                "another run of the app keeps its state in {}, so this one's isn't kept",
+                snapshot.path().display()
+            );
+            None
+        },
+        None => None,
+    };
     let fresh = snapshot::is_fresh(env::var(FRESH_ENV).ok().as_deref());
     termoxide::run_with_app(RemoteApp::start(rebuilds, guest, log_path, snapshot, fresh)?).await
 }

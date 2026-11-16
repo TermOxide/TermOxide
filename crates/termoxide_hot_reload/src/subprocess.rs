@@ -290,6 +290,7 @@ impl Generations {
                 }
                 Ok((generation, state))
             },
+            Response::Undecodable(why) => Err(eyre!("the app's state doesn't decode: {why}")),
             _ => Err(eyre!("the new generation didn't start")),
         }
     }

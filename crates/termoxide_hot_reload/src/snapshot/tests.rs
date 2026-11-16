@@ -176,3 +176,28 @@ fn only_1_or_true_starts_fresh() {
     assert!(!is_fresh(Some("0")));
     assert!(!is_fresh(None));
 }
+
+#[test]
+fn a_state_the_last_entry_holds_adds_no_entry() {
+    let dir = TempDir::new();
+    let run = Snapshot::in_dir(&dir.0, APP);
+
+    run.record(b"same").unwrap();
+    run.record(b"same").unwrap();
+    run.record(b"other").unwrap();
+    run.record(b"same").unwrap();
+
+    assert_eq!(traced(run.path()), [b"same".to_vec(), b"other".to_vec(), b"same".to_vec()]);
+}
+
+#[test]
+fn only_one_run_at_a_time_takes_the_trace() {
+    let dir = TempDir::new();
+    let first = Snapshot::in_dir(&dir.0, APP);
+    let second = Snapshot::in_dir(&dir.0, APP);
+
+    assert!(first.claim().unwrap());
+    assert!(!second.claim().unwrap());
+    drop(first);
+    assert!(second.claim().unwrap());
+}
