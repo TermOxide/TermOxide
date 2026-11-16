@@ -280,17 +280,16 @@ fn an_app_whose_state_has_no_fingerprint_still_resumes_from_it() {
 }
 
 #[test]
-fn a_state_of_the_right_type_that_does_not_decode_is_an_error() {
+fn a_state_of_the_right_type_that_does_not_decode_does_not_start_the_app() {
     run(async {
         let mut saved = state(7, 3);
         saved.truncate(9);
         let mut responder = Responder::new(Counter::new());
 
-        let Err(error) = responder.step(Request::Start { state: Some(saved) }) else {
-            panic!("a corrupt state was accepted")
-        };
+        let answer = responder.step(Request::Start { state: Some(saved) });
 
-        assert!(matches!(error, IpcError::State(_)), "{error}");
+        assert!(matches!(answer, Ok(Step::Reply(Response::Undecodable(_)))));
+        assert!(responder.step(Request::Tick).is_err(), "the app runs");
     });
 }
 

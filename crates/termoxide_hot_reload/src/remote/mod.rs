@@ -100,19 +100,18 @@ impl RemoteApp {
             },
             None => None,
         };
-        let restored = saved.is_some();
-        let started = match start_subprocess(&guest, &log, saved) {
-            Err(e) if restored => {
-                // The snapshot matched the state type, so it ought to decode:
-                // it was damaged.
-                if let Some(snapshot) = &snapshot {
-                    let aside = snapshot.set_aside(Aside::Unreadable)?;
-                    log::warn!("the app couldn't start from the snapshot: {e:#}, the subprocess's error is above");
-                    log::warn!("so the snapshot is kept as {} and the app starts afresh", aside.display());
-                }
-                start_subprocess(&guest, &log, None)?
+        let started = match (start_subprocess(&guest, &log, saved)?, &snapshot) {
+            // The snapshot matched the state type, so it ought to decode: it
+            // was damaged.
+            (Start::Undecodable(why), Some(snapshot)) => {
+                let aside = snapshot.set_aside(Aside::Unreadable)?;
+                log::warn!(
+                    "the snapshot doesn't decode: {why}, so it is kept as {} and the app starts afresh",
+                    aside.display()
+                );
+                start_subprocess(&guest, &log, None)?.started()?
             },
-            started => started?,
+            (start, _) => start.started()?,
         };
         if started.reset {
             log::warn!("the snapshot was saved by another state type, so the app starts afresh");
@@ -227,8 +226,8 @@ impl RemoteApp {
         let (guest, log, state) = (self.0.guest.borrow().clone(), self.0.log.clone(), self.0.state.borrow().clone());
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
-            let _ =
-                tx.send(start_subprocess(&guest, &log, Some(state)).map(|started| (started.subprocess, started.state)));
+            let started = start_subprocess(&guest, &log, Some(state)).and_then(Start::started);
+            let _ = tx.send(started.map(|started| (started.subprocess, started.state)));
         });
         // Dropping the running subprocess, if any, kills it.
         *self.0.link.borrow_mut() = Link::Respawning(rx);
@@ -319,13 +318,33 @@ struct Started {
     reset: bool,
 }
 
+/// What starting the app in a new subprocess came to.
+enum Start {
+    Started(Started),
+    /// The state it was given matches the app's type, yet doesn't decode,
+    /// with why. The subprocess is gone.
+    Undecodable(String),
+}
+
+impl Start {
+    fn started(self) -> Result<Started> {
+        match self {
+            Self::Started(started) => Ok(started),
+            Self::Undecodable(why) => Err(eyre!("the app's state doesn't decode: {why}")),
+        }
+    }
+}
+
 /// Starts a subprocess running `guest`, logging to `log`, from `state` or from
 /// scratch.
-fn start_subprocess(guest: &Path, log: &Path, state: Option<Vec<u8>>) -> Result<Started> {
+fn start_subprocess(guest: &Path, log: &Path, state: Option<Vec<u8>>) -> Result<Start> {
     let mut subprocess = Subprocess::spawn(log, guest)?;
     subprocess.ping()?;
     match subprocess.request(&Request::Start { state })? {
-        Response::Started { mouse_capture, state, reset } => Ok(Started { subprocess, mouse_capture, state, reset }),
+        Response::Started { mouse_capture, state, reset } => {
+            Ok(Start::Started(Started { subprocess, mouse_capture, state, reset }))
+        },
+        Response::Undecodable(why) => Ok(Start::Undecodable(why)),
         _ => Err(IpcError::Unexpected.into()),
     }
 }
