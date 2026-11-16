@@ -55,9 +55,14 @@ impl<A: App + Clone + Serialize + DeserializeOwned + 'static> Responder<A> {
             Request::Ping => Ok(Step::Reply(Response::Pong)),
             Request::Start { state } => {
                 let app = self.fresh.take().ok_or(IpcError::Unexpected)?;
-                let (session, started) = Session::start(app, state.as_deref(), self.fingerprint)?;
-                self.session = Some(session);
-                Ok(Step::Reply(started))
+                match Session::start(app, state.as_deref(), self.fingerprint) {
+                    Ok((session, started)) => {
+                        self.session = Some(session);
+                        Ok(Step::Reply(started))
+                    },
+                    Err(IpcError::State(e)) => Ok(Step::Reply(Response::Undecodable(e.to_string()))),
+                    Err(e) => Err(e),
+                }
             },
             _ => Err(IpcError::Unexpected),
         }

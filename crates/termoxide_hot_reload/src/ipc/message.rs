@@ -50,6 +50,9 @@ pub(crate) enum Response {
     Recovered { state: Vec<u8> },
     /// In place of an answer too large for one frame, which was dropped.
     TooLarge,
+    /// The answer to a [`Request::Start`] whose state matches the app's type,
+    /// yet doesn't decode, with why: the app didn't start.
+    Undecodable(String),
     /// The answer to [`Request::Describe`]: the fingerprint of the state type
     /// that saved the state, if it holds one, and the app as pretty-printed
     /// JSON, or `None` when another state type saved it.
