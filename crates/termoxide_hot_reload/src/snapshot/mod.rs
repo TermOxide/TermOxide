@@ -5,7 +5,7 @@
 
 use std::{
     cell::RefCell,
-    fs::{self, File, OpenOptions},
+    fs::{self, File, OpenOptions, TryLockError},
     io::{self, Write},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -82,13 +82,41 @@ pub(crate) struct Snapshot {
     manifest_dir: &'static str,
     /// This run's trace, open for appending once its first entry is written.
     trace: RefCell<Option<File>>,
+    /// The state of the trace's last entry.
+    last: RefCell<Vec<u8>>,
+    /// Locked for as long as this run traces, once [`claim`](Self::claim)ed.
+    lock: RefCell<Option<File>>,
 }
 
 impl Snapshot {
     /// `state.bin` in `dir`, the app's directory, next to its logs, for the
     /// app whose crate is at `manifest_dir`.
     pub(crate) fn in_dir(dir: &Path, manifest_dir: &'static str) -> Self {
-        Self { path: dir.join("state.bin"), manifest_dir, trace: RefCell::new(None) }
+        Self {
+            path: dir.join("state.bin"),
+            manifest_dir,
+            trace: RefCell::new(None),
+            last: RefCell::default(),
+            lock: RefCell::new(None),
+        }
+    }
+
+    /// Takes the trace for this run, until the process ends. Returns whether
+    /// it could: not while another run of the app holds it, whose trace this
+    /// one would replace under it.
+    pub(crate) fn claim(&self) -> io::Result<bool> {
+        if let Some(dir) = self.path.parent() {
+            fs::create_dir_all(dir)?;
+        }
+        let lock = File::create(self.path.with_extension("lock"))?;
+        match lock.try_lock() {
+            Ok(()) => {
+                *self.lock.borrow_mut() = Some(lock);
+                Ok(true)
+            },
+            Err(TryLockError::WouldBlock) => Ok(false),
+            Err(TryLockError::Error(e)) => Err(e),
+        }
     }
 
     pub(crate) fn path(&self) -> &Path { &self.path }
@@ -121,7 +149,8 @@ impl Snapshot {
     /// Adds `state` to this run's trace. The first entry starts it in place of
     /// the last run's: written beside it, then renamed over it, so a host
     /// killed meanwhile leaves the previous trace whole. One killed while
-    /// appending leaves the last entry cut short, which reading skips.
+    /// appending leaves the last entry cut short, which reading skips. A
+    /// state the last entry already holds adds none.
     pub(crate) fn record(&self, state: &[u8]) -> io::Result<()> {
         let at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -130,7 +159,18 @@ impl Snapshot {
         let entry = postcard::to_stdvec(&Entry { at, state }).map_err(io::Error::other)?;
         let mut trace = self.trace.borrow_mut();
         if let Some(file) = trace.as_mut() {
-            return file.write_all(&entry);
+            if *self.last.borrow() == state {
+                return Ok(());
+            }
+            // A failed write may have left part of the entry: the next one
+            // starts the trace over rather than land behind it.
+            if let Err(e) = file.write_all(&entry) {
+                *trace = None;
+                return Err(e);
+            }
+            self.last.borrow_mut().clear();
+            self.last.borrow_mut().extend_from_slice(state);
+            return Ok(());
         }
         if let Some(dir) = self.path.parent() {
             fs::create_dir_all(dir)?;
@@ -140,6 +180,7 @@ impl Snapshot {
         fs::write(&partial, [MAGIC, &header, &entry].concat())?;
         fs::rename(&partial, &self.path)?;
         *trace = Some(OpenOptions::new().append(true).open(&self.path)?);
+        *self.last.borrow_mut() = state.to_vec();
         Ok(())
     }
 
