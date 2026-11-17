@@ -21,17 +21,14 @@
         "aarch64-darwin"
       ];
 
-      eachSystem =
-        f:
-        genSystems (
-          system:
-          f (
-            import nixpkgs {
-              inherit system;
-              overlays = [ rust-overlay.overlays.default ];
-            }
-          )
-        );
+      pkgs.overlays = [ rust-overlay.overlays.default ];
+
+      get-pkgs = system: import nixpkgs {
+        inherit system;
+        inherit (pkgs) overlays;
+      };
+
+      eachSystem = f: genSystems (system: f (get-pkgs system));
     in
     {
       formatter = eachSystem (pkgs: pkgs.nixfmt-tree);
