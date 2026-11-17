@@ -23,7 +23,7 @@
           overlays = [rust-overlay.overlays.default];
         }));
   in {
-    formatter = eachSystem (pkgs: pkgs.alejandra);
+    formatter = eachSystem (pkgs: pkgs.nixfmt-tree);
 
     devShells = eachSystem (pkgs: let
       stableToolchain = pkgs.rust-bin.stable.latest.default.override {
@@ -41,7 +41,7 @@
           nightlyRustfmt
 
           # Nix
-          alejandra
+          self.formatter.${pkgs.stdenv.hostPlatform.system}
         ];
 
         shellHook = ''
