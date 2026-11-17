@@ -115,6 +115,10 @@
           rustfmt-nightly = pkgs.rust-bin.selectLatestNightlyWith (
             toolchain: toolchain.minimal.override { extensions = [ "rustfmt" ]; }
           );
+
+          termoxide-cli = pkgs.callPackage ./package.nix {
+            source = self;
+          };
         }
       );
     };
