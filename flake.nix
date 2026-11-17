@@ -39,6 +39,15 @@
           inherit (pkgs.stdenv.hostPlatform) system;
 
           inherit (self.packages.${system}) rust-toolchain rustfmt-nightly;
+
+          setupHook = pkgs.runCommand "setup-hook" { } ''
+            mkdir -p $out
+            cp -r ${./.githooks} $out/.githooks
+            chmod -R u+w $out/.githooks
+
+            substituteInPlace $out/.githooks/pre-commit \
+              --replace-fail "+nightly" ""
+          '';
         in
         {
           default = pkgs.mkShell {
@@ -52,6 +61,10 @@
               # Nix
               self.formatter.${system}
             ];
+
+            shellHook = ''
+              git config core.hooksPath "${setupHook}/.githooks"
+            '';
           };
         }
       );
