@@ -39,37 +39,41 @@
       devShells = eachSystem (
         pkgs:
         let
-          stableToolchain = pkgs.rust-bin.stable.latest.default.override {
-            # `rust-analyzer` puts the proc-macro server matching this compiler in
-            # the sysroot, which the editor's rust-analyzer needs to expand derives.
-            extensions = [
-              "rust-src"
-              "clippy"
-              "rust-analyzer"
-            ];
-            targets = [ "wasm32-wasip2" ];
-          };
+          inherit (pkgs.stdenv.hostPlatform) system;
 
-          nightlyRustfmt = pkgs.rust-bin.selectLatestNightlyWith (
-            toolchain: toolchain.minimal.override { extensions = [ "rustfmt" ]; }
-          );
+          inherit (self.packages.${system}) rust-toolchain rustfmt-nightly;
         in
         {
           default = pkgs.mkShell {
+            env.RUSTFMT = lib.getExe' rustfmt-nightly "rustfmt";
+
             packages = [
               # Rust
-              stableToolchain
-              nightlyRustfmt
+              rust-toolchain
+              rustfmt-nightly
 
               # Nix
-              self.formatter.${pkgs.stdenv.hostPlatform.system}
+              self.formatter.${system}
             ];
-
-            shellHook = ''
-              export RUSTFMT="${nightlyRustfmt}/bin/rustfmt"
-            '';
           };
         }
       );
+
+      packages = eachSystem (pkgs: {
+        rust-toolchain = pkgs.rust-bin.stable.latest.default.override {
+          # `rust-analyzer` puts the proc-macro server matching this compiler in
+          # the sysroot, which the editor's rust-analyzer needs to expand derives.
+          extensions = [
+            "rust-src"
+            "clippy"
+            "rust-analyzer"
+          ];
+          targets = [ "wasm32-wasip2" ];
+        };
+
+        rustfmt-nightly = pkgs.rust-bin.selectLatestNightlyWith (
+          toolchain: toolchain.minimal.override { extensions = [ "rustfmt" ]; }
+        );
+      });
     };
 }
