@@ -263,7 +263,7 @@ jobs:
       # uploaded under the current commit's SHA with mismatched data.
       - name: Upload results to Codecov
         if: steps.tests.outcome == 'success' && steps.tests.outputs.ran == 'true'
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage/lcov.info
