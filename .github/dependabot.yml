@@ -1,0 +1,36 @@
+version: 2
+
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    assignees:
+      - "Ciznia"
+    labels:
+      - "1.type: dependencies"
+      - "2.component: ci-meta"
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: "nix"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    assignees:
+      - "Ciznia"
+    labels:
+      - "1.type: dependencies"
+    commit-message:
+      prefix: "nix"
+
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    assignees:
+      - "Ciznia"
+    labels:
+      - "1.type: dependencies"
+    commit-message:
+      prefix: "cargo"
