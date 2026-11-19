@@ -61,7 +61,7 @@ jobs:
         id: ref
         env:
           EVENT_NAME: ${{ github.event_name }}
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.sha }}
           DISPATCH_REF: ${{ github.ref }}
         run: |
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
