@@ -17,7 +17,7 @@ jobs:
       # Needed so the parser can read the form template
       # and the labeler can read the policy config file.
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Parse issue form
         id: issue-parser
