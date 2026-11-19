@@ -1,7 +1,10 @@
 [package]
 name = "termoxide_macros"
+description = "Procedural macros for TermOxide"
 version = "1.0.0-alpha"
-edition = "2024"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [lib]
 proc-macro = true
@@ -10,3 +13,6 @@ proc-macro = true
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full"] }
+
+[package.metadata.workspaces]
+independent = true

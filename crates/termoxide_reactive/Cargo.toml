@@ -1,9 +1,10 @@
 [package]
 name = "termoxide_reactive"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Reactive primitives for TermOxide — Signal system"
-license = "BSD-2-Clause"
 
 [dependencies]
 # Fine-grained reactive graph (Leptos ecosystem)
@@ -15,3 +16,6 @@ any_spawner = { version = "0.3" }
 # Tests drive the reactive graph from a Tokio current-thread runtime.
 any_spawner = { version = "0.3", features = ["tokio"] }
 tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
+
+[package.metadata.workspaces]
+independent = true

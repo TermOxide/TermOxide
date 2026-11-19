@@ -1,9 +1,10 @@
 [package]
 name = "termoxide_event"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Event system for TermOxide"
-license = "BSD-2-Clause"
 
 [dependencies]
 crossterm = "0.27"
@@ -13,3 +14,6 @@ serial_test = "3"
 
 [lints]
 workspace = true
+
+[package.metadata.workspaces]
+independent = true
