@@ -31,6 +31,7 @@ jobs:
         uses: redhat-plumbers-in-action/advanced-issue-labeler@v3
         with:
           issue-form: ${{ steps.issue-parser.outputs.jsonString }}
+          template: 01-bug-report.yml
           section: regression
           config-path: .github/advanced-issue-labeler.yml
           token: ${{ secrets.GITHUB_TOKEN }}
