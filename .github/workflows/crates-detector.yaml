@@ -25,7 +25,7 @@ jobs:
     outputs:
       cache-hit: ${{ steps.rust-cache.outputs.cache-hit }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -44,7 +44,7 @@ jobs:
     outputs:
       crates: ${{ steps.generate.outputs.crates }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
