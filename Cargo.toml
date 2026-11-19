@@ -11,6 +11,11 @@ members = [
     "crates/cargo-extract",
 ]
 
+[workspace.package]
+edition = "2024"
+license = "BSD-2-Clause"
+repository = "https://github.com/TermOxide/TermOxide"
+
 [profile.release]
 opt-level = 3
 lto = true

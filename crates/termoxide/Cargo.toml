@@ -3,15 +3,14 @@ name = "termoxide"
 description = "Framework for TUI applications in Rust"
 version = "1.0.0-alpha"
 
-keywords = ["tui", "terminal", "user interface", "rust", "framework"]
+keywords = ["tui", "terminal", "ui", "rust", "framework"]
 categories = ["development-tools", "rendering::engine"]
 
-repository = "https://github.com/TermOxide/TermOxide"
+readme = "../../README.md"
 
-readme = "README.md"
-license = "BSD-2-Clause"
-
-edition = "2024"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [package.metadata.bundle]
 name = "termoxide"
@@ -23,11 +22,11 @@ category = "Developer Tool"
 long_description = "TermOxide is a framework for building terminal user interfaces (TUIs) in Rust. It provides a set of tools and components to create interactive and visually appealing TUIs, making it easier for developers to build command-line applications with rich user interfaces."
 
 [dependencies]
-termoxide_macros = { path = "../termoxide_macros" }
-termoxide_layout = { path = "../termoxide_layout/" }
-termoxide_event = { path = "../termoxide_event" }
-termoxide_reactive = { path = "../termoxide_reactive" }
-termoxide_rendering = { path = "../termoxide_rendering" }
+termoxide_macros = { version = "1.0.0-alpha", path = "../termoxide_macros" }
+termoxide_layout = { version = "0.1.0", path = "../termoxide_layout" }
+termoxide_event = { version = "0.1.0", path = "../termoxide_event" }
+termoxide_reactive = { version = "0.1.0", path = "../termoxide_reactive" }
+termoxide_rendering = { version = "0.1.0", path = "../termoxide_rendering" }
 
 # Render loop: terminal backend, reactive effects, async runtime and error reporting
 ratatui = { version = "0.26", features = ["crossterm"] }
@@ -47,3 +46,6 @@ default = ["ratatui"]
 ratatui = ["termoxide_layout/ratatui"]
 # Exposes `run_with_backend` to the integration tests.
 test-util = []
+
+[package.metadata.workspaces]
+independent = true

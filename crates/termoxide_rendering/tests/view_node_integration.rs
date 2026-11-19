@@ -172,8 +172,8 @@ fn test_view_node_wide_tree() {
     let parent = ViewNode::container(Rect::new(0, 0, 80, 10), children);
 
     assert_eq!(parent.children.len(), 10);
-    for i in 0..10 {
-        assert_eq!(parent.children[i].id, Some(i as u64 + 1));
+    for (i, child) in parent.children.iter().enumerate() {
+        assert_eq!(child.id, Some(i as u64 + 1));
     }
 }
 
