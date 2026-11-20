@@ -23,10 +23,12 @@
 
       pkgs.overlays = [ rust-overlay.overlays.default ];
 
-      get-pkgs = system: import nixpkgs {
-        inherit system;
-        inherit (pkgs) overlays;
-      };
+      get-pkgs =
+        system:
+        import nixpkgs {
+          inherit system;
+          inherit (pkgs) overlays;
+        };
 
       eachSystem = f: genSystems (system: f (get-pkgs system));
     in
@@ -38,7 +40,11 @@
         let
           inherit (pkgs.stdenv.hostPlatform) system;
 
-          inherit (self.packages.${system}) rust-toolchain rustfmt-nightly;
+          inherit (self.packages.${system})
+            rust-toolchain
+            rust-toolchain-with-coverage
+            rustfmt-nightly
+            ;
 
           setupHook = pkgs.runCommand "setup-hook" { } ''
             mkdir -p $out
@@ -48,42 +54,68 @@
             substituteInPlace $out/.githooks/pre-commit \
               --replace-fail "+nightly" ""
           '';
+
+          mkToolchainShell =
+            toolchain: extraPackages:
+            pkgs.mkShell {
+              env.RUSTFMT = lib.getExe' rustfmt-nightly "rustfmt";
+
+              packages = [
+                toolchain
+                rustfmt-nightly
+                self.formatter.${system}
+              ]
+              ++ extraPackages;
+
+              shellHook = ''
+                git config core.hooksPath "${setupHook}/.githooks"
+              '';
+            };
         in
         {
-          default = pkgs.mkShell {
-            env.RUSTFMT = lib.getExe' rustfmt-nightly "rustfmt";
+          default = self.devShells.${system}.basic-toolchain;
 
-            packages = [
-              # Rust
-              rust-toolchain
-              rustfmt-nightly
+          basic-toolchain = mkToolchainShell rust-toolchain [ ];
 
-              # Nix
-              self.formatter.${system}
-            ];
-
-            shellHook = ''
-              git config core.hooksPath "${setupHook}/.githooks"
-            '';
-          };
+          with-coverage = mkToolchainShell rust-toolchain-with-coverage (
+            with pkgs;
+            [
+              cargo-tarpaulin
+              cargo-llvm-cov
+            ]
+          );
         }
       );
 
-      packages = eachSystem (pkgs: {
-        rust-toolchain = pkgs.rust-bin.stable.latest.default.override {
-          # `rust-analyzer` puts the proc-macro server matching this compiler in
-          # the sysroot, which the editor's rust-analyzer needs to expand derives.
-          extensions = [
-            "rust-src"
-            "clippy"
-            "rust-analyzer"
-          ];
-          targets = [ "wasm32-wasip2" ];
-        };
+      packages = eachSystem (
+        pkgs:
+        let
+          toolchain = pkgs.rust-bin.stable.latest.default;
 
-        rustfmt-nightly = pkgs.rust-bin.selectLatestNightlyWith (
-          toolchain: toolchain.minimal.override { extensions = [ "rustfmt" ]; }
-        );
-      });
+          toolchainArgs = {
+            extensions = [
+              "clippy"
+              "rust-analyzer"
+              "rust-src"
+            ];
+            targets = [ "wasm32-wasip2" ];
+          };
+
+        in
+        {
+          rust-toolchain = toolchain.override toolchainArgs;
+
+          rust-toolchain-with-coverage = toolchain.override (
+            toolchainArgs
+            // {
+              extensions = toolchainArgs.extensions ++ [ "llvm-tools" ];
+            }
+          );
+
+          rustfmt-nightly = pkgs.rust-bin.selectLatestNightlyWith (
+            toolchain: toolchain.minimal.override { extensions = [ "rustfmt" ]; }
+          );
+        }
+      );
     };
 }
