@@ -58,7 +58,15 @@
           mkToolchainShell =
             toolchain: extraPackages:
             pkgs.mkShell {
-              env.RUSTFMT = lib.getExe' rustfmt-nightly "rustfmt";
+              env = {
+                RUSTFMT = lib.getExe' rustfmt-nightly "rustfmt";
+              }
+              # Avoid build issue with non-ascii filepath
+              # https://github.com/TermOxide/TermOxide/issues/253
+              // (lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
+                NIX_CC_USE_RESPONSE_FILE = "0";
+                NIX_LD_USE_RESPONSE_FILE = "0";
+              });
 
               packages = [
                 toolchain
