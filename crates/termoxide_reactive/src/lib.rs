@@ -59,6 +59,8 @@ pub use effect::Effect;
 pub use memo::Memo;
 pub use resource::{Resource, ResourceState};
 pub use runtime::{Owner, with_owner};
-pub use signal::Signal;
+#[cfg(feature = "serde")]
+pub use signal::recorded_only;
+pub use signal::{RecordMode, Recorded, Signal, Unrecorded};
 pub use stored::StoredValue;
 pub use trigger::Trigger;
