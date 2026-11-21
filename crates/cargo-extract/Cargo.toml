@@ -9,3 +9,6 @@ publish = false
 [dependencies]
 guppy = "0.17"
 anyhow = "1"
+
+[lints]
+workspace = true

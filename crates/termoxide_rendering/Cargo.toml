@@ -27,5 +27,8 @@ serde = ["dep:serde", "ratatui/serde", "termoxide_layout/ratatui", "termoxide_la
 termoxide_rendering = { path = ".", features = ["serde"] }
 postcard = { version = "1", features = ["use-std"] }
 
+[lints]
+workspace = true
+
 [package.metadata.workspaces]
 independent = true
