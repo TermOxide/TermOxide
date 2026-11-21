@@ -19,7 +19,7 @@ termoxide_rendering = { path = "../termoxide_rendering" }
 
 any_spawner = { version = "0.3", features = ["tokio"] }
 color-eyre = "0.6"
-ratatui = { version = "0.26", features = ["crossterm"] }
+ratatui = { version = "0.30", features = ["crossterm"] }
 tokio = { version = "1", features = ["rt", "macros"] }
 
 [dev-dependencies]
