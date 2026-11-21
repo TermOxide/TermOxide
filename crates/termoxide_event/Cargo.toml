@@ -21,7 +21,7 @@ serde = ["dep:serde"]
 [dev-dependencies]
 termoxide_event = { path = ".", features = ["serde"] }
 postcard = { version = "1", features = ["use-std"] }
-serial_test = "3"
+serial_test = "4"
 
 [lints]
 workspace = true
