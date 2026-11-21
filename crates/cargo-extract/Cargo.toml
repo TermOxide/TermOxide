@@ -7,5 +7,5 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-guppy = "0.17"
+guppy = "0.18"
 anyhow = "1"
