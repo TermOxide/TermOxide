@@ -19,6 +19,24 @@ pub(crate) struct AppCrate {
     targets: Vec<Target>,
     features: BTreeMap<String, Vec<String>>,
     metadata: Option<Metadata>,
+    #[serde(default)]
+    dependencies: Vec<Dependency>,
+    /// Where the package's workspace builds.
+    #[serde(skip)]
+    pub(crate) target_dir: PathBuf,
+    #[serde(skip)]
+    pub(crate) workspace_root: PathBuf,
+}
+
+/// A dependency, as the manifest declares it.
+#[derive(Debug, Deserialize)]
+pub(crate) struct Dependency {
+    name: String,
+    kind: Option<String>,
+    pub(crate) req: String,
+    pub(crate) source: Option<String>,
+    pub(crate) registry: Option<String>,
+    pub(crate) path: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,6 +61,10 @@ struct Termoxide {
 #[derive(Deserialize)]
 struct Workspace {
     packages: Vec<AppCrate>,
+    #[serde(default)]
+    target_directory: PathBuf,
+    #[serde(default)]
+    workspace_root: PathBuf,
 }
 
 impl AppCrate {
@@ -65,13 +87,16 @@ impl AppCrate {
     /// lists, the manifest's own and its fellow members.
     fn find(metadata: &[u8], manifest: &Path) -> Result<Self> {
         let workspace: Workspace = serde_json::from_slice(metadata)?;
-        workspace
+        let mut app = workspace
             .packages
             .into_iter()
             .find(|package| {
                 fs::canonicalize(&package.manifest_path).unwrap_or_else(|_| package.manifest_path.clone()) == manifest
             })
-            .ok_or_else(|| eyre!("{} has no package, only a workspace", manifest.display()))
+            .ok_or_else(|| eyre!("{} has no package, only a workspace", manifest.display()))?;
+        app.target_dir = workspace.target_directory;
+        app.workspace_root = workspace.workspace_root;
+        Ok(app)
     }
 
     pub(crate) fn dir(&self) -> &Path { self.manifest_path.parent().unwrap_or(Path::new(".")) }
@@ -87,11 +112,7 @@ impl AppCrate {
     /// Checks that `termoxide run` can build the lib as the app's component,
     /// and natively.
     pub(crate) fn check_runnable(&self) -> Result<()> {
-        let lib = self
-            .targets
-            .iter()
-            .find(|target| target.kind.iter().any(|kind| kind.ends_with("lib")))
-            .ok_or_else(|| eyre!("{} has no lib to run", self.name))?;
+        let lib = self.lib()?;
         let missing: Vec<_> = ["cdylib", "rlib"]
             .into_iter()
             .filter(|kind| !lib.crate_types.iter().any(|crate_type| crate_type == kind))
@@ -110,6 +131,24 @@ impl AppCrate {
             ));
         }
         Ok(())
+    }
+
+    fn lib(&self) -> Result<&Target> {
+        self.targets
+            .iter()
+            .find(|target| target.kind.iter().any(|kind| kind.ends_with("lib")))
+            .ok_or_else(|| eyre!("{} has no lib to run", self.name))
+    }
+
+    /// The crate name of the app's lib, which code depending on it uses.
+    pub(crate) fn lib_name(&self) -> Result<&str> { self.lib().map(|lib| lib.name.as_str()) }
+
+    /// How the app depends on `termoxide_hot_reload`.
+    pub(crate) fn hot_reload(&self) -> Result<&Dependency> {
+        self.dependencies
+            .iter()
+            .find(|dependency| dependency.name == "termoxide_hot_reload" && dependency.kind.is_none())
+            .ok_or_else(|| eyre!("{} doesn't depend on termoxide_hot_reload", self.name))
     }
 
     /// The name of the app's executable, which names its directory: `bin`, else
