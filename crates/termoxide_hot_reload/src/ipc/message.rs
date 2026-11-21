@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use ratatui::layout::Rect;
 use serde::{Deserialize, Serialize};
 use termoxide_event::event::Event;
@@ -16,6 +18,9 @@ pub(crate) enum Request {
     Tick,
     /// Asks for the app's view of the viewport.
     BuildView(Rect),
+    /// Hands the subprocess a freshly built component, to replace the running
+    /// one at the next tick once it is compiled. Never reaches the component.
+    Load { guest: PathBuf },
 }
 
 /// A message the subprocess sends back to the host.
@@ -30,6 +35,11 @@ pub(crate) enum Response {
     Done(Outcome),
     /// The answer to [`Request::BuildView`].
     View(ViewNode),
+    /// The answer to [`Request::Load`]: the component is compiling.
+    Loading,
+    /// The answer to the [`Request::Tick`] at which a new component replaced
+    /// the running one, instead of that tick's [`Outcome`]: its state.
+    Reloaded { state: Vec<u8> },
 }
 
 /// What an event or a tick did to the app.

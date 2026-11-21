@@ -17,14 +17,25 @@ coverage reports.
 
 The tests only run on unix: they read raw mode from the PTY's termios.
 
+`tests/hot_reload.rs` checks hot reload on the fixture app in `fixtures/reload_app`, which counts presses of `a`:
+
+- an edit to the running app shows on screen, and the count it had survives;
+- a broken edit leaves the app running, and fixing it reloads it;
+- a new field in the app's state makes it start afresh.
+
+Each test copies the fixture under a name of its own into cargo's test directory (`target/tmp`), builds it there,
+and edits the copy, never the fixture. All copies share one target directory, so only the first build compiles the
+dependencies. Their logs go to the copy's `state` directory, not the user's.
+
 ## Running
 
 ```sh
 cargo test -p termoxide_e2e
 ```
 
-A run takes well under a second. Every check polls the emulated screen until it
-holds and fails after a deadline, 2 s by default. `TERMOXIDE_E2E_DEADLINE_SECS`
+The PTY tests take well under a second; the hot-reload tests take about 15 s, and a
+couple of minutes the first time, while their dependencies build. Every check polls the emulated screen until it
+holds and fails after a deadline, 2 s by default, or 5 minutes for what waits on a build. `TERMOXIDE_E2E_DEADLINE_SECS`
 overrides it, for runs that slow the probe down (see below).
 
 ## Coverage in CI
@@ -64,6 +75,36 @@ Measured locally (WSL, tarpaulin 0.37.5) on `termoxide`,
   avoids this by quitting a probe still running with `q` when a test ends; it only falls back to `portable-pty`'s
   `kill`, which sends `SIGHUP`, when the probe doesn't exit in time. If it shows up, a probe was killed that way:
   look for the timeout above in the same run.
+
+### The hot-reload tests run under cargo-llvm-cov
+
+`tests/hot_reload.rs` is compiled out of tarpaulin's runs (`#![cfg(not(tarpaulin))]`, a cfg tarpaulin sets), and CI
+runs it under `cargo llvm-cov` right after tarpaulin, when `termoxide_hot_reload` or this crate changed. Traced with
+`--follow-exec`, it doesn't work. Measured locally (WSL, tarpaulin 0.36.0, `TERMOXIDE_E2E_DEADLINE_SECS=120`):
+
+| Run                          | Result                                                                                   |
+|------------------------------|------------------------------------------------------------------------------------------|
+| plain `cargo test`           | 3 passed, ~15 s (~120 s with a cold target directory)                                    |
+| tarpaulin, default `--timeout` | 3 passed in 671 s, then `Timed out waiting for test response`: the cold build gave tarpaulin nothing to trace for over 60 s |
+| tarpaulin, `--timeout 900`   | 1 of 3 failed after 933 s, then `A segfault occurred while executing tests`              |
+
+The cargo builds themselves aren't traced. The segfault most likely comes from `wasmtime`, which relies on its own
+signal handlers to run compiled code; under ptrace, tarpaulin takes the signal for a crash.
+
+cargo-llvm-cov instruments the binaries instead of tracing them, so the app each test runs, and the subprocess it
+spawns, write their own coverage. Two things it takes from the fixture:
+
+- The fixture is a workspace of its own, which cargo-llvm-cov leaves uninstrumented: under it (`CARGO_LLVM_COV` set),
+  `Fixture::build` passes `-C instrument-coverage` itself. cargo-llvm-cov's report only reads this workspace's
+  binaries, so CI reads the fixtures' with `llvm-cov export` (see `.github/workflows/pr.yaml`).
+- The app builds its wasm guest with the environment it runs in, and `wasm32-wasip2` has no profiler runtime: the
+  fixture runs the app without the variables cargo-llvm-cov instruments builds with.
+
+Locally, with `cargo-llvm-cov` and the `llvm-tools-preview` component:
+
+```sh
+cargo llvm-cov -p termoxide_e2e --test hot_reload
+```
 
 ### Matching CI coverage locally
 
