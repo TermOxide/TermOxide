@@ -8,7 +8,7 @@ use crate::{
     build::Package,
     dump,
     metadata::AppCrate,
-    snapshot::{self, FRESH_ENV, PERSIST_ENV},
+    snapshot::{self, FRESH_ENV},
 };
 pub use crate::{dump::Dump, snapshot::Aside};
 
@@ -20,13 +20,13 @@ pub fn is_child() -> bool { crate::is_child() }
 pub fn serve() -> Result<()> { crate::serve() }
 
 /// Hosts the app of the crate at `path`, as `run_app!` in its own executable
-/// would. `persist`, when given, comes before the environment, which comes
-/// before the app's own default; `fresh` starts it from a clean state.
+/// would. `persist`, when given, comes before the environment, the app's
+/// config and its own default; `fresh` starts it from a clean state.
 pub async fn run(path: &Path, persist: Option<bool>, fresh: bool) -> Result<()> {
     let app = AppCrate::read(path)?;
     app.check_runnable()?;
-    let persists =
-        persist.unwrap_or_else(|| snapshot::persists(env::var(PERSIST_ENV).ok().as_deref(), app.persistent()));
+    // Read even when `persist` is given, so a broken config is never missed.
+    let persists = persist.unwrap_or(crate::persists(&app.name, app.persistent())?);
     let fresh = fresh || snapshot::is_fresh(env::var(FRESH_ENV).ok().as_deref());
     // Leaked once, as `env!` gives them to `run_app!`.
     let package = Package {
