@@ -9,3 +9,7 @@ trim_trailing_whitespace = true
 [*.{yml,yaml,nix,md,mjs}]
 indent_style = space
 indent_size = 2
+
+[*.{rs,toml}]
+indent_style = space
+indent_size = 4
