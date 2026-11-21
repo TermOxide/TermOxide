@@ -1387,14 +1387,21 @@ dependencies = [
 name = "termoxide_hot_reload"
 version = "0.1.0"
 dependencies = [
+ "any_spawner",
  "color-eyre",
  "dirs",
  "interprocess",
  "log",
  "postcard",
+ "ratatui",
+ "reactive_graph",
  "serde",
  "termoxide",
+ "termoxide_event",
+ "termoxide_reactive",
+ "termoxide_rendering",
  "time",
+ "tokio",
 ]
 
 [[package]]
