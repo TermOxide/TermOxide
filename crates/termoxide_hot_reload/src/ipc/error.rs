@@ -24,6 +24,13 @@ pub(crate) enum IpcError {
     Encode(postcard::Error),
     /// A frame arrived intact but its payload is not a valid message.
     Decode(postcard::Error),
+    /// The app's state matches its type's fingerprint, yet doesn't decode: it
+    /// was damaged. Only the guest decodes the state.
+    #[cfg(feature = "guest")]
+    State(postcard::Error),
+    /// The app's state decoded, yet can't be written out as text.
+    #[cfg(feature = "guest")]
+    Describe(serde_json::Error),
     /// A payload is longer than the allowed maximum, whether about to be sent
     /// or announced by a received frame.
     #[cfg(feature = "host")]
@@ -43,6 +50,10 @@ impl fmt::Display for IpcError {
             IpcError::Io(e) => write!(f, "I/O error: {e}"),
             IpcError::Encode(e) => write!(f, "could not encode IPC message: {e}"),
             IpcError::Decode(e) => write!(f, "malformed IPC message: {e}"),
+            #[cfg(feature = "guest")]
+            IpcError::State(e) => write!(f, "the app's state doesn't decode: {e}"),
+            #[cfg(feature = "guest")]
+            IpcError::Describe(e) => write!(f, "the app's state can't be written as JSON: {e}"),
             #[cfg(feature = "host")]
             IpcError::PayloadTooLarge { len, max } => write!(f, "IPC payload too large: {len} > {max}"),
             IpcError::Unexpected => write!(f, "unexpected IPC message"),
@@ -56,6 +67,10 @@ impl Error for IpcError {
             #[cfg(feature = "host")]
             IpcError::Io(e) => Some(e),
             IpcError::Encode(e) | IpcError::Decode(e) => Some(e),
+            #[cfg(feature = "guest")]
+            IpcError::State(e) => Some(e),
+            #[cfg(feature = "guest")]
+            IpcError::Describe(e) => Some(e),
             _ => None,
         }
     }
