@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-ratatui = { version = "0.26", optional = true, default-features = false }
+ratatui = { version = "0.30", optional = true, default-features = false }
 taffy = { version = "0.9.2", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 
@@ -21,7 +21,7 @@ serde = ["dep:serde"]
 
 [dev-dependencies]
 termoxide_layout = { path = ".", features = ["ratatui", "serde"] }
-ratatui = { version = "0.26", default-features = false }
+ratatui = { version = "0.30", default-features = false }
 postcard = { version = "1", features = ["use-std"] }
 
 [package.metadata.workspaces]
