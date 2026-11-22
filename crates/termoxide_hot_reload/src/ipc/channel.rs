@@ -1,11 +1,14 @@
 use std::{
     marker::PhantomData,
-    sync::mpsc::{self, RecvTimeoutError},
+    sync::{
+        Arc,
+        mpsc::{self, RecvTimeoutError},
+    },
     thread,
     time::Duration,
 };
 
-use interprocess::local_socket::{RecvHalf, SendHalf, Stream, traits::Stream as _};
+use interprocess::local_socket::Stream;
 use serde::{Serialize, de::DeserializeOwned};
 
 use super::{
@@ -23,7 +26,7 @@ use super::{
 /// pipe open until the peer sends or closes. The connection closes for sure
 /// when either process exits.
 pub(crate) struct Channel<S, R> {
-    writer: SendHalf,
+    stream: Arc<Stream>,
     frames: mpsc::Receiver<Result<Vec<u8>>>,
     _messages: PhantomData<(S, R)>,
 }
@@ -39,10 +42,11 @@ impl<S: Serialize, R: DeserializeOwned> Channel<S, R> {
     /// [`recv`](Self::recv) can give up after a timeout: `interprocess` has no
     /// read timeout on Windows named pipes.
     pub(super) fn new(stream: Stream) -> Self {
-        let (reader, writer) = stream.split();
+        let stream = Arc::new(stream);
+        let reader = Arc::clone(&stream);
         let (frames_tx, frames) = mpsc::channel();
-        thread::spawn(move || read_frames(reader, &frames_tx));
-        Self { writer, frames, _messages: PhantomData }
+        thread::spawn(move || read_frames(&reader, &frames_tx));
+        Self { stream, frames, _messages: PhantomData }
     }
 
     /// Sends `message` to the peer.
@@ -50,7 +54,7 @@ impl<S: Serialize, R: DeserializeOwned> Channel<S, R> {
     /// Fails with `Closed` if the peer has gone away.
     pub(crate) fn send(&mut self, message: &S) -> Result<()> {
         let payload = postcard::to_allocvec(message).map_err(IpcError::Encode)?;
-        write_frame(&mut self.writer, &payload)
+        write_frame(&mut &*self.stream, &payload)
     }
 
     /// Waits up to `timeout` for the next message from the peer.
@@ -70,7 +74,7 @@ impl<S: Serialize, R: DeserializeOwned> Channel<S, R> {
 
 /// Forwards every frame read from `reader`, until a read fails or the channel
 /// is dropped.
-fn read_frames(mut reader: RecvHalf, frames: &mpsc::Sender<Result<Vec<u8>>>) {
+fn read_frames(mut reader: &Stream, frames: &mpsc::Sender<Result<Vec<u8>>>) {
     loop {
         let frame = read_frame(&mut reader);
         let failed = frame.is_err();
