@@ -863,5 +863,6 @@ mod tests {
     #[test]
     #[cfg(feature = "ratatui")]
     #[ignore = "TDD: Style -> ratatui::style::Style conversion is not implemented yet"]
+    #[expect(clippy::todo, reason = "placeholder until the conversion exists")]
     fn convert_to_ratatui() { todo!() }
 }

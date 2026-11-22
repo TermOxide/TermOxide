@@ -242,22 +242,24 @@ async fn loop_reports_a_draw_error_and_a_teardown_error_together() {
     .await;
 }
 
-/// The panic a run ended on, checked against where the probe panicked.
-fn expect_panic<'a>(report: &'a color_eyre::Report, app: &ProbeApp, method: AppMethod) -> &'a AppPanic {
-    let error = report.downcast_ref::<LoopError>().expect("a LoopError");
-    let Some(LoopFailure::Panic(panic)) = error.failure() else {
-        panic!("expected a panic, got {error:?}");
+/// The panic a run ended on, checked against where the probe panicked;
+/// `None` when the run didn't end on one.
+fn checked_panic<'a>(report: &'a color_eyre::Report, app: &ProbeApp, method: AppMethod) -> Option<&'a AppPanic> {
+    let Some(LoopFailure::Panic(panic)) = report.downcast_ref::<LoopError>()?.failure() else {
+        return None;
     };
     assert_eq!(panic.method(), method);
     assert_eq!(panic.message(), format!("{method} blew up"));
 
-    let site = app.probe.panicked.get().expect("the probe panicked");
-    let location = panic.location().expect("a panic location");
+    let site = app.probe.panicked.get();
+    assert!(site.is_some(), "the probe never panicked");
     assert_eq!(
-        (location.file(), location.line(), location.column()),
-        (site.file, site.line, site.column)
+        panic
+            .location()
+            .map(|location| (location.file(), location.line(), location.column())),
+        site.map(|site| (site.file, site.line, site.column))
     );
-    panic
+    Some(panic)
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -276,7 +278,7 @@ async fn loop_stops_on_a_panic_in_handle_event() {
 
         let report = run(&app, &backend, events).await.expect_err("handle_event panicked");
 
-        expect_panic(&report, &app, AppMethod::HandleEvent);
+        checked_panic(&report, &app, AppMethod::HandleEvent).expect("the run ended on a panic");
         assert_eq!(teardown.get(), 1);
         assert_eq!(app.probe.delivered(), [key('a'), key('x')]);
         app.probe.assert_nothing_after_the_panic();
@@ -294,7 +296,7 @@ async fn loop_stops_on_a_panic_in_on_tick() {
 
         let report = run(&app, &backend, events).await.expect_err("on_tick panicked");
 
-        expect_panic(&report, &app, AppMethod::OnTick);
+        checked_panic(&report, &app, AppMethod::OnTick).expect("the run ended on a panic");
         assert_eq!(teardown.get(), 1);
         assert_eq!(app.probe.tick_count(), 2);
         assert!(app.probe.delivered().is_empty());
@@ -313,7 +315,7 @@ async fn loop_stops_on_a_panic_in_build_view() {
 
         let report = run(&app, &backend, events).await.expect_err("build_view panicked");
 
-        expect_panic(&report, &app, AppMethod::BuildView);
+        checked_panic(&report, &app, AppMethod::BuildView).expect("the run ended on a panic");
         assert_eq!(teardown.get(), 1);
         assert_eq!(app.probe.frame_count(), 1);
         assert_eq!(app.probe.delivered(), [key('a')]);
@@ -332,7 +334,7 @@ async fn loop_never_starts_after_a_panic_in_the_first_track_view() {
 
         let report = run(&app, &backend, events).await.expect_err("track_view panicked");
 
-        expect_panic(&report, &app, AppMethod::TrackView);
+        checked_panic(&report, &app, AppMethod::TrackView).expect("the run ended on a panic");
         assert_eq!(teardown.get(), 1);
         assert_eq!(app.probe.tick_count(), 0);
         assert_eq!(app.probe.frame_count(), 0);
@@ -356,7 +358,7 @@ async fn loop_stops_on_a_panic_in_a_later_track_view() {
 
         let report = run(&app, &backend, events).await.expect_err("track_view panicked");
 
-        expect_panic(&report, &app, AppMethod::TrackView);
+        checked_panic(&report, &app, AppMethod::TrackView).expect("the run ended on a panic");
         assert_eq!(teardown.get(), 1);
         assert_eq!(app.probe.frame_count(), 2);
         assert_eq!(app.probe.delivered(), [key('a'), key('a')]);
@@ -374,7 +376,7 @@ async fn loop_reports_a_panic_and_a_teardown_error_together() {
 
         let report = run(&app, &backend, events).await.expect_err("both failed");
 
-        expect_panic(&report, &app, AppMethod::HandleEvent);
+        checked_panic(&report, &app, AppMethod::HandleEvent).expect("the run ended on a panic");
         let error = report.downcast_ref::<LoopError>().expect("a LoopError");
         assert!(
             matches!(error.teardown(), Some(termoxide_event::Error::Terminal(_))),
@@ -399,7 +401,7 @@ async fn loop_traces_a_panic_from_the_app_frame_to_the_termoxide_boundary() {
             .await
             .expect_err("handle_event panicked");
 
-        let panic = expect_panic(&report, &app, AppMethod::HandleEvent);
+        let panic = checked_panic(&report, &app, AppMethod::HandleEvent).expect("the run ended on a panic");
         let Trace::Frames(frames) = panic.trace() else {
             panic!("expected frames, got {:?}", panic.trace());
         };
@@ -436,7 +438,12 @@ async fn loop_leaves_the_trace_out_when_it_is_disabled() {
 
         let report = run(&app, &backend, events).await.expect_err("handle_event panicked");
 
-        assert_eq!(expect_panic(&report, &app, AppMethod::HandleEvent).trace(), &Trace::Disabled);
+        assert_eq!(
+            checked_panic(&report, &app, AppMethod::HandleEvent)
+                .expect("the run ended on a panic")
+                .trace(),
+            &Trace::Disabled
+        );
     })
     .await;
 }

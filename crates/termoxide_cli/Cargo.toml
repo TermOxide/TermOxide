@@ -1,9 +1,10 @@
 [package]
 name = "termoxide_cli"
 version = "0.1.0"
-edition = "2024"
 description = "The termoxide command: runs a TermOxide app from its crate, with hot reload"
-license = "BSD-2-Clause"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [[bin]]
 name = "termoxide"
