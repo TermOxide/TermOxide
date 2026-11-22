@@ -1,9 +1,10 @@
 [package]
 name = "termoxide_hot_reload"
 version = "0.1.0"
-edition = "2024"
 description = "Hot reload for TermOxide apps during development"
-license = "BSD-2-Clause"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 # Shared by both sides: the messages and what they carry.
 [dependencies]
