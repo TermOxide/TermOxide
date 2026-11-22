@@ -13,7 +13,7 @@ use std::fmt;
 
 use reactive_graph::{
     owner::{LocalStorage, StoredValue as InnerStoredValue},
-    traits::{ReadValue, WriteValue},
+    traits::{ReadValue, WithValue, WriteValue},
 };
 
 /// Non-reactive, owner-scoped storage.
@@ -52,21 +52,18 @@ impl<T: 'static> StoredValue<T> {
     pub fn new(value: T) -> Self { Self(InnerStoredValue::new_local(value)) }
 
     /// Read the value via a closure (no cloning required).
-    pub fn with_value<R>(&self, f: impl FnOnce(&T) -> R) -> R {
-        self.0
-            .try_read_value()
-            .map(|g| f(&g))
-            .expect("StoredValue accessed after its owner was disposed")
-    }
+    ///
+    /// # Panics
+    /// Panics if the owner was disposed.
+    #[track_caller]
+    pub fn with_value<R>(&self, f: impl FnOnce(&T) -> R) -> R { self.0.with_value(f) }
 
     /// Mutate the value in place.
-    pub fn update(&self, f: impl FnOnce(&mut T)) {
-        let mut g = self
-            .0
-            .try_write_value()
-            .expect("StoredValue accessed after its owner was disposed");
-        f(&mut g);
-    }
+    ///
+    /// # Panics
+    /// Panics if the owner was disposed.
+    #[track_caller]
+    pub fn update(&self, f: impl FnOnce(&mut T)) { f(&mut self.0.write_value()); }
 
     /// Replace the value.
     pub fn set(&self, value: T) { self.update(|slot| *slot = value); }

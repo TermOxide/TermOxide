@@ -43,17 +43,16 @@
 
 #![allow(dead_code)]
 
-use std::future::Future;
+use std::{future::Future, sync::LazyLock};
 
+use any_spawner::{Executor, ExecutorError};
 use termoxide_reactive::runtime::Owner;
 
-/// Install the tokio executor for `any_spawner` exactly once per process.
+/// Install the tokio executor for `any_spawner`. The first test installs it;
+/// if that failed, every test fails on the same error.
 pub fn init_executor() {
-    use std::sync::Once;
-    static ONCE: Once = Once::new();
-    ONCE.call_once(|| {
-        any_spawner::Executor::init_tokio().expect("init tokio executor");
-    });
+    static INSTALLED: LazyLock<Result<(), ExecutorError>> = LazyLock::new(Executor::init_tokio);
+    assert!(INSTALLED.is_ok(), "cannot install the tokio executor: {:?}", *INSTALLED);
 }
 
 /// Yield control until effects scheduled via the spawner have run.

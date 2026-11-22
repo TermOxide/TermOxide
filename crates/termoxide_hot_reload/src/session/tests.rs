@@ -1,8 +1,8 @@
 #![allow(clippy::unwrap_used, clippy::panic)]
 
-use std::future::Future;
+use std::{future::Future, sync::LazyLock};
 
-use any_spawner::Executor;
+use any_spawner::{Executor, ExecutorError};
 use ratatui::{layout::Rect, style::Style};
 use serde::{Deserialize, Serialize};
 use termoxide_event::event::{Event, KeyCode, KeyEvent, KeyModifiers};
@@ -48,10 +48,17 @@ impl App for Counter {
 
 fn key(c: char) -> Request { Request::Event(Event::KeyPress(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))) }
 
+/// Install the tokio executor for `any_spawner`. The first test installs it;
+/// if that failed, every test fails on the same error.
+fn install_executor() {
+    static INSTALLED: LazyLock<Result<(), ExecutorError>> = LazyLock::new(Executor::init_tokio);
+    assert!(INSTALLED.is_ok(), "cannot install the tokio executor: {:?}", *INSTALLED);
+}
+
 /// Runs `test` the way the subprocess runs: a current-thread runtime and a
 /// local set the reactive effects are spawned on.
 fn run(test: impl Future<Output = ()>) {
-    let _ = Executor::init_tokio();
+    install_executor();
     let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
     tokio::task::LocalSet::new().block_on(&runtime, test);
 }

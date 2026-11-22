@@ -9,10 +9,12 @@ use std::{
     io,
     panic::Location,
     rc::Rc,
+    sync::LazyLock,
     time::Duration,
 };
 
-use color_eyre::Result;
+use any_spawner::{Executor, ExecutorError};
+use color_eyre::{Result, eyre::WrapErr};
 use ratatui::{
     Terminal,
     backend::{Backend, ClearType, TestBackend, WindowSize},
@@ -31,9 +33,15 @@ pub fn key(c: char) -> Event { Event::KeyPress(KeyEvent::new(KeyCode::Char(c), K
 
 /// Run `body` on a `LocalSet`, where the render effect spawns its re-runs.
 pub async fn local<F: Future>(body: F) -> F::Output {
-    static EXECUTOR: std::sync::Once = std::sync::Once::new();
-    EXECUTOR.call_once(|| any_spawner::Executor::init_tokio().expect("init tokio executor"));
+    install_executor();
     tokio::task::LocalSet::new().run_until(body).await
+}
+
+/// Install the tokio executor for `any_spawner`. The first test installs it;
+/// if that failed, every test fails on the same error.
+fn install_executor() {
+    static INSTALLED: LazyLock<Result<(), ExecutorError>> = LazyLock::new(Executor::init_tokio);
+    assert!(INSTALLED.is_ok(), "cannot install the tokio executor: {:?}", *INSTALLED);
 }
 
 /// Drive `app` through the loop until it stops, without a stack trace.
@@ -43,11 +51,11 @@ pub async fn run(app: &ProbeApp, backend: &SharedBackend, events: ScriptedEvents
 
 /// Fails, rather than hangs, when the loop never stops.
 pub async fn run_traced(app: &ProbeApp, backend: &SharedBackend, events: ScriptedEvents, trace: bool) -> Result<()> {
-    let renderer = Renderer::new_for_test(Terminal::new(backend.clone()).expect("terminal"));
+    let renderer = Renderer::new_for_test(Terminal::new(backend.clone())?);
     let run = termoxide::run_with_backend(app.clone(), renderer, events, trace);
     tokio::time::timeout(Duration::from_secs(60), run)
         .await
-        .expect("the loop never stopped")
+        .wrap_err("the loop never stopped")?
 }
 
 /// A [`TestBackend`] the test can read and resize while the loop owns it.
@@ -177,14 +185,18 @@ impl Probe {
     pub fn delivered(&self) -> Vec<Event> { self.events.borrow().iter().map(|&(_, event)| event).collect() }
 
     pub fn assert_nothing_after_the_panic(&self) {
-        let at = self.panicked.get().expect("the probe panicked").at;
-        assert!(self.ticks.borrow().iter().all(|&time| time <= at), "a tick after the panic");
+        let at = self.panicked.get().map(|site| site.at);
+        assert!(at.is_some(), "the probe never panicked");
         assert!(
-            self.frames.borrow().iter().all(|&(time, _)| time <= at),
+            self.ticks.borrow().iter().all(|&time| Some(time) <= at),
+            "a tick after the panic"
+        );
+        assert!(
+            self.frames.borrow().iter().all(|&(time, _)| Some(time) <= at),
             "a frame after the panic"
         );
         assert!(
-            self.events.borrow().iter().all(|&(time, _)| time <= at),
+            self.events.borrow().iter().all(|&(time, _)| Some(time) <= at),
             "an event after the panic"
         );
     }
@@ -203,6 +215,7 @@ pub struct Panics {
 /// Panics with `message`; `#[track_caller]` makes the caller the panic's
 /// location, which is recorded in `probe`.
 #[track_caller]
+#[expect(clippy::panic, reason = "the loop is tested against an app that panics")]
 fn probe_panic(probe: &Probe, message: &str) -> ! {
     let caller = Location::caller();
     probe.panicked.set(Some(PanicSite {
