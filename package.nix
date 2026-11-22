@@ -27,6 +27,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   cargoLock.lockFile = ./Cargo.lock;
 
+  buildType = "dist";
   cargoBuildFlags = [ "--package=termoxide_cli" ];
   cargoTestFlags = finalAttrs.cargoBuildFlags;
 

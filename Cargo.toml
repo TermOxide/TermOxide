@@ -19,11 +19,22 @@ edition = "2024"
 license = "BSD-2-Clause"
 repository = "https://github.com/TermOxide/TermOxide"
 
+# Optimized builds without excessive compilation times.
+# Thin LTO retains cross-crate optimizations while allowing more
+# parallelism during code generation.
 [profile.release]
 opt-level = 3
-lto = true
-codegen-units = 1
+lto = "thin"
+codegen-units = 16
 strip = true
+
+# Distribution builds prioritize runtime performance and binary size
+# over compilation time. Nix can reuse these expensive builds through
+# its binary cache, avoiding repeated compilation for consumers.
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
 
 # Clippy lints configuration
 [workspace.lints.rust]
