@@ -52,6 +52,8 @@ impl<T: 'static> StoredValue<T> {
     pub fn new(value: T) -> Self { Self(InnerStoredValue::new_local(value)) }
 
     /// Read the value via a closure (no cloning required).
+    // Access after disposal intentionally panics, as covered by the public API's tests.
+    #[allow(clippy::expect_used)]
     pub fn with_value<R>(&self, f: impl FnOnce(&T) -> R) -> R {
         self.0
             .try_read_value()
@@ -60,6 +62,8 @@ impl<T: 'static> StoredValue<T> {
     }
 
     /// Mutate the value in place.
+    // Access after disposal intentionally panics, as covered by the public API's tests.
+    #[allow(clippy::expect_used)]
     pub fn update(&self, f: impl FnOnce(&mut T)) {
         let mut g = self
             .0

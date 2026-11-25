@@ -15,3 +15,6 @@ any_spawner = { version = "0.3" }
 # Tests drive the reactive graph from a Tokio current-thread runtime.
 any_spawner = { version = "0.3", features = ["tokio"] }
 tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
+
+[lints]
+workspace = true

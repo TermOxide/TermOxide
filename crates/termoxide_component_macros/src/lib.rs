@@ -1,7 +1,12 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    DeriveInput, Error, Ident, LitStr, Result, Token,
+    DeriveInput,
+    Error,
+    Ident,
+    LitStr,
+    Result,
+    Token,
     parse::{Parse, ParseStream},
     parse_macro_input,
 };
@@ -71,9 +76,11 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
         .parse_args::<ComponentArgs>()?;
 
     let fields = match input.data {
-        syn::Data::Struct(data) => match data.fields {
-            syn::Fields::Named(fields) => fields.named,
-            _ => return Err(Error::new(name.span(), "component props must have named fields")),
+        syn::Data::Struct(data) => {
+            match data.fields {
+                syn::Fields::Named(fields) => fields.named,
+                _ => return Err(Error::new(name.span(), "component props must have named fields")),
+            }
         },
         _ => return Err(Error::new(name.span(), "component props must be a struct")),
     };

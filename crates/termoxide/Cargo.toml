@@ -47,3 +47,6 @@ default = ["ratatui"]
 ratatui = ["termoxide_layout/ratatui"]
 # Exposes `run_with_backend` to the integration tests.
 test-util = []
+
+[lints]
+workspace = true

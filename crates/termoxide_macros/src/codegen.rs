@@ -1,14 +1,23 @@
-//! Code generation from the owned RSX AST.
+//! Code generation from the owned RSX AST into rendering builder calls.
 
-use proc_macro2::TokenStream;
+use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use quote::{format_ident, quote};
+use syn::{
+    Expr,
+    Ident,
+    Token,
+    parse::{Parse, ParseStream},
+    punctuated::Punctuated,
+};
 
 use crate::ast::{Attribute, AttributeValue, Element, Lit, RsxExpr, RsxNode};
 
 const BUILTIN_TAGS: &[&str] = &["text", "Container", "Raw"];
 
-const KNOWN_ATTRS: &[&str] = &["area", "style", "id", "key", "class", "on_event", "label", "msg", "draw"];
-const COMMON_ATTRS: &[&str] = &["area", "style", "id", "key", "class", "on_event"];
+const KNOWN_ATTRS: &[&str] = &[
+    "area", "style", "id", "key", "class", "on_event", "on_click", "label", "msg", "draw",
+];
+const COMMON_ATTRS: &[&str] = &["area", "style", "id", "key", "class", "on_event", "on_click"];
 /// Generate a `TokenStream` of builder calls from an [`RsxNode`] tree.
 pub fn generate(node: &RsxNode) -> TokenStream { emit_node(node) }
 
@@ -58,10 +67,6 @@ fn emit_element(el: &Element) -> TokenStream {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  text(...)
-// ─────────────────────────────────────────────────────────────────────────── //
-
 fn emit_text_element(el: &Element) -> TokenStream {
     let content: TokenStream = match el.children.as_slice() {
         [] => quote! { "" },
@@ -82,10 +87,6 @@ fn emit_text_element(el: &Element) -> TokenStream {
             .build()
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────── //
-//  el(Container)
-// ─────────────────────────────────────────────────────────────────────────── //
 
 fn emit_container_element(el: &crate::ast::Element) -> TokenStream {
     let attr_calls = emit_attr_calls(&el.attrs);
@@ -162,16 +163,65 @@ fn emit_raw_element(el: &Element) -> TokenStream {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Attribute → method call chains
-// ─────────────────────────────────────────────────────────────────────────── //
-
 fn emit_attr_calls(attrs: &[Attribute]) -> Vec<TokenStream> { attrs.iter().map(emit_single_attr_call).collect() }
 
 fn emit_single_attr_call(attr: &Attribute) -> TokenStream {
     let method = format_ident!("{}", &attr.key);
-    let value = emit_attr_value(&attr.value);
+    let value = if attr.key == "style" {
+        emit_style_value(&attr.value)
+    } else {
+        emit_attr_value(&attr.value)
+    };
     quote! { .#method(#value) }
+}
+
+struct StyleField {
+    name: Ident,
+    value: Expr,
+}
+
+impl Parse for StyleField {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let name = input.parse()?;
+        input.parse::<Token![:]>()?;
+        let value = input.parse()?;
+        Ok(Self { name, value })
+    }
+}
+
+struct StyleFields(Punctuated<StyleField, Token![,]>);
+
+impl Parse for StyleFields {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> { Punctuated::parse_terminated(input).map(Self) }
+}
+
+fn emit_style_value(value: &AttributeValue) -> TokenStream {
+    let AttributeValue::Expr(expr) = value else {
+        return emit_attr_value(value);
+    };
+
+    let Ok(tokens) = expr.as_str().parse::<TokenStream>() else {
+        return emit_expr(expr);
+    };
+    let mut tokens = tokens.into_iter();
+    let Some(TokenTree::Group(group)) = tokens.next() else {
+        return emit_expr(expr);
+    };
+    if group.delimiter() != Delimiter::Brace || tokens.next().is_some() {
+        return emit_expr(expr);
+    }
+
+    let Ok(fields) = syn::parse2::<StyleFields>(group.stream()) else {
+        return emit_expr(expr);
+    };
+    fields
+        .0
+        .into_iter()
+        .fold(quote! { ::ratatui::style::Style::default() }, |style, field| {
+            let name = field.name;
+            let value = field.value;
+            quote! { #style.#name(#value) }
+        })
 }
 
 fn emit_attr_value(value: &AttributeValue) -> TokenStream {
@@ -184,10 +234,6 @@ fn emit_attr_value(value: &AttributeValue) -> TokenStream {
         },
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────── //
-//  Expr and Lit → TokenStream
-// ─────────────────────────────────────────────────────────────────────────── //
 
 fn emit_expr(expr: &RsxExpr) -> TokenStream {
     expr.as_str().parse::<TokenStream>().unwrap_or_else(|_| {
