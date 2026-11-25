@@ -135,7 +135,7 @@ impl App for AppState {
                     }}
                 </text>
                 <Button
-                    label={"  RUN  "}
+                    label="  RUN  "
                     msg={Msg::Run}
                     area={button_area}
                     style={Style::default().fg(Color::Black).bg(Color::Magenta).add_modifier(Modifier::BOLD)}
@@ -145,7 +145,7 @@ impl App for AppState {
                     max={100u16}
                     label={format!("progress: {}%", self.progress.get_untracked())}
                     area={progress_area}
-                    style={Style::default().fg(Color::Black).bg(Color::Green)}
+                    style={{ fg: Color::Black, bg: Color::Green }}
                 />
                 <Raw
                     area={raw_area}

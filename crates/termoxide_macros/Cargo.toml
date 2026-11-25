@@ -15,3 +15,6 @@ ratatui = "0.26.3"
 [dev-dependencies]
 termoxide_rendering = { path = "../termoxide_rendering" }
 termoxide_components = { path = "../termoxide_components" }
+
+[lints]
+workspace = true

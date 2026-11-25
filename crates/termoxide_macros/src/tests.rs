@@ -1,3 +1,9 @@
+#![allow(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "Test assertion failures and invalid fixtures are intentionally reported by panicking"
+)]
+
 use proc_macro2::TokenStream;
 use quote::quote;
 
@@ -105,6 +111,16 @@ fn parse_literal_attrs() {
 }
 
 #[test]
+fn parse_string_attribute_preserves_surrounding_spaces() {
+    let node = parsed(quote! { <Button label="  RUN  " /> });
+    let RsxNode::Element(el) = &node else { panic!() };
+    assert!(matches!(
+        &el.attrs[0].value,
+        AttributeValue::Lit(Lit::Str(label)) if label == "  RUN  "
+    ));
+}
+
+#[test]
 fn parse_spread_attr() {
     let node = parsed(quote! { <Foo {...props} /> });
     let RsxNode::Element(el) = &node else { panic!() };
@@ -145,6 +161,27 @@ fn codegen_text_element() {
     assert!(out.contains("area"));
     assert!(out.contains("style"));
     assert!(out.contains("build"));
+}
+
+#[test]
+fn codegen_style_field_map_and_rust_style_expression() {
+    let map_node = RsxNode::element(
+        "text",
+        vec![Attribute::expr("style", "{ fg: Color::Black, bg: Color::Green }")],
+        vec![RsxNode::text("styled")],
+    );
+    let map_output = emit(map_node);
+    assert!(map_output.contains("Style :: default"));
+    assert!(map_output.contains(". fg (Color :: Black)"));
+    assert!(map_output.contains(". bg (Color :: Green)"));
+
+    let expression_node = RsxNode::element(
+        "text",
+        vec![Attribute::expr("style", "Style::default().fg(Color::Black).bg(Color::Green)")],
+        vec![RsxNode::text("styled")],
+    );
+    let expression_output = emit(expression_node);
+    assert!(expression_output.contains("Style :: default () . fg (Color :: Black) . bg (Color :: Green)"));
 }
 
 #[test]
