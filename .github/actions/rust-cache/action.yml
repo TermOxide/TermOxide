@@ -22,7 +22,7 @@ inputs:
     required: false
     default: "[]"
   crates:
-    description: 'JSON array of local workspace crates to build (e.g. ''["cargo-extract"]'')'
+    description: 'JSON array of local workspace crates to build (e.g. ''["termoxide_cli"]'')'
     required: false
     default: "[]"
 

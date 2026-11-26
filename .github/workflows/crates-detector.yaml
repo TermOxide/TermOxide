@@ -34,8 +34,7 @@ jobs:
         uses: ./.github/actions/rust-cache
         with:
           action: push
-          packages: '["cargo-workspaces"]'
-          crates: '["cargo-extract"]'
+          packages: '["cargo-workspaces", "cargo-rev-deps"]'
 
   run-detector:
     name: Detect Changed Crates
@@ -53,8 +52,7 @@ jobs:
         uses: ./.github/actions/rust-cache
         with:
           action: pull
-          packages: '["cargo-workspaces"]'
-          crates: '["cargo-extract"]'
+          packages: '["cargo-workspaces", "cargo-rev-deps"]'
 
       - name: Fetch base ref
         env:
@@ -67,7 +65,7 @@ jobs:
         run: |
           BASE_SHA=$(git rev-parse FETCH_HEAD)
           echo "Comparing against base SHA: $BASE_SHA"
-          changed=$(cargo run --release -p cargo-extract -- "$BASE_SHA")
+          changed=$(cargo rev-deps "$BASE_SHA")
           echo "raw_list=$changed" >> "$GITHUB_OUTPUT"
 
       - name: Generate JSON crates output
