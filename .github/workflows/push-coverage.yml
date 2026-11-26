@@ -79,7 +79,7 @@ jobs:
           # tests' default deadline; see crates/termoxide_e2e/README.md.
           TERMOXIDE_E2E_DEADLINE_SECS: "120"
         run: |
-          cargo tarpaulin --follow-exec --ignore-tests --exclude-files "*/tests/*" --exclude-files "crates/termoxide_e2e/*" --workspace --exclude cargo-extract --out Lcov --output-dir ./coverage
+          cargo tarpaulin --follow-exec --ignore-tests --exclude-files "*/tests/*" --exclude-files "crates/termoxide_e2e/*" --workspace --out Lcov --output-dir ./coverage
 
       - name: Upload results to Codecov
         uses: codecov/codecov-action@v7

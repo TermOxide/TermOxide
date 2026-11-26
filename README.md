@@ -64,7 +64,6 @@ crates/
   termoxide_event        keyboard, mouse and resize events from the terminal
   termoxide_macros       procedural macros, such as rsx!
   termoxide_e2e          end to end tests through a real pseudo terminal
-  cargo-extract          CI helper: lists the crates touched since a commit
 demos/                   standalone example apps, each with its own Cargo.toml
 assets/                  images used by the docs
 .githooks/               pre-commit and commit-msg hooks

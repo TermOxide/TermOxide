@@ -117,6 +117,6 @@ TERMOXIDE_E2E_DEADLINE_SECS=120 cargo tarpaulin -p termoxide -p termoxide_render
     --out Html --output-dir ./coverage
 ```
 
-Pass the crates your change touches with `-p`, as `.github/workflows/pr.yaml` does, or `--workspace --exclude
-cargo-extract` to match the baseline run of `.github/workflows/push-coverage.yml`. Leave out `--follow-exec` for a
-quick run: the tests still run, but nothing the probe executes is counted.
+Pass the crates your change touches with `-p`, as `.github/workflows/pr.yaml` does, or `--workspace` to match
+the baseline run of `.github/workflows/push-coverage.yml`. Leave out `--follow-exec` for a quick run: the tests still
+run, but nothing the probe executes is counted.
